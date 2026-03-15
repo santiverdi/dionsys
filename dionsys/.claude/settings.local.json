@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx @claude-flow/cli@latest swarm init:*)",
+      "Bash(npx @claude-flow/cli@latest doctor:*)",
+      "Bash(npx tsc:*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ],
+  "enableAllProjectMcpServers": true
+}
