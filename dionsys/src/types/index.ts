@@ -119,6 +119,31 @@ export interface MaintenanceMaterial {
   receiptPhoto?: string
 }
 
+// --- Impuestos y Servicios ---
+
+export type FrecuenciaVto = 'mensual' | 'anual'
+
+export interface ImpuestoServicio {
+  id: string
+  nombre: string
+  nroCuenta: string
+  urlPago: string
+  frecuencia: FrecuenciaVto
+  diaVto: number // dia del mes del vencimiento
+  observaciones: string
+}
+
+export interface PagoMensual {
+  id: string
+  impuestoId: string
+  mes: string // YYYY-MM
+  monto: number
+  vtoActual: string // YYYY-MM-DD
+  vtoSiguiente: string // YYYY-MM-DD
+  pagado: boolean
+  fechaPago?: string
+}
+
 export interface MaintenanceTask {
   id: string
   createdBy: string

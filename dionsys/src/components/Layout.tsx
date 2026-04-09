@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
-import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, ClipboardList } from 'lucide-react'
+import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, ClipboardList, Receipt } from 'lucide-react'
 import type { Role } from '../types'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
@@ -12,6 +12,7 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
   { to: '/deposito', label: 'Pedido Semanal', icon: Warehouse },
   { to: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },
   { to: '/pedidos-admin', label: 'Proveedores', icon: ClipboardList },
+  { to: '/impuestos', label: 'Impuestos', icon: Receipt },
 ]
 
 export default function Layout() {

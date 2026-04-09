@@ -5,6 +5,7 @@ import { StockProvider } from './context/StockContext'
 import { MaintenanceProvider } from './context/MaintenanceContext'
 import { OccupancyProvider } from './context/OccupancyContext'
 import { TurnosProvider } from './context/TurnosContext'
+import { ImpuestosProvider } from './context/ImpuestosContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -14,6 +15,7 @@ import PedidosRecepcion from './pages/PedidosRecepcion'
 import Stock from './pages/Stock'
 import Mantenimiento from './pages/Mantenimiento'
 import PedidosAdmin from './pages/PedidosAdmin'
+import Impuestos from './pages/Impuestos'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { employee } = useAuth()
@@ -55,6 +57,7 @@ function AppRoutes() {
         <Route path="deposito" element={<RoleRoute path="/deposito"><Stock /></RoleRoute>} />
         <Route path="mantenimiento" element={<RoleRoute path="/mantenimiento"><Mantenimiento /></RoleRoute>} />
         <Route path="pedidos-admin" element={<RoleRoute path="/pedidos-admin"><PedidosAdmin /></RoleRoute>} />
+        <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
       </Route>
     </Routes>
   )
@@ -69,7 +72,9 @@ export default function App() {
             <MaintenanceProvider>
               <OccupancyProvider>
                 <TurnosProvider>
-                  <AppRoutes />
+                  <ImpuestosProvider>
+                    <AppRoutes />
+                  </ImpuestosProvider>
                 </TurnosProvider>
               </OccupancyProvider>
             </MaintenanceProvider>

@@ -1,7 +1,7 @@
 import type { Role } from '../types'
 
 export const ROLE_ROUTES: Record<Role, string[]> = {
-  admin:         ['/dashboard', '/pedidos', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin'],
+  admin:         ['/dashboard', '/pedidos', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin', '/impuestos'],
   concierge:     ['/pedidos', '/recepcion', '/deposito'],
   mucama:        ['/recepcion', '/deposito'],
   mantenimiento: ['/recepcion', '/mantenimiento'],
