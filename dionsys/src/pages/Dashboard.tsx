@@ -1,20 +1,32 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
 import { useOccupancy, HOTEL_CAPACITY } from '../context/OccupancyContext'
+import { useImpuestos } from '../context/ImpuestosContext'
+import { isInMonth, monthKey } from '../utils/dateRange'
+import MonthlyView from '../components/MonthlyView'
 import {
   AlertTriangle, ShoppingCart, Wrench, DollarSign,
   Package, TrendingDown, Clock, CheckCircle2, Users,
+  Calendar, LayoutDashboard,
 } from 'lucide-react'
 
 export default function Dashboard() {
   const { orders } = useOrders()
-  const { items } = useStock()
+  const { items, pedidos } = useStock()
   const { tasks } = useMaintenance()
   const { getToday } = useOccupancy()
+  const { pagos } = useImpuestos()
 
+  const [tab, setTab] = useState<'hoy' | 'mes'>('hoy')
   const now = new Date()
+  const dateCtx = useMemo(() => {
+    const n = new Date()
+    const y = n.getFullYear()
+    const m = n.getMonth() + 1
+    return { year: y, month: m, key: monthKey(y, m) }
+  }, [])
   const todayOccupancy = getToday()
 
   // Stock critico (stock < ideal)
@@ -54,6 +66,29 @@ export default function Dashboard() {
       }, 0)
   }, [tasks])
 
+  // Gastos del mes — pedidos a distribuidores (con monto cargado)
+  const monthOrdersCost = useMemo(() => {
+    return orders
+      .filter(o => o.status !== 'borrado' && o.monto != null && isInMonth(o.createdAt, dateCtx.year, dateCtx.month))
+      .reduce((sum, o) => sum + (o.monto ?? 0), 0)
+  }, [orders, dateCtx])
+
+  // Gastos del mes — pedidos semanales del depósito (con monto cargado)
+  const monthPedidosCost = useMemo(() => {
+    return pedidos
+      .filter(p => p.status !== 'borrado' && p.monto != null && isInMonth(p.date, dateCtx.year, dateCtx.month))
+      .reduce((sum, p) => sum + (p.monto ?? 0), 0)
+  }, [pedidos, dateCtx])
+
+  // Gastos del mes — impuestos pagados
+  const monthImpuestosPagado = useMemo(() => {
+    return pagos
+      .filter(p => p.pagado && p.mes === dateCtx.key)
+      .reduce((sum, p) => sum + p.monto, 0)
+  }, [pagos, dateCtx])
+
+  const totalMonthExpenses = monthCosts + monthOrdersCost + monthPedidosCost + monthImpuestosPagado
+
   // Tareas completadas este mes
   const monthCompleted = useMemo(() => {
     return tasks.filter(t => {
@@ -65,7 +100,30 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-navy-800 mb-1">Dashboard</h2>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <h2 className="text-xl font-bold text-navy-800">Dashboard</h2>
+        <div className="flex gap-1 bg-navy-100 rounded-xl p-1">
+          <button
+            onClick={() => setTab('hoy')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              tab === 'hoy' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
+            }`}
+          >
+            <LayoutDashboard size={14} /> Hoy
+          </button>
+          <button
+            onClick={() => setTab('mes')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              tab === 'mes' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
+            }`}
+          >
+            <Calendar size={14} /> Mes
+          </button>
+        </div>
+      </div>
+
+      {tab === 'mes' ? <MonthlyView /> : (
+      <>
       <p className="text-sm text-navy-400 mb-6">
         {now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
       </p>
@@ -139,8 +197,10 @@ export default function Dashboard() {
             <DollarSign size={16} className="text-navy-600" />
             <span className="text-xs font-semibold text-navy-500 uppercase">Gastos mes</span>
           </div>
-          <p className="text-2xl font-bold text-navy-800">${monthCosts.toLocaleString('es-AR')}</p>
-          <p className="text-xs text-navy-500">compras externas mant.</p>
+          <p className="text-2xl font-bold text-navy-800">${totalMonthExpenses.toLocaleString('es-AR')}</p>
+          <p className="text-[10px] text-navy-500 leading-tight mt-1">
+            Mant ${Math.round(monthCosts).toLocaleString('es-AR')} · Ped ${Math.round(monthOrdersCost + monthPedidosCost).toLocaleString('es-AR')} · Imp ${Math.round(monthImpuestosPagado).toLocaleString('es-AR')}
+          </p>
         </div>
       </div>
 
@@ -202,6 +262,8 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

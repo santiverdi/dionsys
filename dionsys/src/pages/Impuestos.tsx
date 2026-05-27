@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useImpuestos } from '../context/ImpuestosContext'
+import { useAuth } from '../context/AuthContext'
+import { validateMonto } from '../utils/validators'
 import {
   Receipt, ExternalLink, Calendar, ChevronLeft, ChevronRight,
   Check, AlertTriangle, Clock, Edit3, Save, Copy, Plus, Trash2
@@ -42,6 +44,7 @@ const NUEVO_SERVICIO_VACIO: Omit<ImpuestoServicio, 'id'> = {
 
 export default function Impuestos() {
   const { servicios, pagos, addServicio, deleteServicio, addPago, updatePago, togglePagado, updateServicio } = useImpuestos()
+  const { employee } = useAuth()
 
   const now = new Date()
   const [mesActual, setMesActual] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 })
@@ -57,6 +60,7 @@ export default function Impuestos() {
   const [pagoMonto, setPagoMonto] = useState('')
   const [pagoVto, setPagoVto] = useState('')
   const [pagoVtoSig, setPagoVtoSig] = useState('')
+  const [pagoError, setPagoError] = useState('')
 
   // Mover pago de día en el calendario
   const [movingPagoId, setMovingPagoId] = useState<string | null>(null)
@@ -66,6 +70,7 @@ export default function Impuestos() {
   const [editPagoVto, setEditPagoVto] = useState('')
   const [editPagoMonto, setEditPagoMonto] = useState('')
   const [editPagoVtoSig, setEditPagoVtoSig] = useState('')
+  const [editPagoError, setEditPagoError] = useState('')
 
   const mesStr = getMesStr(mesActual.year, mesActual.month)
 
@@ -104,17 +109,29 @@ export default function Impuestos() {
   }
 
   function handleCargarPago() {
-    if (!pagoServicioId || !pagoMonto || !pagoVto) return
-    const monto = parseFloat(pagoMonto.replace(/\./g, '').replace(',', '.'))
-    if (isNaN(monto) || monto <= 0) return
-
+    setPagoError('')
+    if (!pagoServicioId) {
+      setPagoError('Elegí un servicio')
+      return
+    }
+    if (!pagoVto) {
+      setPagoError('Indicá la fecha de vencimiento')
+      return
+    }
+    const result = validateMonto(pagoMonto)
+    if (!result.ok) {
+      setPagoError(result.error ?? 'Monto inválido')
+      return
+    }
     addPago({
       impuestoId: pagoServicioId,
       mes: mesStr,
-      monto,
+      monto: result.value!,
       vtoActual: pagoVto,
       vtoSiguiente: pagoVtoSig || '',
       pagado: false,
+      createdBy: employee?.name,
+      createdAt: new Date().toISOString(),
     })
     setPagoServicioId('')
     setPagoMonto('')
@@ -186,12 +203,16 @@ export default function Impuestos() {
   }
 
   function handleSavePagoEdit() {
+    setEditPagoError('')
     if (!editingPagoId) return
     const pago = pagos.find(p => p.id === editingPagoId)
     if (!pago) return
-    const monto = parseFloat(editPagoMonto.replace(/\./g, '').replace(',', '.'))
-    if (isNaN(monto) || monto <= 0) return
-    updatePago({ ...pago, vtoActual: editPagoVto, monto, vtoSiguiente: editPagoVtoSig })
+    const result = validateMonto(editPagoMonto)
+    if (!result.ok) {
+      setEditPagoError(result.error ?? 'Monto inválido')
+      return
+    }
+    updatePago({ ...pago, vtoActual: editPagoVto, monto: result.value!, vtoSiguiente: editPagoVtoSig })
     setEditingPagoId(null)
   }
 
@@ -344,9 +365,12 @@ export default function Impuestos() {
                   className="w-full text-sm border border-navy-200 rounded-lg px-3 py-2 mt-0.5 text-navy-600"
                 />
               </div>
+              {pagoError && (
+                <p className="text-xs text-red-600 -mt-1">{pagoError}</p>
+              )}
               <div className="flex gap-2 justify-end pt-1">
                 <button
-                  onClick={() => setShowCargarPago(false)}
+                  onClick={() => { setShowCargarPago(false); setPagoError('') }}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-navy-500 hover:bg-navy-50"
                 >
                   Cancelar
@@ -634,8 +658,11 @@ export default function Impuestos() {
                         />
                       </div>
                     </div>
+                    {editPagoError && (
+                      <p className="text-xs text-red-600">{editPagoError}</p>
+                    )}
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => setEditingPagoId(null)} className="px-3 py-1.5 rounded-lg text-xs font-medium text-navy-500 hover:bg-navy-50">
+                      <button onClick={() => { setEditingPagoId(null); setEditPagoError('') }} className="px-3 py-1.5 rounded-lg text-xs font-medium text-navy-500 hover:bg-navy-50">
                         Cancelar
                       </button>
                       <button onClick={handleSavePagoEdit} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy-800 text-cream hover:bg-navy-700">

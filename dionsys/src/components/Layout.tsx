@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
 import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, ClipboardList, Receipt } from 'lucide-react'
 import type { Role } from '../types'
+import OccupancyReminder from './OccupancyReminder'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -117,6 +118,7 @@ export default function Layout() {
 
       {/* Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6">
+        <OccupancyReminder />
         <Outlet />
       </main>
     </div>

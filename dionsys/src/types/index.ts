@@ -44,6 +44,10 @@ export interface Order {
   type?: 'distribuidor' | 'recepcion'
   deletedAt?: string
   deletedBy?: string
+  monto?: number
+  montoCargadoBy?: string
+  montoCargadoAt?: string
+  receiptPhoto?: string
 }
 
 export interface ReceptionProduct {
@@ -101,6 +105,10 @@ export interface PedidoSemanal {
   status: 'enviado' | 'borrado'
   deletedAt?: string
   deletedBy?: string
+  monto?: number
+  montoCargadoBy?: string
+  montoCargadoAt?: string
+  receiptPhoto?: string
 }
 
 // --- Mantenimiento ---
@@ -142,6 +150,8 @@ export interface PagoMensual {
   vtoSiguiente: string // YYYY-MM-DD
   pagado: boolean
   fechaPago?: string
+  createdBy?: string
+  createdAt?: string
 }
 
 export interface MaintenanceTask {

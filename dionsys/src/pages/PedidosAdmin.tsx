@@ -1,7 +1,10 @@
-import { useMemo } from 'react'
-import { Send, Clock, Package, MessageCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Send, Clock, Package, MessageCircle, DollarSign, Edit3 } from 'lucide-react'
 import { useStock } from '../context/StockContext'
+import { useAuth } from '../context/AuthContext'
 import { depositoSuppliers, depositoItemSupplier } from '../data/mock'
+import { formatMontoCurrency } from '../utils/validators'
+import MontoModal from '../components/MontoModal'
 import type { PedidoSemanal } from '../types'
 
 function formatDate(iso: string) {
@@ -11,7 +14,7 @@ function formatDate(iso: string) {
   })
 }
 
-function PedidoCard({ pedido }: { pedido: PedidoSemanal }) {
+function PedidoCard({ pedido, isAdmin, onCargarMonto }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void }) {
   // Group items by supplier
   const supplierGroups = useMemo(() => {
     const groups = new Map<string, { supplier: typeof depositoSuppliers[0]; items: typeof pedido.items }>()
@@ -61,6 +64,45 @@ function PedidoCard({ pedido }: { pedido: PedidoSemanal }) {
         </span>
       </div>
 
+      {/* Monto recibido */}
+      <div className={`rounded-lg p-3 mb-3 border ${
+        pedido.monto != null
+          ? 'bg-green-50 border-green-200'
+          : 'bg-navy-50 border-navy-100'
+      }`}>
+        {pedido.monto != null ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wide font-semibold text-green-700">Monto recibido</p>
+              <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(pedido.monto)}</p>
+              <p className="text-xs text-navy-500">
+                Cargado por {pedido.montoCargadoBy ?? '?'}
+                {pedido.montoCargadoAt && ` — ${new Date(pedido.montoCargadoAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`}
+              </p>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={onCargarMonto}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-700 hover:bg-navy-50 border border-navy-200 shrink-0"
+              >
+                <Edit3 size={12} /> Editar
+              </button>
+            )}
+          </div>
+        ) : isAdmin ? (
+          <button
+            onClick={onCargarMonto}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold bg-navy-800 text-cream hover:bg-navy-700 transition-colors"
+          >
+            <DollarSign size={16} /> Cargar monto recibido
+          </button>
+        ) : (
+          <p className="text-xs text-navy-400 italic text-center">
+            Monto pendiente de cargar por administración
+          </p>
+        )}
+      </div>
+
       {supplierGroups.map(({ supplier, items }) => {
         const waUrl = buildWhatsAppUrl(supplier.name, supplier.phone, items)
         return (
@@ -99,12 +141,21 @@ function PedidoCard({ pedido }: { pedido: PedidoSemanal }) {
 }
 
 export default function PedidosAdmin() {
-  const { pedidos } = useStock()
+  const { employee } = useAuth()
+  const { pedidos, setPedidoMonto } = useStock()
+  const [montoTarget, setMontoTarget] = useState<PedidoSemanal | null>(null)
+  const isAdmin = employee?.role === 'admin'
 
   const activePedidos = useMemo(
     () => pedidos.filter(p => p.status === 'enviado'),
     [pedidos]
   )
+
+  function handleSaveMonto({ monto, receiptPhoto }: { monto: number; receiptPhoto?: string }) {
+    if (!montoTarget || !employee) return
+    setPedidoMonto(montoTarget.id, monto, employee.name, receiptPhoto)
+    setMontoTarget(null)
+  }
 
   return (
     <div>
@@ -121,9 +172,24 @@ export default function PedidosAdmin() {
         </div>
       ) : (
         activePedidos.map(pedido => (
-          <PedidoCard key={pedido.id} pedido={pedido} />
+          <PedidoCard
+            key={pedido.id}
+            pedido={pedido}
+            isAdmin={isAdmin}
+            onCargarMonto={() => setMontoTarget(pedido)}
+          />
         ))
       )}
+
+      <MontoModal
+        open={montoTarget !== null}
+        title={montoTarget?.monto != null ? 'Editar monto del pedido' : 'Cargar monto recibido'}
+        subtitle={montoTarget ? `Pedido semanal del ${new Date(montoTarget.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}
+        initialMonto={montoTarget?.monto}
+        initialReceiptPhoto={montoTarget?.receiptPhoto}
+        onClose={() => setMontoTarget(null)}
+        onSave={handleSaveMonto}
+      />
     </div>
   )
 }

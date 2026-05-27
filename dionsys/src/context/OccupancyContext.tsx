@@ -40,11 +40,19 @@ export interface AvgConsumption {
   source: 'panaderia' | 'lacteos'
 }
 
+export interface TodayTurnos {
+  manana?: OccupancyRecord
+  tarde?: OccupancyRecord
+  noche?: OccupancyRecord
+}
+
 interface OccupancyContextType {
   records: OccupancyRecord[]
   currentTurno: Turno
   setToday: (guests: number, rooms: number, createdBy: string, extra?: Partial<OccupancyRecord>) => void
   getToday: () => OccupancyRecord | undefined
+  getTodayByTurno: (turno: Turno) => OccupancyRecord | undefined
+  getTodayAllTurnos: () => TodayTurnos
   getHistory: (days: number) => OccupancyRecord[]
   getAvgConsumption: () => AvgConsumption[]
   getProjection: (guests: number) => { productName: string; suggested: number; unit: string; source: string }[]
@@ -77,7 +85,10 @@ export function OccupancyProvider({ children }: { children: ReactNode }) {
   const setToday = useCallback((guests: number, rooms: number, createdBy: string, extra?: Partial<OccupancyRecord>) => {
     setRecords(prev => {
       const date = todayStr()
-      const existing = prev.findIndex(r => r.date === date)
+      // Allow caller to override turno via extra (e.g. fix yesterday's noche from today's mañana)
+      const turno = extra?.turno ?? getCurrentTurno()
+      // Match by date AND turno (multi-record day)
+      const existing = prev.findIndex(r => r.date === date && r.turno === turno)
       const record: OccupancyRecord = {
         id: existing >= 0 ? prev[existing].id : crypto.randomUUID(),
         date,
@@ -85,8 +96,8 @@ export function OccupancyProvider({ children }: { children: ReactNode }) {
         rooms,
         createdBy,
         createdAt: new Date().toISOString(),
-        turno: getCurrentTurno(),
         ...extra,
+        turno, // ensure turno is final (not overridden by extra spread above)
       }
       const updated = existing >= 0
         ? prev.map((r, i) => i === existing ? record : r)
@@ -97,7 +108,25 @@ export function OccupancyProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const getToday = useCallback((): OccupancyRecord | undefined => {
-    return records.find(r => r.date === todayStr())
+    // Returns LATEST record of today (any turno)
+    const todayRecords = records.filter(r => r.date === todayStr())
+    if (todayRecords.length === 0) return undefined
+    return todayRecords.reduce((latest, r) =>
+      new Date(r.createdAt) > new Date(latest.createdAt) ? r : latest
+    )
+  }, [records])
+
+  const getTodayByTurno = useCallback((turno: Turno): OccupancyRecord | undefined => {
+    return records.find(r => r.date === todayStr() && r.turno === turno)
+  }, [records])
+
+  const getTodayAllTurnos = useCallback((): TodayTurnos => {
+    const today = todayStr()
+    return {
+      manana: records.find(r => r.date === today && r.turno === 'manana'),
+      tarde: records.find(r => r.date === today && r.turno === 'tarde'),
+      noche: records.find(r => r.date === today && r.turno === 'noche'),
+    }
   }, [records])
 
   const getHistory = useCallback((days: number): OccupancyRecord[] => {
@@ -313,7 +342,8 @@ export function OccupancyProvider({ children }: { children: ReactNode }) {
 
   return (
     <OccupancyContext.Provider value={{
-      records, currentTurno, setToday, getToday, getHistory, getAvgConsumption, getProjection, parseExcel
+      records, currentTurno, setToday, getToday, getTodayByTurno, getTodayAllTurnos,
+      getHistory, getAvgConsumption, getProjection, parseExcel,
     }}>
       {children}
     </OccupancyContext.Provider>

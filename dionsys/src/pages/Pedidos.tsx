@@ -2,21 +2,31 @@ import { useState, useMemo } from 'react'
 import { distributors, products } from '../data/mock'
 import { useAuth } from '../context/AuthContext'
 import { useOrders, generateWhatsAppMessage } from '../context/OrdersContext'
-import type { OrderItem } from '../types'
+import type { Order, OrderItem } from '../types'
 import {
   ShoppingCart, Search, Package, Copy, Check,
-  Send, ChevronLeft, Clock, Plus, Minus, Trash2
+  Send, ChevronLeft, Clock, Plus, Minus, Trash2,
+  DollarSign, Edit3,
 } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MontoModal from '../components/MontoModal'
 import { canDelete } from '../utils/permissions'
+import { formatMontoCurrency } from '../utils/validators'
 
 type View = 'distributors' | 'order' | 'preview' | 'history'
 
 export default function Pedidos() {
   const { employee } = useAuth()
-  const { orders, addOrder, deleteOrder } = useOrders()
+  const { orders, addOrder, deleteOrder, setOrderMonto } = useOrders()
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [montoTarget, setMontoTarget] = useState<Order | null>(null)
   const isAdmin = canDelete(employee?.role ?? 'mucama')
+
+  function handleSaveMonto({ monto, receiptPhoto }: { monto: number; receiptPhoto?: string }) {
+    if (!montoTarget || !employee) return
+    setOrderMonto(montoTarget.id, monto, employee.name, receiptPhoto)
+    setMontoTarget(null)
+  }
   const [view, setView] = useState<View>('distributors')
   const [selectedDistId, setSelectedDistId] = useState<string | null>(null)
   const [items, setItems] = useState<Map<string, OrderItem>>(new Map())
@@ -190,6 +200,43 @@ export default function Pedidos() {
                       )}
                     </div>
                   </div>
+                  {/* Monto recibido */}
+                  {!isBorrado && (
+                    <div className={`rounded-lg p-2.5 mb-2 border ${
+                      order.monto != null
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-navy-50 border-navy-100'
+                    }`}>
+                      {order.monto != null ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[10px] uppercase tracking-wide font-semibold text-green-700">Monto recibido</p>
+                            <p className="text-base font-bold text-navy-800">{formatMontoCurrency(order.monto)}</p>
+                            <p className="text-[10px] text-navy-500">
+                              {order.montoCargadoBy ?? '?'}
+                              {order.montoCargadoAt && ` — ${new Date(order.montoCargadoAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`}
+                            </p>
+                          </div>
+                          {isAdmin && (
+                            <button
+                              onClick={() => setMontoTarget(order)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white text-navy-700 hover:bg-navy-50 border border-navy-200 shrink-0"
+                            >
+                              <Edit3 size={11} /> Editar
+                            </button>
+                          )}
+                        </div>
+                      ) : isAdmin ? (
+                        <button
+                          onClick={() => setMontoTarget(order)}
+                          className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold bg-navy-800 text-cream hover:bg-navy-700 transition-colors"
+                        >
+                          <DollarSign size={13} /> Marcar recibido + cargar monto
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+
                   <ul className={`text-sm space-y-0.5 ${isBorrado ? 'text-navy-400 line-through' : 'text-navy-600'}`}>
                     {order.items.map((item, i) => (
                       <li key={i}>- {item.quantity} x {item.productName} ({item.unit})</li>
@@ -200,6 +247,16 @@ export default function Pedidos() {
             })}
           </div>
         )}
+
+        <MontoModal
+          open={montoTarget !== null}
+          title={montoTarget?.monto != null ? 'Editar monto del pedido' : 'Marcar recibido + cargar monto'}
+          subtitle={montoTarget ? `${montoTarget.distributorName} — ${new Date(montoTarget.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}
+          initialMonto={montoTarget?.monto}
+          initialReceiptPhoto={montoTarget?.receiptPhoto}
+          onClose={() => setMontoTarget(null)}
+          onSave={handleSaveMonto}
+        />
       </div>
     )
   }

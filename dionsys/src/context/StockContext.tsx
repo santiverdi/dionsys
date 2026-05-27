@@ -15,6 +15,7 @@ interface StockContextType {
   generatePedidoItems: () => PedidoSemanalItem[]
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   deletePedido: (id: string, deletedBy: string) => void
+  setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
   resetStock: () => void
 }
 
@@ -116,6 +117,24 @@ export function StockProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setPedidoMonto = useCallback((pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => {
+    setPedidos(prev => {
+      const updated = prev.map(p =>
+        p.id === pedidoId
+          ? {
+              ...p,
+              monto,
+              montoCargadoBy: cargadoBy,
+              montoCargadoAt: new Date().toISOString(),
+              ...(receiptPhoto !== undefined ? { receiptPhoto } : {}),
+            }
+          : p
+      )
+      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
   const resetStock = useCallback(() => {
     setItems(mockItems)
     localStorage.setItem(LS_DEPOSITO, JSON.stringify(mockItems))
@@ -124,7 +143,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos,
-      addMovement, generatePedidoItems, savePedido, deletePedido, resetStock,
+      addMovement, generatePedidoItems, savePedido, deletePedido, setPedidoMonto, resetStock,
     }}>
       {children}
     </StockContext.Provider>

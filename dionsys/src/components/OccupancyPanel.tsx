@@ -2,11 +2,19 @@ import { useState, useRef, useMemo } from 'react'
 import {
   ChevronLeft, Users, BedDouble, Upload, Save, Edit3,
   ChevronDown, ChevronUp, TrendingUp, BarChart3, FileSpreadsheet,
-  LogIn, LogOut, Home
+  LogIn, LogOut, Home, Sun, Sunset, Moon, X,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { useOccupancy, HOTEL_CAPACITY, TURNO_LABELS } from '../context/OccupancyContext'
+import { useOccupancy, HOTEL_CAPACITY, TURNO_LABELS, type Turno } from '../context/OccupancyContext'
 import { useTurnos } from '../context/TurnosContext'
+
+const TURNO_ICONS: Record<Turno, typeof Sun> = {
+  manana: Sun,
+  tarde: Sunset,
+  noche: Moon,
+}
+
+const TURNO_ORDER: Turno[] = ['manana', 'tarde', 'noche']
 
 interface Props {
   onBack: () => void
@@ -14,23 +22,42 @@ interface Props {
 
 export default function OccupancyPanel({ onBack }: Props) {
   const { employee } = useAuth()
-  const { currentTurno, setToday, getToday, getHistory, getAvgConsumption, getProjection, parseExcel } = useOccupancy()
+  const { currentTurno, setToday, getTodayAllTurnos, getHistory, getAvgConsumption, getProjection, parseExcel } = useOccupancy()
   const { getCurrentShiftName } = useTurnos()
 
-  const today = getToday()
-  const [editing, setEditing] = useState(!today)
-  const [guests, setGuests] = useState(today?.guests ?? 0)
-  const [rooms, setRooms] = useState(today?.rooms ?? 0)
+  const todayTurnos = getTodayAllTurnos()
+  // Default: edit current turno if not loaded yet
+  const [editingTurno, setEditingTurno] = useState<Turno | null>(() =>
+    todayTurnos[currentTurno] ? null : currentTurno
+  )
+  const editingRecord = editingTurno ? todayTurnos[editingTurno] : null
+
+  const [guests, setGuests] = useState(editingRecord?.guests ?? 0)
+  const [rooms, setRooms] = useState(editingRecord?.rooms ?? 0)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
   const [breakdown, setBreakdown] = useState<{ inhouse: number; out: number; checkIn: number } | null>(
-    today?.inhouse != null ? { inhouse: today.inhouse, out: today.out ?? 0, checkIn: today.checkIn ?? 0 } : null
+    editingRecord?.inhouse != null ? { inhouse: editingRecord.inhouse, out: editingRecord.out ?? 0, checkIn: editingRecord.checkIn ?? 0 } : null
   )
   const [showMetrics, setShowMetrics] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const occupancyPct = rooms > 0 ? Math.round((rooms / HOTEL_CAPACITY) * 100) : 0
   const history = useMemo(() => getHistory(14), [getHistory])
+
+  function startEditTurno(turno: Turno) {
+    const rec = todayTurnos[turno]
+    setGuests(rec?.guests ?? 0)
+    setRooms(rec?.rooms ?? 0)
+    setBreakdown(rec?.inhouse != null ? { inhouse: rec.inhouse, out: rec.out ?? 0, checkIn: rec.checkIn ?? 0 } : null)
+    setImportError('')
+    setEditingTurno(turno)
+  }
+
+  function cancelEdit() {
+    setEditingTurno(null)
+    setImportError('')
+  }
 
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -42,8 +69,7 @@ export default function OccupancyPanel({ onBack }: Props) {
       setGuests(result.guests)
       setRooms(result.rooms)
       setBreakdown({ inhouse: result.inhouse, out: result.out, checkIn: result.checkIn })
-      setEditing(true)
-    } catch (err) {
+    } catch {
       setImportError('Error al leer el archivo. Verifica que sea el Excel de proyeccion.')
     } finally {
       setImporting(false)
@@ -52,20 +78,31 @@ export default function OccupancyPanel({ onBack }: Props) {
   }
 
   function handleSave() {
-    if (!employee) return
-    setToday(guests, rooms, employee.name, breakdown ? {
-      inhouse: breakdown.inhouse,
-      out: breakdown.out,
-      checkIn: breakdown.checkIn,
-    } : undefined)
-    setEditing(false)
+    if (!employee || !editingTurno) return
+    setToday(guests, rooms, employee.name, {
+      turno: editingTurno,
+      ...(breakdown ? {
+        inhouse: breakdown.inhouse,
+        out: breakdown.out,
+        checkIn: breakdown.checkIn,
+      } : {}),
+    })
+    setEditingTurno(null)
   }
+
+  const latestToday = useMemo(() => {
+    const candidates = [todayTurnos.manana, todayTurnos.tarde, todayTurnos.noche].filter(Boolean)
+    if (candidates.length === 0) return undefined
+    return candidates.reduce((latest, r) =>
+      new Date(r!.createdAt) > new Date(latest!.createdAt) ? r : latest
+    )
+  }, [todayTurnos])
 
   const avgConsumption = useMemo(() => getAvgConsumption(), [getAvgConsumption])
   const projection = useMemo(() => {
-    const g = today?.guests ?? guests
+    const g = latestToday?.guests ?? guests
     return g > 0 ? getProjection(g) : []
-  }, [today, guests, getProjection])
+  }, [latestToday, guests, getProjection])
 
   const maxHistoryGuests = useMemo(() => {
     return Math.max(...history.map(h => h.guests), 1)
@@ -94,79 +131,24 @@ export default function OccupancyPanel({ onBack }: Props) {
         {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
       </p>
 
-      {/* Daily load section */}
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-navy-100 mb-4">
-        {!editing && today ? (
-          /* Already loaded - show summary */
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <span className="text-xs font-semibold text-green-600 uppercase tracking-wide">Cargado hoy</span>
-                {today.turno && (
-                  <span className="ml-2 text-xs text-navy-400">
-                    por {today.createdBy} · turno {TURNO_LABELS[today.turno].split(' ')[0].toLowerCase()}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => setEditing(true)}
-                className="flex items-center gap-1 text-xs text-navy-500 hover:text-navy-700 font-medium"
-              >
-                <Edit3 size={14} /> Editar
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-3">
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <Users size={18} className="text-gold-600" />
-                  <span className="text-3xl font-bold text-navy-800">{today.guests}</span>
-                </div>
-                <p className="text-xs text-navy-500">huespedes desayunan</p>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <BedDouble size={18} className="text-blue-600" />
-                  <span className="text-3xl font-bold text-navy-800">{today.rooms}</span>
-                </div>
-                <p className="text-xs text-navy-500">habitaciones</p>
-              </div>
-            </div>
-
-            {/* Breakdown if from Excel */}
-            {today.inhouse != null && (
-              <div className="flex gap-3 text-xs text-navy-500 justify-center mb-3">
-                <span className="flex items-center gap-1"><Home size={12} className="text-blue-500" /> {today.inhouse} inhouse</span>
-                <span className="flex items-center gap-1"><LogOut size={12} className="text-red-400" /> {today.out} out</span>
-                <span className="flex items-center gap-1"><LogIn size={12} className="text-green-500" /> {today.checkIn} in</span>
-              </div>
-            )}
-
-            {/* Occupancy bar */}
-            <div>
-              <div className="flex justify-between text-xs text-navy-500 mb-1">
-                <span>{today.rooms} / {HOTEL_CAPACITY} hab.</span>
-                <span className="font-semibold">{Math.round((today.rooms / HOTEL_CAPACITY) * 100)}%</span>
-              </div>
-              <div className="w-full h-3 bg-navy-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(100, (today.rooms / HOTEL_CAPACITY) * 100)}%`,
-                    backgroundColor: (today.rooms / HOTEL_CAPACITY) > 0.85 ? '#ef4444' :
-                      (today.rooms / HOTEL_CAPACITY) > 0.6 ? '#f59e0b' : '#22c55e'
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Edit / new entry */
-          <div>
+      {/* Daily load section — 3 turnos per day */}
+      <div className="mb-4">
+        {editingTurno ? (
+          /* EDIT FORM for editingTurno */
+          <div className="bg-white rounded-xl p-5 shadow-sm border-2 border-gold-300">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold text-navy-700">
-                {today ? 'Editar ocupacion' : 'Cargar ocupacion de hoy'}
-              </span>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const Icon = TURNO_ICONS[editingTurno]
+                  return <Icon size={20} className="text-gold-600" />
+                })()}
+                <span className="text-base font-bold text-navy-800">
+                  {todayTurnos[editingTurno] ? 'Editar' : 'Cargar'} turno {TURNO_LABELS[editingTurno].split(' ')[0]}
+                </span>
+              </div>
+              <button onClick={cancelEdit} className="p-1 rounded-lg hover:bg-navy-50">
+                <X size={18} className="text-navy-400" />
+              </button>
             </div>
 
             {/* Excel import */}
@@ -198,7 +180,6 @@ export default function OccupancyPanel({ onBack }: Props) {
               <p className="text-xs text-red-500 mb-3 -mt-2">{importError}</p>
             )}
 
-            {/* Breakdown from Excel */}
             {breakdown && (
               <div className="flex gap-3 text-xs text-navy-500 justify-center mb-3 bg-navy-50 rounded-lg p-2">
                 <span className="flex items-center gap-1"><Home size={12} className="text-blue-500" /> {breakdown.inhouse} inhouse</span>
@@ -212,7 +193,7 @@ export default function OccupancyPanel({ onBack }: Props) {
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="flex items-center gap-1 text-xs font-semibold text-navy-600 mb-1">
-                  <Users size={14} /> Huespedes desayuno
+                  <Users size={14} /> Huespedes desayuno *
                 </label>
                 <input
                   type="number"
@@ -226,7 +207,7 @@ export default function OccupancyPanel({ onBack }: Props) {
               </div>
               <div>
                 <label className="flex items-center gap-1 text-xs font-semibold text-navy-600 mb-1">
-                  <BedDouble size={14} /> Habitaciones
+                  <BedDouble size={14} /> Habitaciones *
                 </label>
                 <input
                   type="number"
@@ -240,7 +221,6 @@ export default function OccupancyPanel({ onBack }: Props) {
               </div>
             </div>
 
-            {/* Occupancy bar preview */}
             {rooms > 0 && (
               <div className="mb-4">
                 <div className="flex justify-between text-xs text-navy-500 mb-1">
@@ -260,22 +240,108 @@ export default function OccupancyPanel({ onBack }: Props) {
             )}
 
             <div className="flex gap-2">
-              {today && (
-                <button
-                  onClick={() => { setEditing(false); setGuests(today.guests); setRooms(today.rooms) }}
-                  className="flex-1 py-3 rounded-xl border border-navy-200 text-navy-600 font-semibold text-sm hover:bg-navy-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-              )}
+              <button
+                onClick={cancelEdit}
+                className="flex-1 py-3 rounded-xl border border-navy-200 text-navy-600 font-semibold text-sm hover:bg-navy-50 transition-colors"
+              >
+                Cancelar
+              </button>
               <button
                 onClick={handleSave}
-                disabled={guests <= 0 && rooms <= 0}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gold-400 text-navy-900 font-semibold text-sm hover:bg-gold-500 transition-colors disabled:opacity-40"
+                disabled={guests <= 0 || rooms <= 0}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gold-400 text-navy-900 font-semibold text-sm hover:bg-gold-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Save size={16} /> Guardar
+                <Save size={16} /> Guardar turno
               </button>
             </div>
+          </div>
+        ) : (
+          /* 3 TURNO CARDS */
+          <div className="space-y-2">
+            {TURNO_ORDER.map(turno => {
+              const rec = todayTurnos[turno]
+              const isCurrent = turno === currentTurno
+              const Icon = TURNO_ICONS[turno]
+              const turnoLabel = TURNO_LABELS[turno]
+              const pct = rec && rec.rooms > 0 ? Math.round((rec.rooms / HOTEL_CAPACITY) * 100) : 0
+
+              return (
+                <div
+                  key={turno}
+                  className={`rounded-xl p-4 shadow-sm border transition-colors ${
+                    isCurrent && !rec
+                      ? 'bg-gold-50 border-gold-300 ring-2 ring-gold-200'
+                      : isCurrent
+                        ? 'bg-white border-gold-300'
+                        : rec
+                          ? 'bg-white border-navy-100'
+                          : 'bg-navy-50 border-navy-100'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                        rec ? 'bg-emerald-100 text-emerald-600' : isCurrent ? 'bg-gold-100 text-gold-600' : 'bg-navy-100 text-navy-400'
+                      }`}>
+                        <Icon size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-navy-800 text-sm">{turnoLabel}</p>
+                        {rec ? (
+                          <p className="text-xs text-navy-500">
+                            por {rec.createdBy} · {new Date(rec.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-navy-400">{isCurrent ? 'Tu turno · sin cargar' : 'Sin cargar'}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => startEditTurno(turno)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+                        rec
+                          ? 'bg-navy-100 text-navy-700 hover:bg-navy-200'
+                          : 'bg-navy-800 text-cream hover:bg-navy-700'
+                      }`}
+                    >
+                      {rec ? <><Edit3 size={12} /> Editar</> : 'Cargar'}
+                    </button>
+                  </div>
+
+                  {rec && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="bg-navy-50 rounded-lg p-2">
+                          <div className="flex items-center gap-1.5 text-navy-500">
+                            <Users size={12} />
+                            <span className="text-[10px] font-semibold uppercase">huéspedes</span>
+                          </div>
+                          <p className="text-xl font-bold text-navy-800">{rec.guests}</p>
+                        </div>
+                        <div className="bg-navy-50 rounded-lg p-2">
+                          <div className="flex items-center gap-1.5 text-navy-500">
+                            <BedDouble size={12} />
+                            <span className="text-[10px] font-semibold uppercase">hab</span>
+                          </div>
+                          <p className="text-xl font-bold text-navy-800">
+                            {rec.rooms}
+                            <span className="text-xs text-navy-400 font-normal"> / {HOTEL_CAPACITY} · {pct}%</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      {rec.inhouse != null && (
+                        <div className="flex gap-2 text-[10px] text-navy-500 mt-2">
+                          <span className="flex items-center gap-0.5"><Home size={10} className="text-blue-500" /> {rec.inhouse} inhouse</span>
+                          <span className="flex items-center gap-0.5"><LogOut size={10} className="text-red-400" /> {rec.out} out</span>
+                          <span className="flex items-center gap-0.5"><LogIn size={10} className="text-green-500" /> {rec.checkIn} in</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -324,10 +390,10 @@ export default function OccupancyPanel({ onBack }: Props) {
           </div>
 
           {/* Purchase projection */}
-          {projection.length > 0 && (today?.guests ?? guests) > 0 && (
+          {projection.length > 0 && (latestToday?.guests ?? guests) > 0 && (
             <div className="bg-white rounded-xl p-4 shadow-sm border border-navy-100">
               <h3 className="text-sm font-semibold text-navy-700 mb-3 flex items-center gap-2">
-                <Upload size={14} /> Proyeccion de compra ({today?.guests ?? guests} huespedes)
+                <Upload size={14} /> Proyeccion de compra ({latestToday?.guests ?? guests} huespedes)
               </h3>
               <div className="space-y-1.5">
                 {projection.map(p => (

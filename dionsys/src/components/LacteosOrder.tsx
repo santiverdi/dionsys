@@ -32,6 +32,7 @@ export default function LacteosOrder({ onBack }: Props) {
   const [copied, setCopied] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [notes, setNotes] = useState('')
+  const [pendingSend, setPendingSend] = useState(false)
 
   const consumption = useMemo(() => loadConsumption(), [])
   const supplier = receptionSuppliers.lacteos
@@ -120,11 +121,16 @@ export default function LacteosOrder({ onBack }: Props) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function handleSend() {
+  function handleOpenWhatsApp() {
     const data = getWhatsAppData()
-    if (!data || !employee) return
+    if (!data) return
+    window.open(data.url, '_blank')
+    setPendingSend(true)
+  }
 
-    // Save order
+  function handleConfirmSent() {
+    if (!employee || activeItems.length === 0) return
+
     addOrder({
       distributorId: 'lacteos',
       distributorName: supplier.name,
@@ -135,7 +141,6 @@ export default function LacteosOrder({ onBack }: Props) {
       type: 'recepcion',
     })
 
-    // Save consumption record for analytics
     if (guests > 0) {
       const record: ConsumptionRecord = {
         id: generateId(),
@@ -149,7 +154,12 @@ export default function LacteosOrder({ onBack }: Props) {
       saveConsumption(updated)
     }
 
-    window.open(data.url, '_blank')
+    setPendingSend(false)
+    onBack()
+  }
+
+  function handleCancelSend() {
+    setPendingSend(false)
   }
 
   return (
@@ -296,20 +306,41 @@ export default function LacteosOrder({ onBack }: Props) {
             </pre>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleCopy}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-navy-100 text-navy-700 hover:bg-navy-200"
-            >
-              {copied ? <><Check size={18} /> Copiado!</> : <><Copy size={18} /> Copiar texto</>}
-            </button>
-            <button
-              onClick={handleSend}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-green-600 text-white hover:bg-green-700"
-            >
-              <Send size={18} /> Abrir WhatsApp y guardar
-            </button>
-          </div>
+          {pendingSend ? (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+              <p className="text-sm font-semibold text-amber-900 mb-1">WhatsApp se abrió en otra pestaña</p>
+              <p className="text-xs text-amber-700 mb-3">¿Pudiste enviar el pedido? Solo se guarda si confirmás.</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleCancelSend}
+                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm border border-navy-200 text-navy-700 hover:bg-white transition-colors"
+                >
+                  No / Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmSent}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  <Check size={16} /> Sí, guardar pedido
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleCopy}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-navy-100 text-navy-700 hover:bg-navy-200"
+              >
+                {copied ? <><Check size={18} /> Copiado!</> : <><Copy size={18} /> Copiar texto</>}
+              </button>
+              <button
+                onClick={handleOpenWhatsApp}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-green-600 text-white hover:bg-green-700"
+              >
+                <Send size={18} /> Enviar por WhatsApp
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

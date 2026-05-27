@@ -6,6 +6,7 @@ interface OrdersContextType {
   orders: Order[]
   addOrder: (order: Omit<Order, 'id' | 'createdAt'>) => Order
   deleteOrder: (id: string, deletedBy: string) => void
+  setOrderMonto: (orderId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
 }
 
 const OrdersContext = createContext<OrdersContextType | null>(null)
@@ -42,8 +43,27 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setOrderMonto = useCallback((orderId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => {
+    setOrders(prev => {
+      const updated = prev.map(o =>
+        o.id === orderId
+          ? {
+              ...o,
+              monto,
+              montoCargadoBy: cargadoBy,
+              montoCargadoAt: new Date().toISOString(),
+              status: 'recibido' as const,
+              ...(receiptPhoto !== undefined ? { receiptPhoto } : {}),
+            }
+          : o
+      )
+      localStorage.setItem('dionsys_orders', JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
   return (
-    <OrdersContext.Provider value={{ orders, addOrder, deleteOrder }}>
+    <OrdersContext.Provider value={{ orders, addOrder, deleteOrder, setOrderMonto }}>
       {children}
     </OrdersContext.Provider>
   )

@@ -31,6 +31,7 @@ export default function PanaderiaCalc({ onBack }: Props) {
   const { addOrder } = useOrders()
   const [guests, setGuests] = useState<number>(0)
   const [copied, setCopied] = useState(false)
+  const [pendingSend, setPendingSend] = useState(false)
 
   const today = new Date()
   const dayOfWeek = today.getDay()
@@ -92,9 +93,15 @@ export default function PanaderiaCalc({ onBack }: Props) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  function handleSend() {
+  function handleOpenWhatsApp() {
     const data = getWhatsAppData()
-    if (!data || !calc || !employee) return
+    if (!data) return
+    window.open(data.url, '_blank')
+    setPendingSend(true)
+  }
+
+  function handleConfirmSent() {
+    if (!calc || !employee) return
     addOrder({
       distributorId: 'panaderia',
       distributorName: supplier.name,
@@ -107,7 +114,12 @@ export default function PanaderiaCalc({ onBack }: Props) {
       notes: `${guests} huespedes${calc.isDouble ? ' - DOBLE (sab+dom)' : ''}`,
       type: 'recepcion',
     })
-    window.open(data.url, '_blank')
+    setPendingSend(false)
+    onBack()
+  }
+
+  function handleCancelSend() {
+    setPendingSend(false)
   }
 
   return (
@@ -204,20 +216,41 @@ export default function PanaderiaCalc({ onBack }: Props) {
             </pre>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleCopy}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-navy-100 text-navy-700 hover:bg-navy-200"
-            >
-              {copied ? <><Check size={18} /> Copiado!</> : <><Copy size={18} /> Copiar texto</>}
-            </button>
-            <button
-              onClick={handleSend}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-green-600 text-white hover:bg-green-700"
-            >
-              <Send size={18} /> Abrir WhatsApp y guardar
-            </button>
-          </div>
+          {pendingSend ? (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+              <p className="text-sm font-semibold text-amber-900 mb-1">WhatsApp se abrió en otra pestaña</p>
+              <p className="text-xs text-amber-700 mb-3">¿Pudiste enviar el pedido? Solo se guarda si confirmás.</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleCancelSend}
+                  className="flex-1 py-2.5 rounded-xl font-semibold text-sm border border-navy-200 text-navy-700 hover:bg-white transition-colors"
+                >
+                  No / Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmSent}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  <Check size={16} /> Sí, guardar pedido
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleCopy}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-navy-100 text-navy-700 hover:bg-navy-200"
+              >
+                {copied ? <><Check size={18} /> Copiado!</> : <><Copy size={18} /> Copiar texto</>}
+              </button>
+              <button
+                onClick={handleOpenWhatsApp}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-sm transition-all bg-green-600 text-white hover:bg-green-700"
+              >
+                <Send size={18} /> Enviar por WhatsApp
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
