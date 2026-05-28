@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd dionsys && npm install --include=dev",
+  "buildCommand": "cd dionsys && npm run build",
+  "outputDirectory": "dionsys/dist",
+  "framework": null
+}
