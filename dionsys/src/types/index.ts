@@ -86,6 +86,7 @@ export interface StockMovement {
   date: string
   createdBy: string
   notes: string
+  pedidoId?: string         // links 'entrada' movements to a PedidoSemanal when recibido
 }
 
 export interface PedidoSemanalItem {
@@ -95,6 +96,7 @@ export interface PedidoSemanalItem {
   stockActual: number
   stockIdeal: number
   aPedir: number            // quantity to order
+  recibido?: number         // actual quantity received (set when pedido marked recibido)
 }
 
 export interface PedidoSemanal {
@@ -102,9 +104,11 @@ export interface PedidoSemanal {
   date: string
   createdBy: string
   items: PedidoSemanalItem[]
-  status: 'enviado' | 'borrado'
+  status: 'enviado' | 'recibido' | 'borrado'
   deletedAt?: string
   deletedBy?: string
+  recibidoAt?: string
+  recibidoBy?: string
   monto?: number
   montoCargadoBy?: string
   montoCargadoAt?: string

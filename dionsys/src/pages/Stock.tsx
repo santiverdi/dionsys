@@ -39,6 +39,15 @@ export default function Stock() {
   const [pedidoView, setPedidoView] = useState<'edit' | 'preview'>('edit')
   const [pedidoItems, setPedidoItems] = useState<PedidoSemanalItem[]>([])
   const [copied, setCopied] = useState(false)
+  const [savingPedido, setSavingPedido] = useState(false)
+  const [confirmSave, setConfirmSave] = useState(false)
+
+  // Live stock lookup (avoids stale stockActual snapshot during pedido edit)
+  const liveStockById = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const it of items) map.set(it.id, it.stock)
+    return map
+  }, [items])
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -81,11 +90,25 @@ export default function Stock() {
   }
 
   function handleSavePedido() {
-    if (!employee || pedidoItems.length === 0) return
-    const filtered = pedidoItems.filter(i => i.aPedir > 0)
+    if (savingPedido || !employee || pedidoItems.length === 0) return
+    setSavingPedido(true)
+    const filtered = pedidoItems
+      .filter(i => i.aPedir > 0)
+      .map(i => ({
+        ...i,
+        // refresh stockActual to current live value at save time
+        stockActual: liveStockById.get(i.itemId) ?? i.stockActual,
+      }))
+    if (filtered.length === 0) {
+      setSavingPedido(false)
+      setConfirmSave(false)
+      return
+    }
     savePedido(employee.name, filtered)
     setPedidoItems([])
     setPedidoView('edit')
+    setConfirmSave(false)
+    setSavingPedido(false)
     setTab('historial')
     setHistTab('pedidos')
   }
@@ -250,61 +273,76 @@ export default function Stock() {
               </div>
 
               <div className="space-y-1.5">
-                {pedidoItems.map(item => (
-                  <div key={item.itemId} className="rounded-lg border border-navy-100 bg-white p-2.5">
-                    {/* Mobile layout */}
-                    <div className="sm:hidden">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-navy-800 text-sm">{item.name}</span>
+                {pedidoItems.map(item => {
+                  const liveStock = liveStockById.get(item.itemId) ?? item.stockActual
+                  const stale = liveStock !== item.stockActual
+                  const enoughNow = liveStock >= item.stockIdeal
+                  const stockText = enoughNow ? 'text-green-600' : liveStock === 0 ? 'text-red-600' : 'text-amber-600'
+                  return (
+                    <div key={item.itemId} className="rounded-lg border border-navy-100 bg-white p-2.5">
+                      {/* Mobile layout */}
+                      <div className="sm:hidden">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-navy-800 text-sm">{item.name}</span>
+                          <button onClick={() => removePedidoItem(item.itemId)} className="text-navy-400 hover:text-red-500">
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-indigo-500 font-medium mb-1">
+                          {depositoSuppliers.find(s => s.id === depositoItemSupplier[item.itemId])?.name ?? 'Proveedor'}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-navy-400">
+                            Stock: <span className={`font-semibold ${stockText}`}>{liveStock}</span> / {item.stockIdeal} {item.unit}
+                            {stale && <span className="ml-1 text-[10px] text-indigo-500">actualizado</span>}
+                          </span>
+                          <div className="flex items-center gap-1 ml-auto">
+                            <span className="text-xs text-navy-500">Pedir:</span>
+                            <input
+                              type="number"
+                              value={item.aPedir}
+                              onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
+                              className="w-16 px-2 py-1 rounded border border-gold-300 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-500"
+                              min={0}
+                              step={0.5}
+                            />
+                          </div>
+                        </div>
+                        {enoughNow && (
+                          <p className="text-[10px] text-green-600 mt-1">Ya tiene stock suficiente — podés sacarlo del pedido</p>
+                        )}
+                      </div>
+
+                      {/* Desktop layout */}
+                      <div className="hidden sm:grid grid-cols-[1fr_70px_70px_80px_32px] gap-2 items-center">
+                        <div className="truncate">
+                          <span className="font-medium text-navy-800 text-sm">{item.name}</span>
+                          <span className="ml-2 text-[10px] text-indigo-500 font-medium">
+                            {depositoSuppliers.find(s => s.id === depositoItemSupplier[item.itemId])?.name ?? ''}
+                          </span>
+                          {enoughNow && (
+                            <span className="ml-2 text-[10px] text-green-600">stock ok</span>
+                          )}
+                        </div>
+                        <span className={`text-center text-sm font-semibold ${stockText}`} title={stale ? 'Stock actualizado' : ''}>
+                          {liveStock}
+                        </span>
+                        <span className="text-center text-sm text-navy-500">{item.stockIdeal}</span>
+                        <input
+                          type="number"
+                          value={item.aPedir}
+                          onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
+                          className="w-full px-2 py-1 rounded border border-gold-300 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-500"
+                          min={0}
+                          step={0.5}
+                        />
                         <button onClick={() => removePedidoItem(item.itemId)} className="text-navy-400 hover:text-red-500">
                           <X size={16} />
                         </button>
                       </div>
-                      <p className="text-[10px] text-indigo-500 font-medium mb-1">
-                        {depositoSuppliers.find(s => s.id === depositoItemSupplier[item.itemId])?.name ?? 'Proveedor'}
-                      </p>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-navy-400">
-                          Stock: <span className="font-semibold text-red-600">{item.stockActual}</span> / {item.stockIdeal} {item.unit}
-                        </span>
-                        <div className="flex items-center gap-1 ml-auto">
-                          <span className="text-xs text-navy-500">Pedir:</span>
-                          <input
-                            type="number"
-                            value={item.aPedir}
-                            onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
-                            className="w-16 px-2 py-1 rounded border border-gold-300 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-500"
-                            min={0}
-                            step={0.5}
-                          />
-                        </div>
-                      </div>
                     </div>
-
-                    {/* Desktop layout */}
-                    <div className="hidden sm:grid grid-cols-[1fr_70px_70px_80px_32px] gap-2 items-center">
-                      <div className="truncate">
-                        <span className="font-medium text-navy-800 text-sm">{item.name}</span>
-                        <span className="ml-2 text-[10px] text-indigo-500 font-medium">
-                          {depositoSuppliers.find(s => s.id === depositoItemSupplier[item.itemId])?.name ?? ''}
-                        </span>
-                      </div>
-                      <span className="text-center text-sm font-semibold text-red-600">{item.stockActual}</span>
-                      <span className="text-center text-sm text-navy-500">{item.stockIdeal}</span>
-                      <input
-                        type="number"
-                        value={item.aPedir}
-                        onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
-                        className="w-full px-2 py-1 rounded border border-gold-300 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-500"
-                        min={0}
-                        step={0.5}
-                      />
-                      <button onClick={() => removePedidoItem(item.itemId)} className="text-navy-400 hover:text-red-500">
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Bottom action */}
@@ -342,10 +380,11 @@ export default function Stock() {
               {copied ? <><Check size={18} /> Copiado!</> : <><Copy size={18} /> Copiar texto</>}
             </button>
             <button
-              onClick={handleSavePedido}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all bg-gold-400 text-navy-900 hover:bg-gold-500"
+              onClick={() => setConfirmSave(true)}
+              disabled={savingPedido || pedidoItems.filter(i => i.aPedir > 0).length === 0}
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all bg-gold-400 text-navy-900 hover:bg-gold-500 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ClipboardList size={18} /> Guardar pedido
+              <ClipboardList size={18} /> {savingPedido ? 'Guardando...' : 'Guardar pedido'}
             </button>
           </div>
         </div>
@@ -379,8 +418,19 @@ export default function Stock() {
               <div className="space-y-3">
                 {pedidos.map(pedido => {
                   const isBorrado = pedido.status === 'borrado'
+                  const isRecibido = pedido.status === 'recibido'
+                  const cardBg = isBorrado
+                    ? 'bg-red-50 border-red-200 opacity-70'
+                    : isRecibido
+                      ? 'bg-green-50/30 border-green-200'
+                      : 'bg-white border-navy-100'
+                  const badgeClass = isBorrado
+                    ? 'bg-red-100 text-red-600'
+                    : isRecibido
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gold-100 text-gold-700'
                   return (
-                    <div key={pedido.id} className={`rounded-xl p-4 shadow-sm border ${isBorrado ? 'bg-red-50 border-red-200 opacity-70' : 'bg-white border-navy-100'}`}>
+                    <div key={pedido.id} className={`rounded-xl p-4 shadow-sm border ${cardBg}`}>
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <p className={`font-semibold ${isBorrado ? 'text-navy-400 line-through' : 'text-navy-800'}`}>
@@ -393,6 +443,14 @@ export default function Stock() {
                             })}
                             {' - '}{pedido.createdBy}
                           </p>
+                          {isRecibido && pedido.recibidoAt && (
+                            <p className="text-xs text-green-700 mt-0.5">
+                              Recibido {new Date(pedido.recibidoAt).toLocaleDateString('es-AR', {
+                                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                              })}
+                              {pedido.recibidoBy ? ` por ${pedido.recibidoBy}` : ''}
+                            </p>
+                          )}
                           {isBorrado && pedido.deletedAt && (
                             <p className="text-xs text-red-500 mt-0.5">
                               Borrado {new Date(pedido.deletedAt).toLocaleDateString('es-AR', {
@@ -403,12 +461,10 @@ export default function Stock() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            isBorrado ? 'bg-red-100 text-red-600' : 'bg-gold-100 text-gold-700'
-                          }`}>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${badgeClass}`}>
                             {pedido.status}
                           </span>
-                          {!isBorrado && isAdmin && (
+                          {!isBorrado && !isRecibido && isAdmin && (
                             <button
                               onClick={() => setDeleteTargetPedidoId(pedido.id)}
                               className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors"
@@ -433,9 +489,27 @@ export default function Stock() {
                           <div key={section.label} className="mt-2">
                             <p className={`text-xs font-semibold ${isBorrado ? 'text-navy-400' : 'text-indigo-600'}`}>{section.label}</p>
                             <ul className={`text-sm space-y-0.5 ml-2 ${isBorrado ? 'text-navy-400 line-through' : 'text-navy-600'}`}>
-                              {section.items.map(item => (
-                                <li key={item.itemId}>- {item.name}: {item.aPedir} {item.unit}</li>
-                              ))}
+                              {section.items.map(item => {
+                                const rec = item.recibido
+                                const showRec = isRecibido && rec != null
+                                const incompleto = showRec && rec < item.aPedir
+                                const cero = showRec && rec === 0
+                                return (
+                                  <li key={item.itemId}>
+                                    - {item.name}:{' '}
+                                    {showRec ? (
+                                      <>
+                                        <span className={cero ? 'text-red-600 font-semibold' : incompleto ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
+                                          {rec}
+                                        </span>
+                                        <span className="text-xs text-navy-400"> / {item.aPedir} {item.unit}</span>
+                                      </>
+                                    ) : (
+                                      <>{item.aPedir} {item.unit}</>
+                                    )}
+                                  </li>
+                                )
+                              })}
                             </ul>
                           </div>
                         ))
@@ -492,6 +566,16 @@ export default function Stock() {
           }
         }}
         onCancel={() => setDeleteTargetPedidoId(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmSave}
+        variant="info"
+        title="Guardar pedido semanal"
+        message={`Vas a guardar el pedido con ${pedidoItems.filter(i => i.aPedir > 0).length} articulos. Despues se gestiona desde Proveedores.`}
+        confirmLabel="Guardar"
+        onConfirm={handleSavePedido}
+        onCancel={() => setConfirmSave(false)}
       />
 
       {/* =================== MOVEMENT MODAL =================== */}

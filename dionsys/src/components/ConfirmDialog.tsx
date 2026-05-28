@@ -1,10 +1,13 @@
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle, HelpCircle, X } from 'lucide-react'
+
+type Variant = 'danger' | 'info'
 
 interface ConfirmDialogProps {
   open: boolean
   title: string
   message: string
   confirmLabel?: string
+  variant?: Variant
   onConfirm: () => void
   onCancel: () => void
 }
@@ -13,11 +16,21 @@ export default function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Eliminar',
+  confirmLabel,
+  variant = 'danger',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   if (!open) return null
+
+  const isDanger = variant === 'danger'
+  const Icon = isDanger ? AlertTriangle : HelpCircle
+  const iconWrap = isDanger ? 'bg-red-100' : 'bg-gold-100'
+  const iconColor = isDanger ? 'text-red-600' : 'text-gold-600'
+  const confirmBtn = isDanger
+    ? 'bg-red-600 text-white hover:bg-red-700'
+    : 'bg-gold-400 text-navy-900 hover:bg-gold-500'
+  const defaultLabel = isDanger ? 'Eliminar' : 'Confirmar'
 
   return (
     <div
@@ -30,8 +43,8 @@ export default function ConfirmDialog({
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-              <AlertTriangle size={18} className="text-red-600" />
+            <div className={`w-8 h-8 rounded-full ${iconWrap} flex items-center justify-center`}>
+              <Icon size={18} className={iconColor} />
             </div>
             <h3 className="text-lg font-bold text-navy-800">{title}</h3>
           </div>
@@ -54,9 +67,9 @@ export default function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 py-3 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition-colors"
+            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors ${confirmBtn}`}
           >
-            {confirmLabel}
+            {confirmLabel ?? defaultLabel}
           </button>
         </div>
       </div>

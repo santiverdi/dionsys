@@ -11,11 +11,12 @@ interface StockContextType {
   items: DepositoItem[]
   movements: StockMovement[]
   pedidos: PedidoSemanal[]
-  addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string) => void
+  addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string, pedidoId?: string) => void
   generatePedidoItems: () => PedidoSemanalItem[]
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   deletePedido: (id: string, deletedBy: string) => void
   setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
+  recibirPedido: (pedidoId: string, recibidoBy: string, recibidos: { itemId: string; cantidad: number }[]) => void
   resetStock: () => void
 }
 
@@ -42,7 +43,8 @@ export function StockProvider({ children }: { children: ReactNode }) {
     type: 'entrada' | 'salida',
     quantity: number,
     createdBy: string,
-    notes = ''
+    notes = '',
+    pedidoId?: string,
   ) => {
     // Find current item name before updating
     let itemName = ''
@@ -68,6 +70,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       date: new Date().toISOString(),
       createdBy,
       notes,
+      ...(pedidoId ? { pedidoId } : {}),
     }
     setMovements(prev => {
       const updated = [movement, ...prev]
@@ -117,6 +120,71 @@ export function StockProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const recibirPedido = useCallback((
+    pedidoId: string,
+    recibidoBy: string,
+    recibidos: { itemId: string; cantidad: number }[],
+  ) => {
+    if (recibidos.length === 0) return
+    const recibidosMap = new Map(recibidos.map(r => [r.itemId, r.cantidad]))
+    const positivos = recibidos.filter(r => r.cantidad > 0)
+    const fecha = new Date()
+    const fechaIso = fecha.toISOString()
+    const fechaLabel = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+
+    // Bump stock for all received items in a single update
+    const itemNameById = new Map<string, string>()
+    setItems(prev => {
+      const updated = prev.map(item => {
+        const cant = recibidosMap.get(item.id)
+        if (!cant || cant <= 0) return item
+        itemNameById.set(item.id, item.name)
+        return { ...item, stock: +(item.stock + cant).toFixed(1) }
+      })
+      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      return updated
+    })
+
+    // Create entrada movements for each item received (>0), batched
+    if (positivos.length > 0) {
+      const newMovements: StockMovement[] = positivos.map(r => ({
+        id: generateId(),
+        itemId: r.itemId,
+        itemName: itemNameById.get(r.itemId) ?? '',
+        type: 'entrada' as const,
+        quantity: r.cantidad,
+        date: fechaIso,
+        createdBy: recibidoBy,
+        notes: `Pedido semanal del ${fechaLabel}`,
+        pedidoId,
+      }))
+      setMovements(prev => {
+        const updated = [...newMovements, ...prev]
+        localStorage.setItem(LS_MOVEMENTS, JSON.stringify(updated))
+        return updated
+      })
+    }
+
+    // Mark pedido as recibido and store per-item recibido
+    setPedidos(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== pedidoId) return p
+        return {
+          ...p,
+          status: 'recibido' as const,
+          recibidoAt: fechaIso,
+          recibidoBy,
+          items: p.items.map(it => ({
+            ...it,
+            recibido: recibidosMap.get(it.itemId) ?? 0,
+          })),
+        }
+      })
+      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
   const setPedidoMonto = useCallback((pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => {
     setPedidos(prev => {
       const updated = prev.map(p =>
@@ -143,7 +211,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos,
-      addMovement, generatePedidoItems, savePedido, deletePedido, setPedidoMonto, resetStock,
+      addMovement, generatePedidoItems, savePedido, deletePedido, setPedidoMonto, recibirPedido, resetStock,
     }}>
       {children}
     </StockContext.Provider>
