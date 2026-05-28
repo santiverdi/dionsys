@@ -256,6 +256,11 @@ export function OccupancyProvider({ children }: { children: ReactNode }) {
     const bebesCol = getCol(first, ['bebe'])
     const habCol = getCol(first, ['habitacion', 'nro hab'])
 
+    if (!tipoCol || !habCol) {
+      const cols = Object.keys(first).join(', ')
+      throw new Error(`Formato de Excel inesperado. Falta columna ${!tipoCol ? 'Tipo' : 'Nro Habitacion'}. Columnas detectadas: ${cols}`)
+    }
+
     let inhouseGuests = 0
     let outGuests = 0
     let checkInGuests = 0

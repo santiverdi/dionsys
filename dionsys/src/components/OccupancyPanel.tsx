@@ -36,6 +36,7 @@ export default function OccupancyPanel({ onBack }: Props) {
   const [rooms, setRooms] = useState(editingRecord?.rooms ?? 0)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
+  const [importWarning, setImportWarning] = useState('')
   const [breakdown, setBreakdown] = useState<{ inhouse: number; out: number; checkIn: number } | null>(
     editingRecord?.inhouse != null ? { inhouse: editingRecord.inhouse, out: editingRecord.out ?? 0, checkIn: editingRecord.checkIn ?? 0 } : null
   )
@@ -51,12 +52,14 @@ export default function OccupancyPanel({ onBack }: Props) {
     setRooms(rec?.rooms ?? 0)
     setBreakdown(rec?.inhouse != null ? { inhouse: rec.inhouse, out: rec.out ?? 0, checkIn: rec.checkIn ?? 0 } : null)
     setImportError('')
+    setImportWarning('')
     setEditingTurno(turno)
   }
 
   function cancelEdit() {
     setEditingTurno(null)
     setImportError('')
+    setImportWarning('')
   }
 
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -64,13 +67,22 @@ export default function OccupancyPanel({ onBack }: Props) {
     if (!file) return
     setImporting(true)
     setImportError('')
+    setImportWarning('')
     try {
       const result = await parseExcel(file)
       setGuests(result.guests)
       setRooms(result.rooms)
       setBreakdown({ inhouse: result.inhouse, out: result.out, checkIn: result.checkIn })
-    } catch {
-      setImportError('Error al leer el archivo. Verifica que sea el Excel de proyeccion.')
+      if (result.guests === 0) {
+        setImportWarning(
+          result.checkIn > 0
+            ? `Excel leido: ${result.checkIn} altas (IN) que no desayunan hoy. Si hay huespedes que desayunan, cargalos a mano.`
+            : 'Excel leido pero no se detectaron huespedes. Revisa el formato o carga manual.'
+        )
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al leer el archivo. Verifica que sea el Excel de proyeccion.'
+      setImportError(msg)
     } finally {
       setImporting(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -179,6 +191,11 @@ export default function OccupancyPanel({ onBack }: Props) {
             {importError && (
               <p className="text-xs text-red-500 mb-3 -mt-2">{importError}</p>
             )}
+            {importWarning && !importError && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-3 -mt-1">
+                {importWarning}
+              </p>
+            )}
 
             {breakdown && (
               <div className="flex gap-3 text-xs text-navy-500 justify-center mb-3 bg-navy-50 rounded-lg p-2">
@@ -248,7 +265,7 @@ export default function OccupancyPanel({ onBack }: Props) {
               </button>
               <button
                 onClick={handleSave}
-                disabled={guests <= 0 || rooms <= 0}
+                disabled={guests <= 0}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gold-400 text-navy-900 font-semibold text-sm hover:bg-gold-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Save size={16} /> Guardar turno
