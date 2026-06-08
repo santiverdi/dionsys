@@ -23,12 +23,13 @@ export default function Stock() {
   const {
     items, movements, pedidos, suppliers,
     addMovement, savePedido, deletePedido, recibirPedido,
-    addItem, updateItem, deleteItem,
+    addItem, updateItem, deleteItem, clearAllStock,
   } = useStock()
 
   const isAdmin = canDelete(employee?.role ?? 'mucama')
   const isEncargada = employee?.role === 'encargada'
   const [deleteTargetPedidoId, setDeleteTargetPedidoId] = useState<string | null>(null)
+  const [confirmClearStock, setConfirmClearStock] = useState(false)
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
   // Item editor: undefined = closed, null = nuevo item, DepositoItem = editar
   const [itemModal, setItemModal] = useState<DepositoItem | null | undefined>(undefined)
@@ -323,12 +324,21 @@ export default function Stock() {
               ))}
             </div>
             {isAdmin && (
-              <button
-                onClick={() => setItemModal(null)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 transition-colors"
-              >
-                <Plus size={14} /> Agregar
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmClearStock(true)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                  title="Poner el stock de todos los articulos en 0 (no borra items ni configuracion)"
+                >
+                  <RotateCcw size={14} /> Poner en 0
+                </button>
+                <button
+                  onClick={() => setItemModal(null)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 transition-colors"
+                >
+                  <Plus size={14} /> Agregar
+                </button>
+              </div>
             )}
           </div>
 
@@ -843,6 +853,15 @@ export default function Stock() {
         confirmLabel="Guardar"
         onConfirm={handleSavePedido}
         onCancel={() => setConfirmSave(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmClearStock}
+        title="Poner todo el stock en 0"
+        message="Vas a poner en 0 el stock de TODOS los articulos del deposito. No se borran los articulos ni su configuracion (formato de compra, ideal, proveedor) — solo el stock actual. Sirve para cargar todo de cero."
+        confirmLabel="Poner en 0"
+        onConfirm={() => { clearAllStock(); setConfirmClearStock(false) }}
+        onCancel={() => setConfirmClearStock(false)}
       />
 
       {/* =================== MOVEMENT MODAL =================== */}

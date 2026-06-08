@@ -101,6 +101,7 @@ interface StockContextType {
   addSupplier: (data: Omit<DepositoSupplier, 'id'>) => void
   updateSupplier: (id: string, data: Partial<Omit<DepositoSupplier, 'id'>>) => void
   deleteSupplier: (id: string) => void
+  clearAllStock: () => void
   resetStock: () => void
 }
 
@@ -366,6 +367,16 @@ export function StockProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // Pone el stock de todos los items en 0, conservando nombre, formato de compra,
+  // stock ideal, proveedor, etc. (no borra items ni configuración).
+  const clearAllStock = useCallback(() => {
+    setItems(prev => {
+      const updated = prev.map(it => ({ ...it, stock: 0 }))
+      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
   const resetStock = useCallback(() => {
     setItems(mockItems)
     localStorage.setItem(LS_DEPOSITO, JSON.stringify(mockItems))
@@ -376,7 +387,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       items, movements, pedidos, suppliers,
       addMovement, savePedido, marcarPedido, deletePedido, setPedidoMonto, recibirPedido,
       addItem, updateItem, deleteItem,
-      addSupplier, updateSupplier, deleteSupplier, resetStock,
+      addSupplier, updateSupplier, deleteSupplier, clearAllStock, resetStock,
     }}>
       {children}
     </StockContext.Provider>
