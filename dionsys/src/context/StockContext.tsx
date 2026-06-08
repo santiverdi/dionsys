@@ -9,6 +9,49 @@ const LS_MOVEMENTS = 'dionsys_stock_movements'
 const LS_PEDIDOS = 'dionsys_pedidos_semanales'
 const LS_SUPPLIERS = 'dionsys_deposito_suppliers'
 
+// --- Migración idempotente de datos reales (PROVEEDORES HOTEL DION) ---
+// Solo completa lo que falte; no pisa ediciones manuales ni toca el stock.
+// Teléfonos tal cual el Excel. La Galletera no tenía teléfono (solo el código 14045).
+const SUPPLIER_PHONES: Record<string, string> = {
+  'tpg': '223582931',
+  'la-paulina': '2234363081',
+  'gervasi': '01156393651',
+  'luseda': '2236345506',
+  'reposmar': '2235316184',
+  'quimica-dem': '2235060578',
+  'papelera-plata': '2236051913',
+  'cafe-virginia': '2234363081',
+  'digamar': '223447200',
+}
+
+// Items que se compran por bulto (se cuentan desglosados en unidad de consumo).
+const ITEM_PACKS: Record<string, { unit: string; packUnit: string; packSize: number }> = {
+  'des-1': { unit: 'paquete', packUnit: 'bulto', packSize: 10 }, // Harina: bulto de 10 paquetes
+  'des-2': { unit: 'paquete', packUnit: 'bulto', packSize: 10 }, // Azucar: bulto de 10 paquetes
+}
+
+function migrateSuppliers(list: DepositoSupplier[]): DepositoSupplier[] {
+  let changed = false
+  const next = list.map(s => {
+    const phone = SUPPLIER_PHONES[s.id]
+    if (phone && !s.phone) { changed = true; return { ...s, phone } }
+    return s
+  })
+  if (changed) localStorage.setItem(LS_SUPPLIERS, JSON.stringify(next))
+  return next
+}
+
+function migrateItems(list: DepositoItem[]): DepositoItem[] {
+  let changed = false
+  const next = list.map(it => {
+    const pack = ITEM_PACKS[it.id]
+    if (pack && !it.packUnit) { changed = true; return { ...it, ...pack } }
+    return it
+  })
+  if (changed) localStorage.setItem(LS_DEPOSITO, JSON.stringify(next))
+  return next
+}
+
 interface StockContextType {
   items: DepositoItem[]
   movements: StockMovement[]
@@ -33,7 +76,7 @@ const StockContext = createContext<StockContextType | null>(null)
 export function StockProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<DepositoItem[]>(() => {
     const saved = localStorage.getItem(LS_DEPOSITO)
-    return saved ? JSON.parse(saved) : mockItems
+    return migrateItems(saved ? JSON.parse(saved) : mockItems)
   })
 
   const [movements, setMovements] = useState<StockMovement[]>(() => {
@@ -48,7 +91,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
 
   const [suppliers, setSuppliers] = useState<DepositoSupplier[]>(() => {
     const saved = localStorage.getItem(LS_SUPPLIERS)
-    return saved ? JSON.parse(saved) : mockSuppliers
+    return migrateSuppliers(saved ? JSON.parse(saved) : mockSuppliers)
   })
 
   const addMovement = useCallback((
