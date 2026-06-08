@@ -46,6 +46,7 @@ export default function Stock() {
   const [pedidoItems, setPedidoItems] = useState<PedidoSemanalItem[]>([])
   const [pedidoCat, setPedidoCat] = useState<CategoryFilter>('todos')
   const [pedidoSearch, setPedidoSearch] = useState('')
+  const [onlySelected, setOnlySelected] = useState(false)
   const [copied, setCopied] = useState(false)
   const [savingPedido, setSavingPedido] = useState(false)
   const [confirmSave, setConfirmSave] = useState(false)
@@ -70,6 +71,7 @@ export default function Stock() {
     const visible = pedidoItems.filter(i => {
       const meta = itemById.get(i.itemId)
       if (pedidoCat !== 'todos' && meta?.category !== pedidoCat) return false
+      if (onlySelected && i.aPedir <= 0) return false
       if (q && !i.name.toLowerCase().includes(q)) return false
       return true
     })
@@ -92,12 +94,25 @@ export default function Stock() {
     }
     for (const g of bySupplier.values()) ordered.push(g)
     return ordered
-  }, [pedidoItems, pedidoCat, pedidoSearch, itemById, items, suppliers])
+  }, [pedidoItems, pedidoCat, pedidoSearch, onlySelected, itemById, items, suppliers])
 
   const pedidoCount = useMemo(
     () => pedidoItems.filter(i => i.aPedir > 0).length,
     [pedidoItems]
   )
+
+  // Selected count per category (for the segmented control badges)
+  const catSelected = useMemo(() => {
+    const c = { todos: 0, desayunador: 0, limpieza: 0 }
+    for (const i of pedidoItems) {
+      if (i.aPedir <= 0) continue
+      c.todos++
+      const cat = itemById.get(i.itemId)?.category
+      if (cat === 'desayunador') c.desayunador++
+      else if (cat === 'limpieza') c.limpieza++
+    }
+    return c
+  }, [pedidoItems, itemById])
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -375,11 +390,6 @@ export default function Stock() {
       {/* =================== PEDIDO EDIT =================== */}
       {tab === 'pedido' && pedidoView === 'edit' && (
         <div>
-          <h2 className="text-lg font-bold text-navy-800 mb-1">Pedido Semanal</h2>
-          <p className="text-xs text-navy-400 mb-3">
-            Escribí cuánto pedir de cada artículo. Lo que no necesites, dejalo en 0. Viene precargado con tu último pedido.
-          </p>
-
           {pedidoItems.length === 0 ? (
             <div className="text-center py-12">
               <Package size={48} className="mx-auto text-navy-200 mb-3" />
@@ -387,119 +397,159 @@ export default function Stock() {
             </div>
           ) : (
             <>
-              {/* Search */}
-              <div className="relative mb-3">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-400" />
-                <input
-                  type="text"
-                  value={pedidoSearch}
-                  onChange={e => setPedidoSearch(e.target.value)}
-                  placeholder="Buscar articulo..."
-                  className="w-full pl-9 pr-9 py-2 rounded-xl border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
-                />
-                {pedidoSearch && (
-                  <button
-                    onClick={() => setPedidoSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-navy-400 hover:text-navy-600"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
-
-              {/* Category filter + bulk actions */}
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                {([
-                  { key: 'todos' as const, label: 'Todos' },
-                  { key: 'desayunador' as const, label: 'Desayuno' },
-                  { key: 'limpieza' as const, label: 'Limpieza' },
-                ]).map(c => (
-                  <button
-                    key={c.key}
-                    onClick={() => setPedidoCat(c.key)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                      pedidoCat === c.key ? 'bg-navy-800 text-cream' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
-                    }`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-                <div className="ml-auto flex gap-2">
-                  <button
-                    onClick={() => applyBulk('ideales')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50"
-                    title="Cargar la cantidad ideal en los articulos visibles"
-                  >
-                    <RotateCcw size={13} /> Ideales
-                  </button>
-                  <button
-                    onClick={() => applyBulk('vaciar')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50"
-                    title="Poner en 0 los articulos visibles"
-                  >
-                    <Eraser size={13} /> Vaciar
-                  </button>
+              {/* Sticky controls */}
+              <div className="sticky top-16 z-30 bg-cream -mx-4 px-4 md:-mx-6 md:px-6 pt-1 pb-3 border-b border-navy-100">
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <h2 className="text-lg font-bold text-navy-800">Pedido Semanal</h2>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => applyBulk('ideales')}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50 active:scale-95 transition-all"
+                      title="Cargar lo que falta para llegar al stock ideal"
+                    >
+                      <RotateCcw size={13} /> Ideales
+                    </button>
+                    <button
+                      onClick={() => applyBulk('vaciar')}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50 active:scale-95 transition-all"
+                      title="Poner en 0 los articulos visibles"
+                    >
+                      <Eraser size={13} /> Vaciar
+                    </button>
+                  </div>
                 </div>
+
+                {/* Search */}
+                <div className="relative mb-2">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-400" />
+                  <input
+                    type="text"
+                    value={pedidoSearch}
+                    onChange={e => setPedidoSearch(e.target.value)}
+                    placeholder="Buscar articulo..."
+                    className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+                  />
+                  {pedidoSearch && (
+                    <button
+                      onClick={() => setPedidoSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-navy-400 hover:text-navy-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category segmented control */}
+                <div className="flex gap-1 bg-navy-100 rounded-xl p-1 mb-2">
+                  {([
+                    { key: 'todos' as const, label: 'Todos' },
+                    { key: 'desayunador' as const, label: 'Desayuno' },
+                    { key: 'limpieza' as const, label: 'Limpieza' },
+                  ]).map(c => (
+                    <button
+                      key={c.key}
+                      onClick={() => setPedidoCat(c.key)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        pedidoCat === c.key ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
+                      }`}
+                    >
+                      {c.label}
+                      {catSelected[c.key] > 0 && (
+                        <span className="bg-gold-400 text-navy-900 text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+                          {catSelected[c.key]}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Solo seleccionados */}
+                <button
+                  onClick={() => setOnlySelected(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    onlySelected ? 'bg-gold-400 text-navy-900' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
+                  }`}
+                >
+                  <Check size={13} /> Solo seleccionados{pedidoCount > 0 ? ` (${pedidoCount})` : ''}
+                </button>
               </div>
 
               {/* Grouped item list */}
               {pedidoGroups.length === 0 ? (
-                <p className="text-navy-400 text-center py-12 text-sm">No hay articulos que coincidan</p>
+                <p className="text-navy-400 text-center py-16 text-sm">
+                  {onlySelected ? 'Todavía no seleccionaste ningún artículo' : 'No hay articulos que coincidan'}
+                </p>
               ) : (
-                <div className="space-y-4 pb-4">
+                <div className="space-y-5 pt-4 pb-24">
                   {pedidoGroups.map(group => (
                     <div key={group.name}>
-                      <div className="flex items-center gap-2 mb-1.5 px-1">
-                        <Package size={13} className="text-indigo-500" />
-                        <span className="text-xs font-bold uppercase tracking-wide text-indigo-600">{group.name}</span>
-                        <span className="text-[10px] text-navy-400">
-                          ({group.items.filter(i => i.aPedir > 0).length}/{group.items.length})
+                      <div className="flex items-center justify-between mb-2.5 px-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Package size={14} className="text-indigo-500 shrink-0" />
+                          <span className="text-sm font-bold text-indigo-700 truncate">{group.name}</span>
+                        </div>
+                        <span className="text-[11px] text-navy-400 shrink-0">
+                          {group.items.filter(i => i.aPedir > 0).length} de {group.items.length}
                         </span>
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="space-y-2.5">
                         {group.items.map(item => {
                           const active = item.aPedir > 0
+                          const pack = (item.packSize ?? 1) > 1
+                          const subtitle = pack
+                            ? `${item.orderUnit} de ${item.packSize} ${item.unit}`
+                            : (item.orderUnit ?? item.unit)
                           return (
                             <div
                               key={item.itemId}
-                              className={`flex items-center gap-2 rounded-lg border p-2.5 transition-colors ${
-                                active ? 'bg-gold-50 border-gold-300' : 'bg-white border-navy-100'
+                              className={`rounded-2xl border p-3.5 transition-colors ${
+                                active ? 'bg-gold-50 border-gold-300 shadow-sm' : 'bg-white border-navy-100'
                               }`}
                             >
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-navy-800 text-sm truncate">{item.name}</p>
-                                {(item.packSize ?? 1) > 1 && item.aPedir > 0 && (
-                                  <p className="text-[10px] text-indigo-500">
-                                    = {+(item.aPedir * (item.packSize ?? 1)).toFixed(1)} {item.unit}
-                                  </p>
+                              <div className="flex items-start justify-between gap-2 mb-3">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-navy-800 text-[15px] leading-tight">{item.name}</p>
+                                  <p className="text-[11px] text-navy-400 mt-0.5">{subtitle}</p>
+                                </div>
+                                {active && (
+                                  <span className="w-6 h-6 rounded-full bg-gold-400 text-navy-900 flex items-center justify-center shrink-0">
+                                    <Check size={14} strokeWidth={3} />
+                                  </span>
                                 )}
                               </div>
-                              <button
-                                onClick={() => bumpPedidoQty(item.itemId, -0.5)}
-                                disabled={item.aPedir <= 0}
-                                className="w-7 h-7 rounded-lg bg-navy-100 text-navy-600 flex items-center justify-center hover:bg-navy-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
-                              >
-                                <Minus size={14} />
-                              </button>
-                              <input
-                                type="number"
-                                value={item.aPedir}
-                                onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
-                                className={`w-14 px-1 py-1 rounded border text-sm text-center font-bold focus:outline-none ${
-                                  active
-                                    ? 'border-gold-400 text-navy-800 focus:border-gold-500'
-                                    : 'border-navy-200 text-navy-400 focus:border-gold-400'
-                                }`}
-                                min={0}
-                                step={0.5}
-                              />
-                              <button
-                                onClick={() => bumpPedidoQty(item.itemId, 0.5)}
-                                className="w-7 h-7 rounded-lg bg-navy-800 text-cream flex items-center justify-center hover:bg-navy-700 transition-colors shrink-0"
-                              >
-                                <Plus size={14} />
-                              </button>
-                              <span className="text-[11px] text-navy-400 w-12 shrink-0">{item.orderUnit ?? item.unit}</span>
+                              <div className="flex items-center justify-between gap-3">
+                                <button
+                                  onClick={() => bumpPedidoQty(item.itemId, -0.5)}
+                                  disabled={item.aPedir <= 0}
+                                  className="w-12 h-12 rounded-xl bg-white border border-navy-200 text-navy-700 flex items-center justify-center hover:bg-navy-50 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all shrink-0"
+                                >
+                                  <Minus size={20} />
+                                </button>
+                                <div className="flex items-baseline gap-1.5">
+                                  <input
+                                    type="number"
+                                    value={item.aPedir}
+                                    onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
+                                    className={`w-16 text-center text-2xl font-bold bg-transparent focus:outline-none ${
+                                      active ? 'text-navy-900' : 'text-navy-300'
+                                    }`}
+                                    min={0}
+                                    step={0.5}
+                                  />
+                                  <span className="text-sm font-medium text-navy-500">{item.orderUnit ?? item.unit}</span>
+                                </div>
+                                <button
+                                  onClick={() => bumpPedidoQty(item.itemId, 0.5)}
+                                  className="w-12 h-12 rounded-xl bg-navy-800 text-cream flex items-center justify-center hover:bg-navy-700 active:scale-95 transition-all shrink-0"
+                                >
+                                  <Plus size={20} />
+                                </button>
+                              </div>
+                              {pack && active && (
+                                <p className="text-[11px] text-indigo-500 text-center mt-2.5">
+                                  = {+(item.aPedir * (item.packSize ?? 1)).toFixed(1)} {item.unit} al depósito
+                                </p>
+                              )}
                             </div>
                           )
                         })}
@@ -510,14 +560,19 @@ export default function Stock() {
               )}
 
               {/* Bottom action */}
-              <div className="sticky bottom-0 bg-cream pt-3 pb-2 border-t border-navy-100 mt-2 -mx-4 px-4 md:-mx-6 md:px-6">
+              <div className="sticky bottom-0 bg-cream pt-3 pb-2 border-t border-navy-100 -mx-4 px-4 md:-mx-6 md:px-6">
                 <button
                   onClick={() => setPedidoView('preview')}
                   disabled={pedidoCount === 0}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm bg-gold-400 text-navy-900 hover:bg-gold-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-sm bg-gold-400 text-navy-900 hover:bg-gold-500 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99] transition-all"
                 >
                   <Send size={18} />
-                  Ver pedido ({pedidoCount} {pedidoCount === 1 ? 'articulo' : 'articulos'})
+                  Ver pedido
+                  {pedidoCount > 0 && (
+                    <span className="bg-navy-900 text-cream rounded-full px-2 py-0.5 text-xs min-w-[22px]">
+                      {pedidoCount}
+                    </span>
+                  )}
                 </button>
               </div>
             </>
