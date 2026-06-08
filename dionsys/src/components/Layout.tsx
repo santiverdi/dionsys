@@ -9,7 +9,6 @@ import PedidosPorRecibir from './PedidosPorRecibir'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/pedidos', label: 'Distribuidores', icon: ShoppingCart },
   { to: '/recepcion', label: 'Recepcion', icon: ConciergeBell },
   { to: '/deposito', label: 'Pedido Semanal', icon: Warehouse },
   { to: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },
