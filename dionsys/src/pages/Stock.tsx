@@ -36,6 +36,8 @@ export default function Stock() {
   const [tab, setTab] = useState<MainTab>(employee?.role === 'encargada' ? 'pedido' : 'deposito')
   const [catFilter, setCatFilter] = useState<CategoryFilter>('todos')
   const [histTab, setHistTab] = useState<HistorialTab>('pedidos')
+  const [movFilter, setMovFilter] = useState<'todos' | 'entrada' | 'salida'>('todos')
+  const [movHistSearch, setMovHistSearch] = useState('')
 
   // Movement modal
   const [movModal, setMovModal] = useState<{
@@ -130,6 +132,16 @@ export default function Stock() {
     () => items.filter(i => i.stock < i.stockIdeal).length,
     [items]
   )
+
+  // Movimientos del historial filtrados por tipo + búsqueda (artículo o usuario)
+  const filteredMovements = useMemo(() => {
+    const q = movHistSearch.trim().toLowerCase()
+    return movements.filter(m => {
+      if (movFilter !== 'todos' && m.type !== movFilter) return false
+      if (q && !(m.itemName.toLowerCase().includes(q) || m.createdBy.toLowerCase().includes(q))) return false
+      return true
+    })
+  }, [movements, movFilter, movHistSearch])
 
   // La encargada entra directo al armado del pedido, ya precargado.
   useEffect(() => {
@@ -803,29 +815,83 @@ export default function Stock() {
             movements.length === 0 ? (
               <p className="text-navy-400 text-center py-12">No hay movimientos registrados</p>
             ) : (
-              <div className="space-y-2">
-                {movements.slice(0, 50).map(mov => (
-                  <div key={mov.id} className={`flex items-start gap-3 p-3 rounded-lg border ${
-                    mov.type === 'entrada' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-                  }`}>
-                    {mov.type === 'entrada'
-                      ? <ArrowDownCircle size={20} className="text-green-600 shrink-0 mt-0.5" />
-                      : <ArrowUpCircle size={20} className="text-red-600 shrink-0 mt-0.5" />
-                    }
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-navy-800">
-                        {mov.type === 'entrada' ? '+' : '-'}{mov.quantity} {mov.itemName}
-                      </p>
-                      <p className="text-xs text-navy-400">
-                        {new Date(mov.date).toLocaleDateString('es-AR', {
-                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                        })}
-                        {' - '}{mov.createdBy}
-                      </p>
-                      {mov.notes && <p className="text-xs text-navy-500 mt-0.5">{mov.notes}</p>}
-                    </div>
+              <div>
+                {/* Filtro por tipo */}
+                <div className="flex gap-2 mb-3">
+                  {([
+                    { key: 'todos' as const, label: 'Todos' },
+                    { key: 'entrada' as const, label: 'Entradas' },
+                    { key: 'salida' as const, label: 'Salidas' },
+                  ]).map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setMovFilter(f.key)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        movFilter === f.key
+                          ? f.key === 'entrada' ? 'bg-green-600 text-white'
+                            : f.key === 'salida' ? 'bg-red-600 text-white'
+                            : 'bg-navy-800 text-cream'
+                          : 'bg-navy-100 text-navy-600'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Buscador por articulo o usuario */}
+                <div className="relative mb-3">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-400" />
+                  <input
+                    type="text"
+                    value={movHistSearch}
+                    onChange={e => setMovHistSearch(e.target.value)}
+                    placeholder="Buscar por articulo o usuario..."
+                    className="w-full pl-9 pr-9 py-2 rounded-xl border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+                  />
+                  {movHistSearch && (
+                    <button
+                      onClick={() => setMovHistSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-navy-400 hover:text-navy-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-navy-400 mb-2">
+                  {filteredMovements.length} movimiento{filteredMovements.length === 1 ? '' : 's'}
+                  {filteredMovements.length > 100 ? ' (mostrando los 100 más recientes)' : ''}
+                </p>
+
+                {filteredMovements.length === 0 ? (
+                  <p className="text-navy-400 text-center py-12 text-sm">No hay movimientos que coincidan</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredMovements.slice(0, 100).map(mov => (
+                      <div key={mov.id} className={`flex items-start gap-3 p-3 rounded-lg border ${
+                        mov.type === 'entrada' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                      }`}>
+                        {mov.type === 'entrada'
+                          ? <ArrowDownCircle size={20} className="text-green-600 shrink-0 mt-0.5" />
+                          : <ArrowUpCircle size={20} className="text-red-600 shrink-0 mt-0.5" />
+                        }
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-navy-800">
+                            {mov.type === 'entrada' ? '+' : '-'}{mov.quantity} {mov.itemName}
+                          </p>
+                          <p className="text-xs text-navy-400">
+                            {new Date(mov.date).toLocaleDateString('es-AR', {
+                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                            })}
+                            {' · por '}<span className="font-medium text-navy-500">{mov.createdBy}</span>
+                          </p>
+                          {mov.notes && <p className="text-xs text-navy-500 mt-0.5">{mov.notes}</p>}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )
           )}
