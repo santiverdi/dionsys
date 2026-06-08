@@ -539,7 +539,7 @@ export default function Stock() {
                               </div>
                               <div className="flex items-center justify-between gap-3">
                                 <button
-                                  onClick={() => bumpPedidoQty(item.itemId, -0.5)}
+                                  onClick={() => bumpPedidoQty(item.itemId, -1)}
                                   disabled={item.aPedir <= 0}
                                   className="w-12 h-12 rounded-xl bg-white border border-navy-200 text-navy-700 flex items-center justify-center hover:bg-navy-50 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all shrink-0"
                                 >
@@ -554,12 +554,12 @@ export default function Stock() {
                                       active ? 'text-navy-900' : 'text-navy-300'
                                     }`}
                                     min={0}
-                                    step={0.5}
+                                    step={1}
                                   />
                                   <span className="text-sm font-medium text-navy-500">{item.orderUnit ?? item.unit}</span>
                                 </div>
                                 <button
-                                  onClick={() => bumpPedidoQty(item.itemId, 0.5)}
+                                  onClick={() => bumpPedidoQty(item.itemId, 1)}
                                   className="w-12 h-12 rounded-xl bg-navy-800 text-cream flex items-center justify-center hover:bg-navy-700 active:scale-95 transition-all shrink-0"
                                 >
                                   <Plus size={20} />
@@ -884,7 +884,7 @@ export default function Stock() {
             </label>
             <div className="flex items-center gap-3 mb-2">
               <button
-                onClick={() => setMovQty(q => Math.max(0.5, +(q - 0.5).toFixed(1)))}
+                onClick={() => setMovQty(q => Math.max(1, +(q - 1).toFixed(1)))}
                 className="p-2 rounded-lg bg-navy-100 hover:bg-navy-200 transition-colors"
               >
                 <Minus size={18} />
@@ -895,10 +895,10 @@ export default function Stock() {
                 onChange={e => setMovQty(Math.max(0, Number(e.target.value)))}
                 className="flex-1 text-center text-xl font-bold py-2 rounded-lg border border-navy-200 focus:outline-none focus:border-gold-400"
                 min={0}
-                step={0.5}
+                step={1}
               />
               <button
-                onClick={() => setMovQty(q => +(q + 0.5).toFixed(1))}
+                onClick={() => setMovQty(q => +(q + 1).toFixed(1))}
                 className="p-2 rounded-lg bg-navy-100 hover:bg-navy-200 transition-colors"
               >
                 <Plus size={18} />

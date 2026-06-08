@@ -132,7 +132,7 @@ export default function RecibirPedidoModal({
                             onChange={e => updateQty(item.itemId, Number(e.target.value))}
                             className="w-16 px-2 py-1.5 rounded border border-navy-200 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-400"
                             min={0}
-                            step={0.5}
+                            step={1}
                           />
                           <span className="text-xs text-navy-500 w-10">{item.orderUnit ?? item.unit}</span>
                           {completo && <CheckCircle2 size={16} className="text-green-600" />}
