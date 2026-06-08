@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Check } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { useTurnos } from '../context/TurnosContext'
-import type { Turno } from '../context/TurnosContext'
+import { useTurnos, CONSERJES, DEFAULT_SHIFTS, type Turno } from '../context/TurnosContext'
 
 interface Props {
   onBack: () => void
@@ -21,6 +20,15 @@ const MONTH_NAMES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 
+// Color por conserje para escanear la grilla de un vistazo.
+const NAME_COLORS: Record<string, string> = {
+  Leandro: 'bg-blue-100 text-blue-700 border-blue-300',
+  Santiago: 'bg-green-100 text-green-700 border-green-300',
+  Gaston: 'bg-amber-100 text-amber-700 border-amber-300',
+  Valentin: 'bg-indigo-100 text-indigo-700 border-indigo-300',
+}
+const FALLBACK_COLOR = 'bg-white text-navy-500 border-navy-100'
+
 function todayStr(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -28,12 +36,13 @@ function todayStr(): string {
 
 export default function TurnosGrid({ onBack }: Props) {
   const { employee } = useAuth()
-  const { getShiftEmployee, toggleOverride } = useTurnos()
+  const { getShiftEmployee, setShift } = useTurnos()
   const isValentin = employee?.name === 'Valentin'
 
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1) // 1-based
+  const [picker, setPicker] = useState<{ dateStr: string; turno: Turno; day: number } | null>(null)
 
   const today = todayStr()
 
@@ -57,10 +66,13 @@ export default function TurnosGrid({ onBack }: Props) {
     else setMonth(m => m + 1)
   }
 
-  function handleCellClick(dateStr: string, turno: Turno) {
-    if (!isValentin) return
-    toggleOverride(dateStr, turno)
+  function pick(name: string) {
+    if (picker) setShift(picker.dateStr, picker.turno, name)
+    setPicker(null)
   }
+
+  const pickerTurnoLabel = picker ? TURNOS.find(t => t.key === picker.turno)?.label : ''
+  const pickerCurrent = picker ? getShiftEmployee(picker.dateStr, picker.turno) : ''
 
   return (
     <div>
@@ -86,9 +98,11 @@ export default function TurnosGrid({ onBack }: Props) {
         </button>
       </div>
 
-      {!isValentin && (
-        <p className="text-xs text-navy-400 mb-3 text-center">Solo lectura. Solo Valentin puede editar turnos.</p>
-      )}
+      <p className="text-xs text-navy-400 mb-3 text-center">
+        {isValentin
+          ? 'Tocá una celda para cambiar quién hace ese turno.'
+          : 'Solo lectura. Solo Valentin puede editar los turnos.'}
+      </p>
 
       {/* Grid */}
       <div className="overflow-x-auto">
@@ -118,17 +132,16 @@ export default function TurnosGrid({ onBack }: Props) {
                   </td>
                   {TURNOS.map(t => {
                     const emp = getShiftEmployee(dateStr, t.key)
-                    const isOverride = emp === 'Valentin'
+                    const isOverride = emp !== DEFAULT_SHIFTS[t.key]
+                    const color = NAME_COLORS[emp] ?? FALLBACK_COLOR
                     return (
                       <td key={t.key} className="text-center py-1.5 px-1">
                         <button
-                          onClick={() => handleCellClick(dateStr, t.key)}
+                          onClick={() => isValentin && setPicker({ dateStr, turno: t.key, day })}
                           disabled={!isValentin}
-                          className={`w-full py-1.5 px-1 rounded-lg text-xs font-medium transition-all ${
-                            isOverride
-                              ? 'bg-indigo-100 text-indigo-700 font-bold border border-indigo-300'
-                              : 'bg-white text-navy-400 border border-navy-100'
-                          } ${isValentin ? 'hover:bg-indigo-50 cursor-pointer active:scale-95' : 'cursor-default'}`}
+                          className={`w-full py-1.5 px-1 rounded-lg text-xs font-semibold border transition-all ${color} ${
+                            isOverride ? 'ring-1 ring-offset-0' : 'opacity-90'
+                          } ${isValentin ? 'hover:brightness-95 cursor-pointer active:scale-95' : 'cursor-default'}`}
                         >
                           {emp}
                         </button>
@@ -141,6 +154,53 @@ export default function TurnosGrid({ onBack }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* Picker */}
+      {picker && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setPicker(null)}
+        >
+          <div
+            className="bg-white w-full sm:w-80 rounded-t-2xl sm:rounded-2xl p-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold text-navy-800">
+                Día {picker.day} — {pickerTurnoLabel}
+              </h3>
+              <button onClick={() => setPicker(null)} className="p-1 rounded-lg hover:bg-navy-100">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-xs text-navy-400 mb-4">¿Quién hace este turno?</p>
+
+            <div className="space-y-1.5">
+              {CONSERJES.map(name => {
+                const isTitular = DEFAULT_SHIFTS[picker.turno] === name
+                const isCurrent = pickerCurrent === name
+                return (
+                  <button
+                    key={name}
+                    onClick={() => pick(name)}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                      isCurrent
+                        ? (NAME_COLORS[name] ?? 'bg-navy-100 text-navy-700 border-navy-300')
+                        : 'bg-white text-navy-600 border-navy-200 hover:bg-navy-50'
+                    }`}
+                  >
+                    <span>
+                      {name}
+                      {isTitular && <span className="ml-1.5 text-[10px] font-medium text-navy-400">titular</span>}
+                    </span>
+                    {isCurrent && <Check size={16} />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
