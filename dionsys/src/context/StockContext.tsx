@@ -24,13 +24,18 @@ const SUPPLIER_PHONES: Record<string, string> = {
   'digamar': '223447200',
 }
 
-// Items que se compran por bulto/pack (se cuentan desglosados en unidad de consumo).
+// Harina/Azucar: se PIDEN y cuentan en PAQUETES (1 paquete = 1 kg). Sin pack en el
+// sistema (el "bulto" es solo físico: cuando reciben un bulto cargan 10 paquetes).
+// Se fuerza incluso si una versión anterior les había puesto packUnit 'bulto'.
+const ITEM_UNIT_FIX: Record<string, string> = {
+  'des-1': 'paquete', // Harina
+  'des-2': 'paquete', // Azucar
+}
+
+// Items que se compran por pack (se cuentan desglosados en unidad de consumo).
 // scale=true => stock y stockIdeal actuales están en packs, se multiplican por packSize
 // para pasar a la subunidad (preserva el "pedir N packs para llegar al ideal").
-// Harina/Azucar NO escalan: 1 paquete = 1 kg, el número queda igual.
 const ITEM_PACKS: Record<string, { unit: string; packUnit: string; packSize: number; scale?: boolean }> = {
-  'des-1':  { unit: 'paquete', packUnit: 'bulto',   packSize: 10 },               // Harina
-  'des-2':  { unit: 'paquete', packUnit: 'bulto',   packSize: 10 },               // Azucar
   'des-5':  { unit: 'unidad',  packUnit: 'caja',    packSize: 6,   scale: true },  // Cafe x6
   'lim-28': { unit: 'unidad',  packUnit: 'paquete', packSize: 12,  scale: true },  // Esponjas amarillas x12
   'lim-4':  { unit: 'unidad',  packUnit: 'caja',    packSize: 500, scale: true },  // Jaboncitos x500
@@ -52,17 +57,28 @@ function migrateSuppliers(list: DepositoSupplier[]): DepositoSupplier[] {
 function migrateItems(list: DepositoItem[]): DepositoItem[] {
   let changed = false
   const next = list.map(it => {
-    const pack = ITEM_PACKS[it.id]
-    if (!pack || it.packUnit) return it
-    changed = true
-    const { scale, unit, packUnit, packSize } = pack
-    return {
-      ...it,
-      unit, packUnit, packSize,
-      ...(scale
-        ? { stock: +(it.stock * packSize).toFixed(2), stockIdeal: +(it.stockIdeal * packSize).toFixed(2) }
-        : {}),
+    // Harina/Azucar: forzar unidad 'paquete' y sacar cualquier pack (revierte la versión con bulto).
+    const fixUnit = ITEM_UNIT_FIX[it.id]
+    if (fixUnit && (it.unit !== fixUnit || it.packUnit)) {
+      changed = true
+      const { packUnit: _pu, packSize: _ps, ...rest } = it
+      void _pu; void _ps
+      return { ...rest, unit: fixUnit }
     }
+    // Items por pack (idempotente: solo si todavía no tienen packUnit).
+    const pack = ITEM_PACKS[it.id]
+    if (pack && !it.packUnit) {
+      changed = true
+      const { scale, unit, packUnit, packSize } = pack
+      return {
+        ...it,
+        unit, packUnit, packSize,
+        ...(scale
+          ? { stock: +(it.stock * packSize).toFixed(2), stockIdeal: +(it.stockIdeal * packSize).toFixed(2) }
+          : {}),
+      }
+    }
+    return it
   })
   if (changed) localStorage.setItem(LS_DEPOSITO, JSON.stringify(next))
   return next
