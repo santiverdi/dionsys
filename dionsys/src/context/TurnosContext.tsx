@@ -11,7 +11,8 @@ export const DEFAULT_SHIFTS: Record<Turno, string> = {
 }
 
 // Conserjes que pueden cubrir cualquier turno.
-export const CONSERJES = ['Leandro', 'Santiago', 'Gaston', 'Valentin']
+// "Franquero" = el extra que se llama para cubrir vacaciones.
+export const CONSERJES = ['Leandro', 'Santiago', 'Gaston', 'Valentin', 'Franquero']
 
 export interface TurnoOverride {
   date: string   // YYYY-MM-DD

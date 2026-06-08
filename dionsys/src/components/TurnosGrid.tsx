@@ -26,6 +26,7 @@ const NAME_COLORS: Record<string, string> = {
   Santiago: 'bg-green-100 text-green-700 border-green-300',
   Gaston: 'bg-amber-100 text-amber-700 border-amber-300',
   Valentin: 'bg-indigo-100 text-indigo-700 border-indigo-300',
+  Franquero: 'bg-rose-100 text-rose-700 border-rose-300',
 }
 const FALLBACK_COLOR = 'bg-white text-navy-500 border-navy-100'
 
