@@ -1,4 +1,17 @@
 import type { DepositoItem } from '../types'
+import { depositoItemSupplier } from '../data/mock'
+
+/**
+ * Resuelve el proveedor de un item: primero el override del item (supplierId),
+ * después el mapeo estático histórico. Devuelve '' si no hay ninguno.
+ */
+export function resolveSupplierId(
+  itemId: string,
+  items: Pick<DepositoItem, 'id' | 'supplierId'>[],
+): string {
+  const item = items.find(i => i.id === itemId)
+  return item?.supplierId ?? depositoItemSupplier[itemId] ?? ''
+}
 
 /** Cuántas unidades de consumo trae una unidad de compra. Default 1 (se compra y consume igual). */
 export function getPackSize(item: Pick<DepositoItem, 'packSize'>): number {

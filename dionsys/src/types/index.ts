@@ -1,4 +1,4 @@
-export type Role = 'concierge' | 'mucama' | 'admin' | 'mantenimiento'
+export type Role = 'concierge' | 'mucama' | 'admin' | 'mantenimiento' | 'encargada'
 
 export interface Employee {
   id: string
@@ -102,6 +102,13 @@ export interface PedidoSemanalItem {
   recibido?: number         // cantidad realmente recibida, en unidad de COMPRA (set al marcar recibido)
   orderUnit?: string        // snapshot de la unidad de compra al momento del pedido ("bolsa"/"caja"/unit)
   packSize?: number         // snapshot de cuántas unidades de consumo trae un orderUnit
+}
+
+export interface DepositoSupplier {
+  id: string
+  name: string
+  phone: string
+  category: string
 }
 
 export interface PedidoSemanal {

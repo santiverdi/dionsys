@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { X, PackageCheck, CheckCircle2 } from 'lucide-react'
 import type { PedidoSemanal, PedidoSemanalItem } from '../types'
-import { depositoItemSupplier, depositoSuppliers } from '../data/mock'
+import { useStock } from '../context/StockContext'
+import { resolveSupplierId } from '../utils/deposito'
 
 interface RecibirPedidoModalProps {
   pedido: PedidoSemanal
@@ -14,6 +15,7 @@ type Editable = PedidoSemanalItem & { recibidoInput: number }
 export default function RecibirPedidoModal({
   pedido, onClose, onConfirm,
 }: RecibirPedidoModalProps) {
+  const { items, suppliers } = useStock()
   const [editable, setEditable] = useState<Editable[]>(() =>
     pedido.items
       .filter(i => i.aPedir > 0)
@@ -24,14 +26,14 @@ export default function RecibirPedidoModal({
   const groups = useMemo(() => {
     const map = new Map<string, { label: string; items: Editable[] }>()
     for (const item of editable) {
-      const suppId = depositoItemSupplier[item.itemId] ?? 'sup-alim'
-      const supplier = depositoSuppliers.find(s => s.id === suppId)
+      const suppId = resolveSupplierId(item.itemId, items) || 'sup-alim'
+      const supplier = suppliers.find(s => s.id === suppId)
       const label = supplier?.name ?? 'Otro'
       if (!map.has(suppId)) map.set(suppId, { label, items: [] })
       map.get(suppId)!.items.push(item)
     }
     return Array.from(map.values())
-  }, [editable])
+  }, [editable, items, suppliers])
 
   const totalPedido = editable.length
   const totalRecibido = editable.filter(i => i.recibidoInput > 0).length

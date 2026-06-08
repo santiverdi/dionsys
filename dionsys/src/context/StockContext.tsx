@@ -1,17 +1,19 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem } from '../types'
+import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem, DepositoSupplier } from '../types'
 import { generateId } from '../utils/imageCompressor'
-import { depositoItems as mockItems, depositoSuppliers, depositoItemSupplier } from '../data/mock'
+import { depositoItems as mockItems, depositoSuppliers as mockSuppliers, depositoItemSupplier } from '../data/mock'
 import { getOrderUnit, getPackSize } from '../utils/deposito'
 
 const LS_DEPOSITO = 'dionsys_deposito'
 const LS_MOVEMENTS = 'dionsys_stock_movements'
 const LS_PEDIDOS = 'dionsys_pedidos_semanales'
+const LS_SUPPLIERS = 'dionsys_deposito_suppliers'
 
 interface StockContextType {
   items: DepositoItem[]
   movements: StockMovement[]
   pedidos: PedidoSemanal[]
+  suppliers: DepositoSupplier[]
   addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string, pedidoId?: string) => void
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   deletePedido: (id: string, deletedBy: string) => void
@@ -20,6 +22,9 @@ interface StockContextType {
   addItem: (data: Omit<DepositoItem, 'id'>) => void
   updateItem: (id: string, data: Partial<Omit<DepositoItem, 'id'>>) => void
   deleteItem: (id: string) => void
+  addSupplier: (data: Omit<DepositoSupplier, 'id'>) => void
+  updateSupplier: (id: string, data: Partial<Omit<DepositoSupplier, 'id'>>) => void
+  deleteSupplier: (id: string) => void
   resetStock: () => void
 }
 
@@ -39,6 +44,11 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const [pedidos, setPedidos] = useState<PedidoSemanal[]>(() => {
     const saved = localStorage.getItem(LS_PEDIDOS)
     return saved ? JSON.parse(saved) : []
+  })
+
+  const [suppliers, setSuppliers] = useState<DepositoSupplier[]>(() => {
+    const saved = localStorage.getItem(LS_SUPPLIERS)
+    return saved ? JSON.parse(saved) : mockSuppliers
   })
 
   const addMovement = useCallback((
@@ -234,6 +244,31 @@ export function StockProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const addSupplier = useCallback((data: Omit<DepositoSupplier, 'id'>) => {
+    const supplier: DepositoSupplier = { ...data, id: generateId() }
+    setSuppliers(prev => {
+      const updated = [...prev, supplier]
+      localStorage.setItem(LS_SUPPLIERS, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
+  const updateSupplier = useCallback((id: string, data: Partial<Omit<DepositoSupplier, 'id'>>) => {
+    setSuppliers(prev => {
+      const updated = prev.map(s => (s.id === id ? { ...s, ...data } : s))
+      localStorage.setItem(LS_SUPPLIERS, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
+  const deleteSupplier = useCallback((id: string) => {
+    setSuppliers(prev => {
+      const updated = prev.filter(s => s.id !== id)
+      localStorage.setItem(LS_SUPPLIERS, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
   const resetStock = useCallback(() => {
     setItems(mockItems)
     localStorage.setItem(LS_DEPOSITO, JSON.stringify(mockItems))
@@ -241,9 +276,10 @@ export function StockProvider({ children }: { children: ReactNode }) {
 
   return (
     <StockContext.Provider value={{
-      items, movements, pedidos,
+      items, movements, pedidos, suppliers,
       addMovement, savePedido, deletePedido, setPedidoMonto, recibirPedido,
-      addItem, updateItem, deleteItem, resetStock,
+      addItem, updateItem, deleteItem,
+      addSupplier, updateSupplier, deleteSupplier, resetStock,
     }}>
       {children}
     </StockContext.Provider>
@@ -260,6 +296,7 @@ export function generatePedidoText(
   pedidoItems: PedidoSemanalItem[],
   createdBy: string,
   items?: DepositoItem[],
+  suppliers: DepositoSupplier[] = mockSuppliers,
 ): string {
   if (pedidoItems.length === 0) return ''
 
@@ -269,7 +306,7 @@ export function generatePedidoText(
   const groups = new Map<string, { supplierName: string; items: PedidoSemanalItem[] }>()
   for (const item of pedidoItems) {
     const supplierId = supplierById.get(item.itemId) ?? depositoItemSupplier[item.itemId] ?? 'sup-alim'
-    const supplier = depositoSuppliers.find(s => s.id === supplierId)
+    const supplier = suppliers.find(s => s.id === supplierId)
     const name = supplier?.name ?? 'Otro'
 
     if (!groups.has(supplierId)) {

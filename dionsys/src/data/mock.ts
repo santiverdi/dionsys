@@ -1,4 +1,4 @@
-import type { Employee, Distributor, Product, ReceptionProduct, DepositoItem } from '../types'
+import type { Employee, Distributor, Product, ReceptionProduct, DepositoItem, DepositoSupplier } from '../types'
 
 export const employees: Employee[] = [
   { id: 'c1', name: 'Leandro', pin: '1111', role: 'concierge', active: true },
@@ -8,6 +8,8 @@ export const employees: Employee[] = [
   { id: '2', name: 'Maria (Mucama)', pin: '5678', role: 'mucama', active: true },
   { id: '3', name: 'Laura (Admin)', pin: '0000', role: 'admin', active: true },
   { id: '4', name: 'Julio (Mantenimiento)', pin: '9898', role: 'mantenimiento', active: true },
+  { id: 'e1', name: 'Roxana', pin: '4719', role: 'encargada', active: true },
+  { id: 'a2', name: 'Charo', pin: '5283', role: 'admin', active: true },
 ]
 
 export const distributors: Distributor[] = [
@@ -55,13 +57,8 @@ export const products: Product[] = [
 ]
 
 // --- Proveedores del Deposito (para pedido semanal) ---
-export interface DepositoSupplier {
-  id: string
-  name: string
-  phone: string
-  category: string
-}
-
+// DepositoSupplier vive en types/index.ts. Esta lista es la SEMILLA inicial;
+// en runtime las distribuidoras se editan y persisten via StockContext.
 export const depositoSuppliers: DepositoSupplier[] = [
   { id: 'tpg', name: 'TPG', phone: '', category: 'Desayunador' },
   { id: 'la-paulina', name: 'La Paulina', phone: '', category: 'Desayunador' },

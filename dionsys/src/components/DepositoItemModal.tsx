@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { X, Trash2, Package, Coffee, SprayCanIcon } from 'lucide-react'
-import type { DepositoItem } from '../types'
-import { depositoSuppliers, depositoItemSupplier } from '../data/mock'
+import type { DepositoItem, DepositoSupplier } from '../types'
+import { depositoItemSupplier } from '../data/mock'
 import ConfirmDialog from './ConfirmDialog'
 
 interface Props {
   item: DepositoItem | null // null = nuevo
+  suppliers: DepositoSupplier[]
   onClose: () => void
   onSave: (data: Omit<DepositoItem, 'id'>) => void
   onDelete?: () => void
 }
 
-export default function DepositoItemModal({ item, onClose, onSave, onDelete }: Props) {
+export default function DepositoItemModal({ item, suppliers, onClose, onSave, onDelete }: Props) {
   const isNew = item === null
 
   const [name, setName] = useState(item?.name ?? '')
@@ -211,7 +212,7 @@ export default function DepositoItemModal({ item, onClose, onSave, onDelete }: P
               className="w-full px-3 py-2 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400 bg-white"
             >
               <option value="">Sin proveedor</option>
-              {depositoSuppliers.map(s => (
+              {suppliers.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>

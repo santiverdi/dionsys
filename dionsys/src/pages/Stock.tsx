@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useStock, generatePedidoText } from '../context/StockContext'
 import type { PedidoSemanalItem, DepositoItem } from '../types'
@@ -10,8 +10,7 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog'
 import DepositoItemModal from '../components/DepositoItemModal'
 import { canDelete } from '../utils/permissions'
-import { depositoSuppliers, depositoItemSupplier } from '../data/mock'
-import { getOrderUnit, getPackSize, packsToReachIdeal, packLabel } from '../utils/deposito'
+import { getOrderUnit, getPackSize, packsToReachIdeal, packLabel, resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
 
 type MainTab = 'deposito' | 'pedido' | 'historial'
@@ -21,16 +20,17 @@ type HistorialTab = 'pedidos' | 'movimientos'
 export default function Stock() {
   const { employee } = useAuth()
   const {
-    items, movements, pedidos,
+    items, movements, pedidos, suppliers,
     addMovement, savePedido, deletePedido,
     addItem, updateItem, deleteItem,
   } = useStock()
 
   const isAdmin = canDelete(employee?.role ?? 'mucama')
+  const isEncargada = employee?.role === 'encargada'
   const [deleteTargetPedidoId, setDeleteTargetPedidoId] = useState<string | null>(null)
   // Item editor: undefined = closed, null = nuevo item, DepositoItem = editar
   const [itemModal, setItemModal] = useState<DepositoItem | null | undefined>(undefined)
-  const [tab, setTab] = useState<MainTab>('deposito')
+  const [tab, setTab] = useState<MainTab>(employee?.role === 'encargada' ? 'pedido' : 'deposito')
   const [catFilter, setCatFilter] = useState<CategoryFilter>('todos')
   const [histTab, setHistTab] = useState<HistorialTab>('pedidos')
 
@@ -76,23 +76,23 @@ export default function Stock() {
 
     const bySupplier = new Map<string, { name: string; items: PedidoSemanalItem[] }>()
     for (const item of visible) {
-      const suppId = depositoItemSupplier[item.itemId] ?? 'otros'
-      const supplier = depositoSuppliers.find(s => s.id === suppId)
+      const suppId = resolveSupplierId(item.itemId, items) || 'otros'
+      const supplier = suppliers.find(s => s.id === suppId)
       if (!bySupplier.has(suppId)) {
         bySupplier.set(suppId, { name: supplier?.name ?? 'Otros', items: [] })
       }
       bySupplier.get(suppId)!.items.push(item)
     }
 
-    // Order groups following depositoSuppliers order, leftovers last
+    // Order groups following suppliers order, leftovers last
     const ordered: { name: string; items: PedidoSemanalItem[] }[] = []
-    for (const s of depositoSuppliers) {
+    for (const s of suppliers) {
       const g = bySupplier.get(s.id)
       if (g) { ordered.push(g); bySupplier.delete(s.id) }
     }
     for (const g of bySupplier.values()) ordered.push(g)
     return ordered
-  }, [pedidoItems, pedidoCat, pedidoSearch, itemById])
+  }, [pedidoItems, pedidoCat, pedidoSearch, itemById, items, suppliers])
 
   const pedidoCount = useMemo(
     () => pedidoItems.filter(i => i.aPedir > 0).length,
@@ -109,6 +109,12 @@ export default function Stock() {
     () => items.filter(i => i.stock < i.stockIdeal).length,
     [items]
   )
+
+  // La encargada entra directo al armado del pedido, ya precargado.
+  useEffect(() => {
+    if (isEncargada) initPedido()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ---- Movement handlers ----
   function openMovement(itemId: string, itemName: string, type: 'entrada' | 'salida', stock: number, unit: string) {
@@ -209,7 +215,7 @@ export default function Stock() {
   async function handleCopyPedido() {
     if (!employee) return
     const filtered = pedidoItems.filter(i => i.aPedir > 0)
-    const text = generatePedidoText(filtered, employee.name, items)
+    const text = generatePedidoText(filtered, employee.name, items, suppliers)
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -528,7 +534,7 @@ export default function Stock() {
           <h2 className="text-lg font-bold text-navy-800 mb-3">Vista previa del pedido</h2>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-navy-100 mb-4">
             <pre className="whitespace-pre-wrap text-navy-800 text-sm font-sans bg-navy-50 rounded-lg p-4">
-              {generatePedidoText(pedidoItems.filter(i => i.aPedir > 0), employee?.name ?? '', items)}
+              {generatePedidoText(pedidoItems.filter(i => i.aPedir > 0), employee?.name ?? '', items, suppliers)}
             </pre>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -647,8 +653,8 @@ export default function Stock() {
                         // Group by supplier
                         const groups = new Map<string, { label: string; items: typeof pedido.items }>()
                         for (const item of pedido.items) {
-                          const suppId = depositoItemSupplier[item.itemId] ?? 'sup-alim'
-                          const sup = depositoSuppliers.find(s => s.id === suppId)
+                          const suppId = resolveSupplierId(item.itemId, items) || 'sup-alim'
+                          const sup = suppliers.find(s => s.id === suppId)
                           const label = sup?.name ?? (item.itemId.startsWith('des-') ? 'Desayunador' : 'Limpieza')
                           if (!groups.has(suppId)) groups.set(suppId, { label, items: [] })
                           groups.get(suppId)!.items.push(item)
@@ -817,6 +823,7 @@ export default function Stock() {
       {itemModal !== undefined && (
         <DepositoItemModal
           item={itemModal}
+          suppliers={suppliers}
           onClose={() => setItemModal(undefined)}
           onSave={handleSaveItem}
           onDelete={handleDeleteItem}

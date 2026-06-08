@@ -5,6 +5,7 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
   concierge:     ['/pedidos', '/recepcion', '/deposito'],
   mucama:        ['/recepcion', '/deposito'],
   mantenimiento: ['/recepcion', '/mantenimiento'],
+  encargada:     ['/deposito', '/recepcion'],
 }
 
 export function canAccess(role: Role, path: string): boolean {

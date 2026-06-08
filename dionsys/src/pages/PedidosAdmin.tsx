@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Send, Clock, Package, MessageCircle, DollarSign, Edit3, PackageCheck, CheckCircle2 } from 'lucide-react'
+import { Send, Clock, Package, MessageCircle, DollarSign, Edit3, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
-import { depositoSuppliers, depositoItemSupplier } from '../data/mock'
+import { resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
 import MontoModal from '../components/MontoModal'
 import RecibirPedidoModal from '../components/RecibirPedidoModal'
-import type { PedidoSemanal } from '../types'
+import SupplierModal from '../components/SupplierModal'
+import type { PedidoSemanal, DepositoSupplier } from '../types'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', {
@@ -16,16 +17,18 @@ function formatDate(iso: string) {
 }
 
 function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void; onRecibir: () => void }) {
+  const { items, suppliers } = useStock()
   const isRecibido = pedido.status === 'recibido'
 
-  // Group items by supplier
+  // Group items by supplier (item override first, then static map)
   const supplierGroups = useMemo(() => {
-    const groups = new Map<string, { supplier: typeof depositoSuppliers[0]; items: typeof pedido.items }>()
+    const fallback: DepositoSupplier = { id: 'otros', name: 'Sin proveedor', phone: '', category: '' }
+    const groups = new Map<string, { supplier: DepositoSupplier; items: typeof pedido.items }>()
 
     for (const item of pedido.items) {
       if (item.aPedir <= 0) continue
-      const supplierId = depositoItemSupplier[item.itemId] ?? 'sup-alim'
-      const supplier = depositoSuppliers.find(s => s.id === supplierId) ?? depositoSuppliers[0]
+      const supplierId = resolveSupplierId(item.itemId, items) || 'otros'
+      const supplier = suppliers.find(s => s.id === supplierId) ?? fallback
 
       if (!groups.has(supplierId)) {
         groups.set(supplierId, { supplier, items: [] })
@@ -34,7 +37,7 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
     }
 
     return Array.from(groups.values())
-  }, [pedido])
+  }, [pedido, items, suppliers])
 
   function buildWhatsAppUrl(supplierName: string, phone: string, items: typeof pedido.items) {
     const fecha = new Date(pedido.date).toLocaleDateString('es-AR', {
@@ -128,14 +131,21 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
                 <span className="text-xs text-navy-400">({supplier.category})</span>
               </div>
               {!isRecibido && (
-                <a
-                  href={waUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors"
-                >
-                  <MessageCircle size={14} /> WhatsApp
-                </a>
+                <div className="flex items-center gap-1.5">
+                  {!supplier.phone && (
+                    <span className="flex items-center gap-1 text-[10px] text-amber-600" title="Esta distribuidora no tiene teléfono cargado">
+                      <AlertTriangle size={11} /> sin tel
+                    </span>
+                  )}
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-colors"
+                  >
+                    <MessageCircle size={14} /> WhatsApp
+                  </a>
+                </div>
               )}
             </div>
 
@@ -185,9 +195,15 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
 
 export default function PedidosAdmin() {
   const { employee } = useAuth()
-  const { pedidos, setPedidoMonto, recibirPedido } = useStock()
+  const {
+    pedidos, setPedidoMonto, recibirPedido,
+    suppliers, addSupplier, updateSupplier, deleteSupplier,
+  } = useStock()
   const [montoTarget, setMontoTarget] = useState<PedidoSemanal | null>(null)
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
+  // Distribuidoras: undefined = panel cerrado-modal cerrado; modal target separado
+  const [showDistribuidoras, setShowDistribuidoras] = useState(false)
+  const [supplierModal, setSupplierModal] = useState<DepositoSupplier | null | undefined>(undefined)
   const isAdmin = employee?.role === 'admin'
 
   const pendientes = useMemo(
@@ -211,12 +227,76 @@ export default function PedidosAdmin() {
     setRecibirTarget(null)
   }
 
+  function handleSaveSupplier(data: Omit<DepositoSupplier, 'id'>) {
+    if (supplierModal) updateSupplier(supplierModal.id, data)
+    else addSupplier(data)
+    setSupplierModal(undefined)
+  }
+
+  function handleDeleteSupplier() {
+    if (supplierModal) deleteSupplier(supplierModal.id)
+    setSupplierModal(undefined)
+  }
+
   return (
     <div>
-      <h2 className="text-xl font-bold text-navy-800 mb-1">Pedidos por Proveedor</h2>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h2 className="text-xl font-bold text-navy-800">Pedidos por Proveedor</h2>
+        {isAdmin && (
+          <button
+            onClick={() => setShowDistribuidoras(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+              showDistribuidoras ? 'bg-navy-800 text-cream' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
+            }`}
+          >
+            <Truck size={14} /> Distribuidoras
+          </button>
+        )}
+      </div>
       <p className="text-sm text-navy-500 mb-6">
         Pedidos semanales agrupados por distribuidor. Envia cada pedido por WhatsApp y marcá cuando llegue.
       </p>
+
+      {/* Gestión de distribuidoras */}
+      {isAdmin && showDistribuidoras && (
+        <div className="bg-white rounded-xl border border-navy-100 p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-navy-800">Distribuidoras</h3>
+            <button
+              onClick={() => setSupplierModal(null)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 transition-colors"
+            >
+              <Plus size={14} /> Agregar
+            </button>
+          </div>
+          {suppliers.length === 0 ? (
+            <p className="text-sm text-navy-400 text-center py-4">No hay distribuidoras cargadas.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {suppliers.map(s => (
+                <div key={s.id} className="flex items-center gap-2 p-2.5 rounded-lg border border-navy-100">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-navy-800 truncate">{s.name}</p>
+                    <p className="text-xs flex items-center gap-1.5">
+                      <span className="text-navy-400">{s.category || 'Sin categoría'}</span>
+                      {s.phone
+                        ? <span className="text-green-600">· {s.phone}</span>
+                        : <span className="text-amber-600 flex items-center gap-0.5"><AlertTriangle size={10} /> sin teléfono</span>}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSupplierModal(s)}
+                    className="text-navy-400 hover:text-navy-700 p-1.5 shrink-0"
+                    title="Editar distribuidora"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {pendientes.length === 0 && recibidos.length === 0 ? (
         <div className="text-center py-16">
@@ -277,6 +357,15 @@ export default function PedidosAdmin() {
           pedido={recibirTarget}
           onClose={() => setRecibirTarget(null)}
           onConfirm={handleConfirmRecibir}
+        />
+      )}
+
+      {supplierModal !== undefined && (
+        <SupplierModal
+          supplier={supplierModal}
+          onClose={() => setSupplierModal(undefined)}
+          onSave={handleSaveSupplier}
+          onDelete={handleDeleteSupplier}
         />
       )}
     </div>

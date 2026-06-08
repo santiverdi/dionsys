@@ -34,6 +34,7 @@ export default function Layout() {
     mucama: 'Mucama',
     admin: 'Administracion',
     mantenimiento: 'Mantenimiento',
+    encargada: 'Encargada',
   }
 
   return (
