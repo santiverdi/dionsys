@@ -1,14 +1,15 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useStock, generatePedidoText } from '../context/StockContext'
-import type { PedidoSemanalItem, DepositoItem } from '../types'
+import type { PedidoSemanalItem, DepositoItem, PedidoSemanal } from '../types'
 import {
   Package, ClipboardList, Clock, Coffee, SprayCanIcon,
   Minus, Plus, X, Copy, Check, ChevronLeft, Trash2,
-  ArrowDownCircle, ArrowUpCircle, Send, Search, RotateCcw, Eraser, Pencil,
+  ArrowDownCircle, ArrowUpCircle, Send, Search, RotateCcw, Eraser, Pencil, PackageCheck,
 } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import DepositoItemModal from '../components/DepositoItemModal'
+import RecibirPedidoModal from '../components/RecibirPedidoModal'
 import { canDelete } from '../utils/permissions'
 import { getOrderUnit, getPackSize, packsToReachIdeal, packLabel, resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
@@ -21,13 +22,14 @@ export default function Stock() {
   const { employee } = useAuth()
   const {
     items, movements, pedidos, suppliers,
-    addMovement, savePedido, deletePedido,
+    addMovement, savePedido, deletePedido, recibirPedido,
     addItem, updateItem, deleteItem,
   } = useStock()
 
   const isAdmin = canDelete(employee?.role ?? 'mucama')
   const isEncargada = employee?.role === 'encargada'
   const [deleteTargetPedidoId, setDeleteTargetPedidoId] = useState<string | null>(null)
+  const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
   // Item editor: undefined = closed, null = nuevo item, DepositoItem = editar
   const [itemModal, setItemModal] = useState<DepositoItem | null | undefined>(undefined)
   const [tab, setTab] = useState<MainTab>(employee?.role === 'encargada' ? 'pedido' : 'deposito')
@@ -36,10 +38,13 @@ export default function Stock() {
 
   // Movement modal
   const [movModal, setMovModal] = useState<{
-    itemId: string; itemName: string; type: 'entrada' | 'salida'; stock: number; unit: string
+    itemId: string; itemName: string; type: 'entrada' | 'salida'; stock: number
+    unit: string; packUnit?: string; packSize?: number
   } | null>(null)
   const [movQty, setMovQty] = useState(1)
   const [movNotes, setMovNotes] = useState('')
+  // Unidad del movimiento: 'base' (consumo, kg) o 'pack' (bulto, bolsa)
+  const [movUnit, setMovUnit] = useState<'base' | 'pack'>('base')
 
   // Pedido state
   const [pedidoView, setPedidoView] = useState<'edit' | 'preview'>('edit')
@@ -132,16 +137,31 @@ export default function Stock() {
   }, [])
 
   // ---- Movement handlers ----
-  function openMovement(itemId: string, itemName: string, type: 'entrada' | 'salida', stock: number, unit: string) {
-    setMovModal({ itemId, itemName, type, stock, unit })
+  function openMovement(item: DepositoItem, type: 'entrada' | 'salida') {
+    setMovModal({
+      itemId: item.id, itemName: item.name, type, stock: item.stock,
+      unit: item.unit, packUnit: item.packUnit, packSize: item.packSize,
+    })
     setMovQty(1)
     setMovNotes('')
+    setMovUnit('base')
   }
 
   function confirmMovement() {
     if (!movModal || !employee || movQty <= 0) return
-    addMovement(movModal.itemId, movModal.type, movQty, employee.name, movNotes)
+    const factor = movUnit === 'pack' ? (movModal.packSize ?? 1) : 1
+    const baseQty = +(movQty * factor).toFixed(2)
+    // Si el movimiento es por bulto, dejamos constancia en la nota.
+    const packNote = movUnit === 'pack' ? `${movQty} ${movModal.packUnit}` : ''
+    const notes = [movNotes.trim(), packNote].filter(Boolean).join(' · ')
+    addMovement(movModal.itemId, movModal.type, baseQty, employee.name, notes)
     setMovModal(null)
+  }
+
+  function handleConfirmRecibir(recibidos: { itemId: string; cantidad: number }[]) {
+    if (!recibirTarget || !employee) return
+    recibirPedido(recibirTarget.id, employee.name, recibidos)
+    setRecibirTarget(null)
   }
 
   // ---- Item editor handlers ----
@@ -367,14 +387,14 @@ export default function Stock() {
                   {/* Actions */}
                   <div className="flex gap-2">
                     <button
-                      onClick={() => openMovement(item.id, item.name, 'salida', item.stock, item.unit)}
+                      onClick={() => openMovement(item, 'salida')}
                       disabled={item.stock === 0}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                       <Minus size={14} /> Salida
                     </button>
                     <button
-                      onClick={() => openMovement(item.id, item.name, 'entrada', item.stock, item.unit)}
+                      onClick={() => openMovement(item, 'entrada')}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
                     >
                       <Plus size={14} /> Entrada
@@ -743,6 +763,14 @@ export default function Stock() {
                           </div>
                         ))
                       })()}
+                      {!isBorrado && !isRecibido && (
+                        <button
+                          onClick={() => setRecibirTarget(pedido)}
+                          className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 active:scale-[0.99] transition-all"
+                        >
+                          <PackageCheck size={16} /> Marcar recibido y sumar al depósito
+                        </button>
+                      )}
                     </div>
                   )
                 })}
@@ -826,8 +854,35 @@ export default function Stock() {
             <p className="text-sm text-navy-600 mb-1 font-medium">{movModal.itemName}</p>
             <p className="text-xs text-navy-400 mb-4">Stock actual: {movModal.stock} {movModal.unit}</p>
 
-            <label className="block text-xs font-semibold text-navy-500 mb-1">Cantidad</label>
-            <div className="flex items-center gap-3 mb-4">
+            {/* Unidad: por consumo (kg/unidad) o por bulto (bolsa/caja) */}
+            {movModal.packUnit && (movModal.packSize ?? 1) > 1 && (
+              <>
+                <label className="block text-xs font-semibold text-navy-500 mb-1">
+                  ¿En qué lo {movModal.type === 'salida' ? 'sacás' : 'cargás'}?
+                </label>
+                <div className="flex gap-1 bg-navy-100 rounded-xl p-1 mb-4">
+                  {([
+                    { key: 'base' as const, label: movModal.unit },
+                    { key: 'pack' as const, label: `${movModal.packUnit} (${movModal.packSize} ${movModal.unit})` },
+                  ]).map(u => (
+                    <button
+                      key={u.key}
+                      onClick={() => setMovUnit(u.key)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        movUnit === u.key ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500'
+                      }`}
+                    >
+                      {u.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <label className="block text-xs font-semibold text-navy-500 mb-1">
+              Cantidad ({movUnit === 'pack' ? movModal.packUnit : movModal.unit})
+            </label>
+            <div className="flex items-center gap-3 mb-2">
               <button
                 onClick={() => setMovQty(q => Math.max(0.5, +(q - 0.5).toFixed(1)))}
                 className="p-2 rounded-lg bg-navy-100 hover:bg-navy-200 transition-colors"
@@ -849,6 +904,12 @@ export default function Stock() {
                 <Plus size={18} />
               </button>
             </div>
+            {movUnit === 'pack' && (
+              <p className="text-xs text-indigo-500 mb-4 text-center">
+                = {+(movQty * (movModal.packSize ?? 1)).toFixed(1)} {movModal.unit}
+              </p>
+            )}
+            {movUnit === 'base' && <div className="mb-2" />}
 
             <label className="block text-xs font-semibold text-navy-500 mb-1">Notas (opcional)</label>
             <input
@@ -868,7 +929,7 @@ export default function Stock() {
                   : 'bg-red-600 text-white hover:bg-red-700'
               }`}
             >
-              Registrar {movModal.type === 'entrada' ? 'entrada' : 'salida'} de {movQty} {movModal.unit}
+              Registrar {movModal.type === 'entrada' ? 'entrada' : 'salida'} de {movQty} {movUnit === 'pack' ? movModal.packUnit : movModal.unit}
             </button>
           </div>
         </div>
@@ -882,6 +943,15 @@ export default function Stock() {
           onClose={() => setItemModal(undefined)}
           onSave={handleSaveItem}
           onDelete={handleDeleteItem}
+        />
+      )}
+
+      {/* =================== RECIBIR PEDIDO MODAL =================== */}
+      {recibirTarget && (
+        <RecibirPedidoModal
+          pedido={recibirTarget}
+          onClose={() => setRecibirTarget(null)}
+          onConfirm={handleConfirmRecibir}
         />
       )}
     </div>
