@@ -71,10 +71,13 @@ export interface ConsumptionRecord {
 export interface DepositoItem {
   id: string
   name: string
-  unit: string              // "kg", "caja", "unidad", "bidon", "bolson"
+  unit: string              // unidad de CONSUMO: "kg", "caja", "unidad", "bidon", "bolson"
   category: 'desayunador' | 'limpieza'
-  stock: number             // stock actual
-  stockIdeal: number        // stock ideal/deseado para reponer
+  stock: number             // stock actual, en unidad de consumo
+  stockIdeal: number        // stock ideal/deseado para reponer, en unidad de consumo
+  packUnit?: string         // unidad de COMPRA opcional: "bolsa", "caja", "pack" (cómo se pide/recibe)
+  packSize?: number         // cuántas unidades de consumo trae un packUnit (ej: bolsa de harina = 10 kg)
+  supplierId?: string       // proveedor del deposito (override del mapeo estatico)
 }
 
 export interface StockMovement {
@@ -92,11 +95,13 @@ export interface StockMovement {
 export interface PedidoSemanalItem {
   itemId: string
   name: string
-  unit: string
+  unit: string              // unidad de consumo (kg/unidad) — para referencia
   stockActual: number
   stockIdeal: number
-  aPedir: number            // quantity to order
-  recibido?: number         // actual quantity received (set when pedido marked recibido)
+  aPedir: number            // cantidad a pedir, en unidad de COMPRA (orderUnit)
+  recibido?: number         // cantidad realmente recibida, en unidad de COMPRA (set al marcar recibido)
+  orderUnit?: string        // snapshot de la unidad de compra al momento del pedido ("bolsa"/"caja"/unit)
+  packSize?: number         // snapshot de cuántas unidades de consumo trae un orderUnit
 }
 
 export interface PedidoSemanal {

@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useStock, generatePedidoText } from '../context/StockContext'
-import type { PedidoSemanalItem } from '../types'
+import type { PedidoSemanalItem, DepositoItem } from '../types'
 import {
   Package, ClipboardList, Clock, Coffee, SprayCanIcon,
   Minus, Plus, X, Copy, Check, ChevronLeft, Trash2,
-  ArrowDownCircle, ArrowUpCircle, Send,
+  ArrowDownCircle, ArrowUpCircle, Send, Search, RotateCcw, Eraser, Pencil,
 } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
+import DepositoItemModal from '../components/DepositoItemModal'
 import { canDelete } from '../utils/permissions'
 import { depositoSuppliers, depositoItemSupplier } from '../data/mock'
+import { getOrderUnit, getPackSize, packsToReachIdeal, packLabel } from '../utils/deposito'
+import { formatMontoCurrency } from '../utils/validators'
 
 type MainTab = 'deposito' | 'pedido' | 'historial'
 type CategoryFilter = 'todos' | 'desayunador' | 'limpieza'
@@ -19,11 +22,14 @@ export default function Stock() {
   const { employee } = useAuth()
   const {
     items, movements, pedidos,
-    addMovement, generatePedidoItems, savePedido, deletePedido,
+    addMovement, savePedido, deletePedido,
+    addItem, updateItem, deleteItem,
   } = useStock()
 
   const isAdmin = canDelete(employee?.role ?? 'mucama')
   const [deleteTargetPedidoId, setDeleteTargetPedidoId] = useState<string | null>(null)
+  // Item editor: undefined = closed, null = nuevo item, DepositoItem = editar
+  const [itemModal, setItemModal] = useState<DepositoItem | null | undefined>(undefined)
   const [tab, setTab] = useState<MainTab>('deposito')
   const [catFilter, setCatFilter] = useState<CategoryFilter>('todos')
   const [histTab, setHistTab] = useState<HistorialTab>('pedidos')
@@ -38,6 +44,8 @@ export default function Stock() {
   // Pedido state
   const [pedidoView, setPedidoView] = useState<'edit' | 'preview'>('edit')
   const [pedidoItems, setPedidoItems] = useState<PedidoSemanalItem[]>([])
+  const [pedidoCat, setPedidoCat] = useState<CategoryFilter>('todos')
+  const [pedidoSearch, setPedidoSearch] = useState('')
   const [copied, setCopied] = useState(false)
   const [savingPedido, setSavingPedido] = useState(false)
   const [confirmSave, setConfirmSave] = useState(false)
@@ -48,6 +56,48 @@ export default function Stock() {
     for (const it of items) map.set(it.id, it.stock)
     return map
   }, [items])
+
+  // Item metadata lookup (category, etc.) for the pedido builder
+  const itemById = useMemo(() => {
+    const map = new Map<string, DepositoItem>()
+    for (const it of items) map.set(it.id, it)
+    return map
+  }, [items])
+
+  // Pedido items filtered by category + search, then grouped by supplier
+  const pedidoGroups = useMemo(() => {
+    const q = pedidoSearch.trim().toLowerCase()
+    const visible = pedidoItems.filter(i => {
+      const meta = itemById.get(i.itemId)
+      if (pedidoCat !== 'todos' && meta?.category !== pedidoCat) return false
+      if (q && !i.name.toLowerCase().includes(q)) return false
+      return true
+    })
+
+    const bySupplier = new Map<string, { name: string; items: PedidoSemanalItem[] }>()
+    for (const item of visible) {
+      const suppId = depositoItemSupplier[item.itemId] ?? 'otros'
+      const supplier = depositoSuppliers.find(s => s.id === suppId)
+      if (!bySupplier.has(suppId)) {
+        bySupplier.set(suppId, { name: supplier?.name ?? 'Otros', items: [] })
+      }
+      bySupplier.get(suppId)!.items.push(item)
+    }
+
+    // Order groups following depositoSuppliers order, leftovers last
+    const ordered: { name: string; items: PedidoSemanalItem[] }[] = []
+    for (const s of depositoSuppliers) {
+      const g = bySupplier.get(s.id)
+      if (g) { ordered.push(g); bySupplier.delete(s.id) }
+    }
+    for (const g of bySupplier.values()) ordered.push(g)
+    return ordered
+  }, [pedidoItems, pedidoCat, pedidoSearch, itemById])
+
+  const pedidoCount = useMemo(
+    () => pedidoItems.filter(i => i.aPedir > 0).length,
+    [pedidoItems]
+  )
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -73,10 +123,39 @@ export default function Stock() {
     setMovModal(null)
   }
 
+  // ---- Item editor handlers ----
+  function handleSaveItem(data: Omit<DepositoItem, 'id'>) {
+    if (itemModal) updateItem(itemModal.id, data)
+    else addItem(data)
+    setItemModal(undefined)
+  }
+
+  function handleDeleteItem() {
+    if (itemModal) deleteItem(itemModal.id)
+    setItemModal(undefined)
+  }
+
   // ---- Pedido handlers ----
   function initPedido() {
-    const suggested = generatePedidoItems()
-    setPedidoItems(suggested)
+    // Prefill each item's "a pedir" from the last non-deleted pedido, else 0.
+    const lastPedido = pedidos.find(p => p.status !== 'borrado')
+    const lastQty = new Map<string, number>()
+    if (lastPedido) {
+      for (const it of lastPedido.items) lastQty.set(it.itemId, it.aPedir)
+    }
+    const built: PedidoSemanalItem[] = items.map(item => ({
+      itemId: item.id,
+      name: item.name,
+      unit: item.unit,
+      stockActual: item.stock,
+      stockIdeal: item.stockIdeal,
+      aPedir: lastQty.get(item.id) ?? 0,
+      orderUnit: getOrderUnit(item),
+      packSize: getPackSize(item),
+    }))
+    setPedidoItems(built)
+    setPedidoCat('todos')
+    setPedidoSearch('')
     setPedidoView('edit')
     setTab('pedido')
   }
@@ -85,8 +164,22 @@ export default function Stock() {
     setPedidoItems(prev => prev.map(i => i.itemId === itemId ? { ...i, aPedir: qty } : i))
   }
 
-  function removePedidoItem(itemId: string) {
-    setPedidoItems(prev => prev.filter(i => i.itemId !== itemId))
+  function bumpPedidoQty(itemId: string, delta: number) {
+    setPedidoItems(prev => prev.map(i =>
+      i.itemId === itemId ? { ...i, aPedir: Math.max(0, +(i.aPedir + delta).toFixed(1)) } : i
+    ))
+  }
+
+  // Bulk: load ideales / clear, applied only to currently visible (filtered) items.
+  // "Ideales" sugiere los packs necesarios para cubrir el faltante hasta el stock ideal.
+  function applyBulk(mode: 'ideales' | 'vaciar') {
+    const visibleIds = new Set(pedidoGroups.flatMap(g => g.items.map(i => i.itemId)))
+    setPedidoItems(prev => prev.map(i => {
+      if (!visibleIds.has(i.itemId)) return i
+      if (mode === 'vaciar') return { ...i, aPedir: 0 }
+      const live = liveStockById.get(i.itemId) ?? i.stockActual
+      return { ...i, aPedir: packsToReachIdeal(live, i.stockIdeal, i.packSize) }
+    }))
   }
 
   function handleSavePedido() {
@@ -116,7 +209,7 @@ export default function Stock() {
   async function handleCopyPedido() {
     if (!employee) return
     const filtered = pedidoItems.filter(i => i.aPedir > 0)
-    const text = generatePedidoText(filtered, employee.name)
+    const text = generatePedidoText(filtered, employee.name, items)
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -166,26 +259,36 @@ export default function Stock() {
       {/* =================== DEPOSITO TAB =================== */}
       {tab === 'deposito' && (
         <div>
-          {/* Category filter */}
-          <div className="flex gap-2 mb-4">
-            {([
-              { key: 'todos' as const, label: 'Todos', icon: null },
-              { key: 'desayunador' as const, label: 'Desayuno', icon: Coffee },
-              { key: 'limpieza' as const, label: 'Limpieza', icon: SprayCanIcon },
-            ]).map(c => (
+          {/* Category filter + add */}
+          <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+            <div className="flex gap-2">
+              {([
+                { key: 'todos' as const, label: 'Todos', icon: null },
+                { key: 'desayunador' as const, label: 'Desayuno', icon: Coffee },
+                { key: 'limpieza' as const, label: 'Limpieza', icon: SprayCanIcon },
+              ]).map(c => (
+                <button
+                  key={c.key}
+                  onClick={() => setCatFilter(c.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    catFilter === c.key
+                      ? 'bg-navy-800 text-cream'
+                      : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
+                  }`}
+                >
+                  {c.icon && <c.icon size={13} />}
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            {isAdmin && (
               <button
-                key={c.key}
-                onClick={() => setCatFilter(c.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  catFilter === c.key
-                    ? 'bg-navy-800 text-cream'
-                    : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
-                }`}
+                onClick={() => setItemModal(null)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 transition-colors"
               >
-                {c.icon && <c.icon size={13} />}
-                {c.label}
+                <Plus size={14} /> Agregar
               </button>
-            ))}
+            )}
           </div>
 
           {/* Items list */}
@@ -203,15 +306,31 @@ export default function Stock() {
                         : 'bg-white border-navy-100'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between mb-1.5 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       {item.category === 'desayunador'
                         ? <Coffee size={14} className="text-gold-500 shrink-0" />
                         : <SprayCanIcon size={14} className="text-navy-500 shrink-0" />
                       }
-                      <span className="font-medium text-navy-800 text-sm">{item.name}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-navy-800 text-sm truncate">{item.name}</span>
+                          {isAdmin && (
+                            <button
+                              onClick={() => setItemModal(item)}
+                              className="text-navy-300 hover:text-navy-600 p-0.5 shrink-0"
+                              title="Editar articulo"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                        </div>
+                        {packLabel(item) && (
+                          <p className="text-[10px] text-indigo-400">{packLabel(item)}</p>
+                        )}
+                      </div>
                     </div>
-                    <span className={`text-sm font-bold ${stockColor(item.stock, item.stockIdeal)}`}>
+                    <span className={`text-sm font-bold shrink-0 ${stockColor(item.stock, item.stockIdeal)}`}>
                       {item.stock} / {item.stockIdeal} {item.unit}
                     </span>
                   </div>
@@ -251,108 +370,148 @@ export default function Stock() {
       {tab === 'pedido' && pedidoView === 'edit' && (
         <div>
           <h2 className="text-lg font-bold text-navy-800 mb-1">Pedido Semanal</h2>
-          <p className="text-xs text-navy-400 mb-4">
-            Articulos con stock menor al ideal. Ajusta cantidades y genera el pedido.
+          <p className="text-xs text-navy-400 mb-3">
+            Escribí cuánto pedir de cada artículo. Lo que no necesites, dejalo en 0. Viene precargado con tu último pedido.
           </p>
 
           {pedidoItems.length === 0 ? (
             <div className="text-center py-12">
-              <Check size={48} className="mx-auto text-green-400 mb-3" />
-              <p className="text-navy-500 font-medium">Todo el stock esta al dia!</p>
-              <p className="text-xs text-navy-400 mt-1">No hay articulos que necesiten reposicion</p>
+              <Package size={48} className="mx-auto text-navy-200 mb-3" />
+              <p className="text-navy-500 font-medium">No hay artículos en el depósito</p>
             </div>
           ) : (
             <>
-              {/* Desktop header */}
-              <div className="hidden sm:grid grid-cols-[1fr_70px_70px_80px_32px] gap-2 px-3 pb-2 text-[10px] font-bold text-navy-500 uppercase tracking-wider">
-                <span>Articulo</span>
-                <span className="text-center">Stock</span>
-                <span className="text-center">Ideal</span>
-                <span className="text-center">A pedir</span>
-                <span />
+              {/* Search */}
+              <div className="relative mb-3">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-400" />
+                <input
+                  type="text"
+                  value={pedidoSearch}
+                  onChange={e => setPedidoSearch(e.target.value)}
+                  placeholder="Buscar articulo..."
+                  className="w-full pl-9 pr-9 py-2 rounded-xl border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+                />
+                {pedidoSearch && (
+                  <button
+                    onClick={() => setPedidoSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-navy-400 hover:text-navy-600"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
 
-              <div className="space-y-1.5">
-                {pedidoItems.map(item => {
-                  const liveStock = liveStockById.get(item.itemId) ?? item.stockActual
-                  const stale = liveStock !== item.stockActual
-                  const enoughNow = liveStock >= item.stockIdeal
-                  const stockText = enoughNow ? 'text-green-600' : liveStock === 0 ? 'text-red-600' : 'text-amber-600'
-                  return (
-                    <div key={item.itemId} className="rounded-lg border border-navy-100 bg-white p-2.5">
-                      {/* Mobile layout */}
-                      <div className="sm:hidden">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-navy-800 text-sm">{item.name}</span>
-                          <button onClick={() => removePedidoItem(item.itemId)} className="text-navy-400 hover:text-red-500">
-                            <X size={16} />
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-indigo-500 font-medium mb-1">
-                          {depositoSuppliers.find(s => s.id === depositoItemSupplier[item.itemId])?.name ?? 'Proveedor'}
-                        </p>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-navy-400">
-                            Stock: <span className={`font-semibold ${stockText}`}>{liveStock}</span> / {item.stockIdeal} {item.unit}
-                            {stale && <span className="ml-1 text-[10px] text-indigo-500">actualizado</span>}
-                          </span>
-                          <div className="flex items-center gap-1 ml-auto">
-                            <span className="text-xs text-navy-500">Pedir:</span>
-                            <input
-                              type="number"
-                              value={item.aPedir}
-                              onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
-                              className="w-16 px-2 py-1 rounded border border-gold-300 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-500"
-                              min={0}
-                              step={0.5}
-                            />
-                          </div>
-                        </div>
-                        {enoughNow && (
-                          <p className="text-[10px] text-green-600 mt-1">Ya tiene stock suficiente — podés sacarlo del pedido</p>
-                        )}
-                      </div>
+              {/* Category filter + bulk actions */}
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                {([
+                  { key: 'todos' as const, label: 'Todos' },
+                  { key: 'desayunador' as const, label: 'Desayuno' },
+                  { key: 'limpieza' as const, label: 'Limpieza' },
+                ]).map(c => (
+                  <button
+                    key={c.key}
+                    onClick={() => setPedidoCat(c.key)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                      pedidoCat === c.key ? 'bg-navy-800 text-cream' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+                <div className="ml-auto flex gap-2">
+                  <button
+                    onClick={() => applyBulk('ideales')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50"
+                    title="Cargar la cantidad ideal en los articulos visibles"
+                  >
+                    <RotateCcw size={13} /> Ideales
+                  </button>
+                  <button
+                    onClick={() => applyBulk('vaciar')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50"
+                    title="Poner en 0 los articulos visibles"
+                  >
+                    <Eraser size={13} /> Vaciar
+                  </button>
+                </div>
+              </div>
 
-                      {/* Desktop layout */}
-                      <div className="hidden sm:grid grid-cols-[1fr_70px_70px_80px_32px] gap-2 items-center">
-                        <div className="truncate">
-                          <span className="font-medium text-navy-800 text-sm">{item.name}</span>
-                          <span className="ml-2 text-[10px] text-indigo-500 font-medium">
-                            {depositoSuppliers.find(s => s.id === depositoItemSupplier[item.itemId])?.name ?? ''}
-                          </span>
-                          {enoughNow && (
-                            <span className="ml-2 text-[10px] text-green-600">stock ok</span>
-                          )}
-                        </div>
-                        <span className={`text-center text-sm font-semibold ${stockText}`} title={stale ? 'Stock actualizado' : ''}>
-                          {liveStock}
+              {/* Grouped item list */}
+              {pedidoGroups.length === 0 ? (
+                <p className="text-navy-400 text-center py-12 text-sm">No hay articulos que coincidan</p>
+              ) : (
+                <div className="space-y-4 pb-4">
+                  {pedidoGroups.map(group => (
+                    <div key={group.name}>
+                      <div className="flex items-center gap-2 mb-1.5 px-1">
+                        <Package size={13} className="text-indigo-500" />
+                        <span className="text-xs font-bold uppercase tracking-wide text-indigo-600">{group.name}</span>
+                        <span className="text-[10px] text-navy-400">
+                          ({group.items.filter(i => i.aPedir > 0).length}/{group.items.length})
                         </span>
-                        <span className="text-center text-sm text-navy-500">{item.stockIdeal}</span>
-                        <input
-                          type="number"
-                          value={item.aPedir}
-                          onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
-                          className="w-full px-2 py-1 rounded border border-gold-300 text-sm text-center font-bold text-navy-800 focus:outline-none focus:border-gold-500"
-                          min={0}
-                          step={0.5}
-                        />
-                        <button onClick={() => removePedidoItem(item.itemId)} className="text-navy-400 hover:text-red-500">
-                          <X size={16} />
-                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {group.items.map(item => {
+                          const active = item.aPedir > 0
+                          return (
+                            <div
+                              key={item.itemId}
+                              className={`flex items-center gap-2 rounded-lg border p-2.5 transition-colors ${
+                                active ? 'bg-gold-50 border-gold-300' : 'bg-white border-navy-100'
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-navy-800 text-sm truncate">{item.name}</p>
+                                {(item.packSize ?? 1) > 1 && item.aPedir > 0 && (
+                                  <p className="text-[10px] text-indigo-500">
+                                    = {+(item.aPedir * (item.packSize ?? 1)).toFixed(1)} {item.unit}
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => bumpPedidoQty(item.itemId, -0.5)}
+                                disabled={item.aPedir <= 0}
+                                className="w-7 h-7 rounded-lg bg-navy-100 text-navy-600 flex items-center justify-center hover:bg-navy-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <input
+                                type="number"
+                                value={item.aPedir}
+                                onChange={e => updatePedidoQty(item.itemId, Math.max(0, Number(e.target.value)))}
+                                className={`w-14 px-1 py-1 rounded border text-sm text-center font-bold focus:outline-none ${
+                                  active
+                                    ? 'border-gold-400 text-navy-800 focus:border-gold-500'
+                                    : 'border-navy-200 text-navy-400 focus:border-gold-400'
+                                }`}
+                                min={0}
+                                step={0.5}
+                              />
+                              <button
+                                onClick={() => bumpPedidoQty(item.itemId, 0.5)}
+                                className="w-7 h-7 rounded-lg bg-navy-800 text-cream flex items-center justify-center hover:bg-navy-700 transition-colors shrink-0"
+                              >
+                                <Plus size={14} />
+                              </button>
+                              <span className="text-[11px] text-navy-400 w-12 shrink-0">{item.orderUnit ?? item.unit}</span>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
-                  )
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
 
               {/* Bottom action */}
-              <div className="sticky bottom-0 bg-cream pt-3 pb-2 border-t border-navy-100 mt-4 -mx-4 px-4 md:-mx-6 md:px-6">
+              <div className="sticky bottom-0 bg-cream pt-3 pb-2 border-t border-navy-100 mt-2 -mx-4 px-4 md:-mx-6 md:px-6">
                 <button
                   onClick={() => setPedidoView('preview')}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm bg-gold-400 text-navy-900 hover:bg-gold-500 transition-all"
+                  disabled={pedidoCount === 0}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm bg-gold-400 text-navy-900 hover:bg-gold-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <Send size={18} />
-                  Ver pedido ({pedidoItems.filter(i => i.aPedir > 0).length} articulos)
+                  Ver pedido ({pedidoCount} {pedidoCount === 1 ? 'articulo' : 'articulos'})
                 </button>
               </div>
             </>
@@ -369,7 +528,7 @@ export default function Stock() {
           <h2 className="text-lg font-bold text-navy-800 mb-3">Vista previa del pedido</h2>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-navy-100 mb-4">
             <pre className="whitespace-pre-wrap text-navy-800 text-sm font-sans bg-navy-50 rounded-lg p-4">
-              {generatePedidoText(pedidoItems.filter(i => i.aPedir > 0), employee?.name ?? '')}
+              {generatePedidoText(pedidoItems.filter(i => i.aPedir > 0), employee?.name ?? '', items)}
             </pre>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -475,6 +634,15 @@ export default function Stock() {
                           )}
                         </div>
                       </div>
+                      {pedido.monto != null && (
+                        <div className="flex items-center gap-1.5 mb-2 text-sm">
+                          <span className="text-[10px] uppercase tracking-wide font-semibold text-green-700">Monto:</span>
+                          <span className="font-bold text-navy-800">{formatMontoCurrency(pedido.monto)}</span>
+                          {pedido.montoCargadoBy && (
+                            <span className="text-xs text-navy-400">· {pedido.montoCargadoBy}</span>
+                          )}
+                        </div>
+                      )}
                       {(() => {
                         // Group by supplier
                         const groups = new Map<string, { label: string; items: typeof pedido.items }>()
@@ -502,10 +670,10 @@ export default function Stock() {
                                         <span className={cero ? 'text-red-600 font-semibold' : incompleto ? 'text-amber-600 font-semibold' : 'text-green-700 font-semibold'}>
                                           {rec}
                                         </span>
-                                        <span className="text-xs text-navy-400"> / {item.aPedir} {item.unit}</span>
+                                        <span className="text-xs text-navy-400"> / {item.aPedir} {item.orderUnit ?? item.unit}</span>
                                       </>
                                     ) : (
-                                      <>{item.aPedir} {item.unit}</>
+                                      <>{item.aPedir} {item.orderUnit ?? item.unit}</>
                                     )}
                                   </li>
                                 )
@@ -643,6 +811,16 @@ export default function Stock() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* =================== ITEM EDITOR MODAL =================== */}
+      {itemModal !== undefined && (
+        <DepositoItemModal
+          item={itemModal}
+          onClose={() => setItemModal(undefined)}
+          onSave={handleSaveItem}
+          onDelete={handleDeleteItem}
+        />
       )}
     </div>
   )

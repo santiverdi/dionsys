@@ -115,8 +115,13 @@ export default function RecibirPedidoModal({
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-navy-800 truncate">{item.name}</p>
                           <p className="text-[11px] text-navy-500">
-                            Pedidas: <span className="font-semibold">{item.aPedir}</span> {item.unit}
+                            Pedidas: <span className="font-semibold">{item.aPedir}</span> {item.orderUnit ?? item.unit}
                           </p>
+                          {(item.packSize ?? 1) > 1 && item.recibidoInput > 0 && (
+                            <p className="text-[10px] text-indigo-500">
+                              = {+(item.recibidoInput * (item.packSize ?? 1)).toFixed(1)} {item.unit} al depósito
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <input
@@ -127,7 +132,7 @@ export default function RecibirPedidoModal({
                             min={0}
                             step={0.5}
                           />
-                          <span className="text-xs text-navy-500 w-10">{item.unit}</span>
+                          <span className="text-xs text-navy-500 w-10">{item.orderUnit ?? item.unit}</span>
                           {completo && <CheckCircle2 size={16} className="text-green-600" />}
                         </div>
                       </div>

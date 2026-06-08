@@ -44,7 +44,7 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
       `Hola *${supplierName}*! Pedido de Hotel Dion:`,
       `Fecha: ${fecha}`,
       '',
-      ...items.map(i => `- ${i.name}: ${i.aPedir} ${i.unit}`),
+      ...items.map(i => `- ${i.name}: ${i.aPedir} ${i.orderUnit ?? i.unit}`),
       '',
       'Gracias!',
     ]
@@ -155,10 +155,10 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
                             <span className={cero ? 'text-red-600' : incompleto ? 'text-amber-600' : 'text-green-700'}>
                               {rec}
                             </span>
-                            <span className="text-xs text-navy-400">/ {item.aPedir} {item.unit}</span>
+                            <span className="text-xs text-navy-400">/ {item.aPedir} {item.orderUnit ?? item.unit}</span>
                           </>
                         ) : (
-                          <>{item.aPedir} {item.unit}</>
+                          <>{item.aPedir} {item.orderUnit ?? item.unit}</>
                         )}
                       </span>
                     </li>

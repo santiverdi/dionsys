@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem } from '../types'
 import { generateId } from '../utils/imageCompressor'
 import { depositoItems as mockItems, depositoSuppliers, depositoItemSupplier } from '../data/mock'
+import { getOrderUnit, getPackSize } from '../utils/deposito'
 
 const LS_DEPOSITO = 'dionsys_deposito'
 const LS_MOVEMENTS = 'dionsys_stock_movements'
@@ -12,11 +13,13 @@ interface StockContextType {
   movements: StockMovement[]
   pedidos: PedidoSemanal[]
   addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string, pedidoId?: string) => void
-  generatePedidoItems: () => PedidoSemanalItem[]
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   deletePedido: (id: string, deletedBy: string) => void
   setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
   recibirPedido: (pedidoId: string, recibidoBy: string, recibidos: { itemId: string; cantidad: number }[]) => void
+  addItem: (data: Omit<DepositoItem, 'id'>) => void
+  updateItem: (id: string, data: Partial<Omit<DepositoItem, 'id'>>) => void
+  deleteItem: (id: string) => void
   resetStock: () => void
 }
 
@@ -46,27 +49,32 @@ export function StockProvider({ children }: { children: ReactNode }) {
     notes = '',
     pedidoId?: string,
   ) => {
-    // Find current item name before updating
+    // Find current item name + clamp the recorded quantity to what's actually available
+    // on a salida, so the movement never claims more than the stock could drop.
     let itemName = ''
+    let effectiveQty = quantity
     setItems(prev => {
       const updated = prev.map(item => {
         if (item.id !== itemId) return item
         itemName = item.name
-        const newStock = type === 'entrada'
-          ? +(item.stock + quantity).toFixed(1)
-          : +Math.max(0, item.stock - quantity).toFixed(1)
-        return { ...item, stock: newStock }
+        if (type === 'salida') {
+          effectiveQty = Math.min(quantity, item.stock)
+          return { ...item, stock: +(item.stock - effectiveQty).toFixed(1) }
+        }
+        return { ...item, stock: +(item.stock + quantity).toFixed(1) }
       })
       localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
       return updated
     })
+
+    if (effectiveQty <= 0) return // nothing to record (salida sobre stock 0)
 
     const movement: StockMovement = {
       id: generateId(),
       itemId,
       itemName,
       type,
-      quantity,
+      quantity: effectiveQty,
       date: new Date().toISOString(),
       createdBy,
       notes,
@@ -78,19 +86,6 @@ export function StockProvider({ children }: { children: ReactNode }) {
       return updated
     })
   }, [])
-
-  const generatePedidoItems = useCallback((): PedidoSemanalItem[] => {
-    return items
-      .filter(item => item.stock < item.stockIdeal)
-      .map(item => ({
-        itemId: item.id,
-        name: item.name,
-        unit: item.unit,
-        stockActual: item.stock,
-        stockIdeal: item.stockIdeal,
-        aPedir: +((item.stockIdeal - item.stock).toFixed(1)),
-      }))
-  }, [items])
 
   const savePedido = useCallback((createdBy: string, pedidoItems: PedidoSemanalItem[]): PedidoSemanal => {
     const pedido: PedidoSemanal = {
@@ -126,38 +121,49 @@ export function StockProvider({ children }: { children: ReactNode }) {
     recibidos: { itemId: string; cantidad: number }[],
   ) => {
     if (recibidos.length === 0) return
-    const recibidosMap = new Map(recibidos.map(r => [r.itemId, r.cantidad]))
-    const positivos = recibidos.filter(r => r.cantidad > 0)
+    // recibidos.cantidad viene en unidad de COMPRA (packs/bolsas/cajas).
+    const packsMap = new Map(recibidos.map(r => [r.itemId, r.cantidad]))
     const fecha = new Date()
     const fechaIso = fecha.toISOString()
     const fechaLabel = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
 
-    // Bump stock for all received items in a single update
+    // Bump stock (en unidad de consumo) convirtiendo packs -> base con el packSize de cada item.
     const itemNameById = new Map<string, string>()
+    const baseDeltaById = new Map<string, number>()
+    const orderUnitById = new Map<string, string>()
     setItems(prev => {
       const updated = prev.map(item => {
-        const cant = recibidosMap.get(item.id)
-        if (!cant || cant <= 0) return item
+        const packs = packsMap.get(item.id)
+        if (!packs || packs <= 0) return item
+        const base = +(packs * getPackSize(item)).toFixed(2)
         itemNameById.set(item.id, item.name)
-        return { ...item, stock: +(item.stock + cant).toFixed(1) }
+        baseDeltaById.set(item.id, base)
+        orderUnitById.set(item.id, getOrderUnit(item))
+        return { ...item, stock: +(item.stock + base).toFixed(2) }
       })
       localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
       return updated
     })
 
-    // Create entrada movements for each item received (>0), batched
-    if (positivos.length > 0) {
-      const newMovements: StockMovement[] = positivos.map(r => ({
+    // Create one entrada movement per item received (>0), quantity in consume units.
+    const newMovements: StockMovement[] = []
+    for (const [itemId, base] of baseDeltaById) {
+      const packs = packsMap.get(itemId) ?? 0
+      const orderUnit = orderUnitById.get(itemId) ?? ''
+      const packNote = base !== packs ? ` (${packs} ${orderUnit})` : ''
+      newMovements.push({
         id: generateId(),
-        itemId: r.itemId,
-        itemName: itemNameById.get(r.itemId) ?? '',
-        type: 'entrada' as const,
-        quantity: r.cantidad,
+        itemId,
+        itemName: itemNameById.get(itemId) ?? '',
+        type: 'entrada',
+        quantity: base,
         date: fechaIso,
         createdBy: recibidoBy,
-        notes: `Pedido semanal del ${fechaLabel}`,
+        notes: `Pedido semanal del ${fechaLabel}${packNote}`,
         pedidoId,
-      }))
+      })
+    }
+    if (newMovements.length > 0) {
       setMovements(prev => {
         const updated = [...newMovements, ...prev]
         localStorage.setItem(LS_MOVEMENTS, JSON.stringify(updated))
@@ -165,7 +171,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       })
     }
 
-    // Mark pedido as recibido and store per-item recibido
+    // Mark pedido as recibido and store per-item recibido (en unidad de compra).
     setPedidos(prev => {
       const updated = prev.map(p => {
         if (p.id !== pedidoId) return p
@@ -176,7 +182,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
           recibidoBy,
           items: p.items.map(it => ({
             ...it,
-            recibido: recibidosMap.get(it.itemId) ?? 0,
+            recibido: packsMap.get(it.itemId) ?? 0,
           })),
         }
       })
@@ -203,6 +209,31 @@ export function StockProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const addItem = useCallback((data: Omit<DepositoItem, 'id'>) => {
+    const item: DepositoItem = { ...data, id: generateId() }
+    setItems(prev => {
+      const updated = [...prev, item]
+      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
+  const updateItem = useCallback((id: string, data: Partial<Omit<DepositoItem, 'id'>>) => {
+    setItems(prev => {
+      const updated = prev.map(it => (it.id === id ? { ...it, ...data } : it))
+      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
+  const deleteItem = useCallback((id: string) => {
+    setItems(prev => {
+      const updated = prev.filter(it => it.id !== id)
+      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
+
   const resetStock = useCallback(() => {
     setItems(mockItems)
     localStorage.setItem(LS_DEPOSITO, JSON.stringify(mockItems))
@@ -211,7 +242,8 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos,
-      addMovement, generatePedidoItems, savePedido, deletePedido, setPedidoMonto, recibirPedido, resetStock,
+      addMovement, savePedido, deletePedido, setPedidoMonto, recibirPedido,
+      addItem, updateItem, deleteItem, resetStock,
     }}>
       {children}
     </StockContext.Provider>
@@ -224,13 +256,19 @@ export function useStock() {
   return ctx
 }
 
-export function generatePedidoText(pedidoItems: PedidoSemanalItem[], createdBy: string): string {
+export function generatePedidoText(
+  pedidoItems: PedidoSemanalItem[],
+  createdBy: string,
+  items?: DepositoItem[],
+): string {
   if (pedidoItems.length === 0) return ''
 
-  // Group by supplier
+  const supplierById = new Map((items ?? []).map(i => [i.id, i.supplierId]))
+
+  // Group by supplier (item override first, then static map)
   const groups = new Map<string, { supplierName: string; items: PedidoSemanalItem[] }>()
   for (const item of pedidoItems) {
-    const supplierId = depositoItemSupplier[item.itemId] ?? 'sup-alim'
+    const supplierId = supplierById.get(item.itemId) ?? depositoItemSupplier[item.itemId] ?? 'sup-alim'
     const supplier = depositoSuppliers.find(s => s.id === supplierId)
     const name = supplier?.name ?? 'Otro'
 
@@ -256,7 +294,7 @@ export function generatePedidoText(pedidoItems: PedidoSemanalItem[], createdBy: 
   for (const [, group] of groups) {
     lines.push(`*${group.supplierName.toUpperCase()}:*`)
     for (const item of group.items) {
-      lines.push(`  - ${item.name}: ${item.aPedir} ${item.unit}`)
+      lines.push(`  - ${item.name}: ${item.aPedir} ${item.orderUnit ?? item.unit}`)
     }
     lines.push('')
   }
