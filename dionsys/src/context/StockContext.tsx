@@ -24,10 +24,18 @@ const SUPPLIER_PHONES: Record<string, string> = {
   'digamar': '223447200',
 }
 
-// Items que se compran por bulto (se cuentan desglosados en unidad de consumo).
-const ITEM_PACKS: Record<string, { unit: string; packUnit: string; packSize: number }> = {
-  'des-1': { unit: 'paquete', packUnit: 'bulto', packSize: 10 }, // Harina: bulto de 10 paquetes
-  'des-2': { unit: 'paquete', packUnit: 'bulto', packSize: 10 }, // Azucar: bulto de 10 paquetes
+// Items que se compran por bulto/pack (se cuentan desglosados en unidad de consumo).
+// scale=true => stock y stockIdeal actuales están en packs, se multiplican por packSize
+// para pasar a la subunidad (preserva el "pedir N packs para llegar al ideal").
+// Harina/Azucar NO escalan: 1 paquete = 1 kg, el número queda igual.
+const ITEM_PACKS: Record<string, { unit: string; packUnit: string; packSize: number; scale?: boolean }> = {
+  'des-1':  { unit: 'paquete', packUnit: 'bulto',   packSize: 10 },               // Harina
+  'des-2':  { unit: 'paquete', packUnit: 'bulto',   packSize: 10 },               // Azucar
+  'des-5':  { unit: 'unidad',  packUnit: 'caja',    packSize: 6,   scale: true },  // Cafe x6
+  'lim-28': { unit: 'unidad',  packUnit: 'paquete', packSize: 12,  scale: true },  // Esponjas amarillas x12
+  'lim-4':  { unit: 'unidad',  packUnit: 'caja',    packSize: 500, scale: true },  // Jaboncitos x500
+  'lim-6':  { unit: 'unidad',  packUnit: 'bolson',  packSize: 50,  scale: true },  // Bolsa camiseta x50
+  'lim-14': { unit: 'unidad',  packUnit: 'paquete', packSize: 50,  scale: true },  // Bolsa consorcio x50
 }
 
 function migrateSuppliers(list: DepositoSupplier[]): DepositoSupplier[] {
@@ -45,8 +53,16 @@ function migrateItems(list: DepositoItem[]): DepositoItem[] {
   let changed = false
   const next = list.map(it => {
     const pack = ITEM_PACKS[it.id]
-    if (pack && !it.packUnit) { changed = true; return { ...it, ...pack } }
-    return it
+    if (!pack || it.packUnit) return it
+    changed = true
+    const { scale, unit, packUnit, packSize } = pack
+    return {
+      ...it,
+      unit, packUnit, packSize,
+      ...(scale
+        ? { stock: +(it.stock * packSize).toFixed(2), stockIdeal: +(it.stockIdeal * packSize).toFixed(2) }
+        : {}),
+    }
   })
   if (changed) localStorage.setItem(LS_DEPOSITO, JSON.stringify(next))
   return next
