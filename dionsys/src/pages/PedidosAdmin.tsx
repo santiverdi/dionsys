@@ -16,8 +16,10 @@ function formatDate(iso: string) {
   })
 }
 
-function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void; onRecibir: () => void }) {
+function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void; onRecibir: () => void; onMarcarPedido: () => void }) {
   const { items, suppliers } = useStock()
+  const isArmado = pedido.status === 'armado'
+  const isPedido = pedido.status === 'pedido'
   const isRecibido = pedido.status === 'recibido'
 
   // Group items by supplier (item override first, then static map)
@@ -66,6 +68,13 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
           <p className="text-xs text-navy-400 flex items-center gap-1">
             <Clock size={11} /> {formatDate(pedido.date)} — {pedido.createdBy}
           </p>
+          {isPedido && pedido.pedidoAt && (
+            <p className="text-xs text-blue-700 mt-0.5 flex items-center gap-1">
+              <Truck size={11} />
+              Pedido {new Date(pedido.pedidoAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              {pedido.pedidoBy ? ` por ${pedido.pedidoBy}` : ''}
+            </p>
+          )}
           {isRecibido && pedido.recibidoAt && (
             <p className="text-xs text-green-700 mt-0.5 flex items-center gap-1">
               <CheckCircle2 size={11} />
@@ -75,7 +84,7 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
           )}
         </div>
         <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-          isRecibido ? 'bg-green-100 text-green-700' : 'bg-gold-100 text-gold-700'
+          isRecibido ? 'bg-green-100 text-green-700' : isPedido ? 'bg-blue-100 text-blue-700' : 'bg-gold-100 text-gold-700'
         }`}>
           {pedido.status}
         </span>
@@ -180,7 +189,16 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
         )
       })}
 
-      {!isRecibido && isAdmin && (
+      {isAdmin && isArmado && (
+        <button
+          onClick={onMarcarPedido}
+          className="w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+        >
+          <Truck size={16} />
+          Marcar como pedido (avisa al conserje)
+        </button>
+      )}
+      {isAdmin && isPedido && (
         <button
           onClick={onRecibir}
           className="w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 transition-colors"
@@ -196,7 +214,7 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir }: { pedido: Ped
 export default function PedidosAdmin() {
   const { employee } = useAuth()
   const {
-    pedidos, setPedidoMonto, recibirPedido,
+    pedidos, setPedidoMonto, recibirPedido, marcarPedido,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
   } = useStock()
   const [montoTarget, setMontoTarget] = useState<PedidoSemanal | null>(null)
@@ -206,8 +224,12 @@ export default function PedidosAdmin() {
   const [supplierModal, setSupplierModal] = useState<DepositoSupplier | null | undefined>(undefined)
   const isAdmin = employee?.role === 'admin'
 
-  const pendientes = useMemo(
-    () => pedidos.filter(p => p.status === 'enviado'),
+  const paraPedir = useMemo(
+    () => pedidos.filter(p => p.status === 'armado'),
+    [pedidos]
+  )
+  const enCamino = useMemo(
+    () => pedidos.filter(p => p.status === 'pedido'),
     [pedidos]
   )
   const recibidos = useMemo(
@@ -225,6 +247,11 @@ export default function PedidosAdmin() {
     if (!recibirTarget || !employee) return
     recibirPedido(recibirTarget.id, employee.name, recibidosItems)
     setRecibirTarget(null)
+  }
+
+  function handleMarcarPedido(pedido: PedidoSemanal) {
+    if (!employee) return
+    marcarPedido(pedido.id, employee.name)
   }
 
   function handleSaveSupplier(data: Omit<DepositoSupplier, 'id'>) {
@@ -298,26 +325,45 @@ export default function PedidosAdmin() {
         </div>
       )}
 
-      {pendientes.length === 0 && recibidos.length === 0 ? (
+      {paraPedir.length === 0 && enCamino.length === 0 && recibidos.length === 0 ? (
         <div className="text-center py-16">
           <Send size={48} className="mx-auto text-navy-200 mb-3" />
           <p className="text-navy-400 font-medium">No hay pedidos</p>
-          <p className="text-sm text-navy-300 mt-1">Los pedidos aparecen cuando se generan desde Deposito.</p>
+          <p className="text-sm text-navy-300 mt-1">Los pedidos aparecen cuando Roxana los arma desde Deposito.</p>
         </div>
       ) : (
         <>
-          {pendientes.length > 0 && (
+          {paraPedir.length > 0 && (
             <>
               <h3 className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2">
-                Pendientes ({pendientes.length})
+                Para pedir ({paraPedir.length})
               </h3>
-              {pendientes.map(pedido => (
+              {paraPedir.map(pedido => (
                 <PedidoCard
                   key={pedido.id}
                   pedido={pedido}
                   isAdmin={isAdmin}
                   onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
+                  onMarcarPedido={() => handleMarcarPedido(pedido)}
+                />
+              ))}
+            </>
+          )}
+
+          {enCamino.length > 0 && (
+            <>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2 mt-6">
+                Pedidos hechos — esperando recepción ({enCamino.length})
+              </h3>
+              {enCamino.map(pedido => (
+                <PedidoCard
+                  key={pedido.id}
+                  pedido={pedido}
+                  isAdmin={isAdmin}
+                  onCargarMonto={() => setMontoTarget(pedido)}
+                  onRecibir={() => setRecibirTarget(pedido)}
+                  onMarcarPedido={() => handleMarcarPedido(pedido)}
                 />
               ))}
             </>
@@ -335,6 +381,7 @@ export default function PedidosAdmin() {
                   isAdmin={isAdmin}
                   onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
+                  onMarcarPedido={() => handleMarcarPedido(pedido)}
                 />
               ))}
             </>

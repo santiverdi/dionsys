@@ -116,7 +116,10 @@ export interface PedidoSemanal {
   date: string
   createdBy: string
   items: PedidoSemanalItem[]
-  status: 'enviado' | 'recibido' | 'borrado'
+  // armado = Roxana lo guardó · pedido = Charo lo pidió a las distribuidoras · recibido = llegó al depósito
+  status: 'armado' | 'pedido' | 'recibido' | 'borrado'
+  pedidoAt?: string
+  pedidoBy?: string
   deletedAt?: string
   deletedBy?: string
   recibidoAt?: string

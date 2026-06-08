@@ -91,6 +91,7 @@ interface StockContextType {
   suppliers: DepositoSupplier[]
   addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string, pedidoId?: string) => void
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
+  marcarPedido: (pedidoId: string, by: string) => void
   deletePedido: (id: string, deletedBy: string) => void
   setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
   recibirPedido: (pedidoId: string, recibidoBy: string, recibidos: { itemId: string; cantidad: number }[]) => void
@@ -118,7 +119,16 @@ export function StockProvider({ children }: { children: ReactNode }) {
 
   const [pedidos, setPedidos] = useState<PedidoSemanal[]>(() => {
     const saved = localStorage.getItem(LS_PEDIDOS)
-    return saved ? JSON.parse(saved) : []
+    if (!saved) return []
+    // Migración: el viejo estado 'enviado' (Roxana guardaba) pasa a 'armado'.
+    const parsed: PedidoSemanal[] = JSON.parse(saved)
+    let changed = false
+    const migrated = parsed.map(p => {
+      if ((p.status as string) === 'enviado') { changed = true; return { ...p, status: 'armado' as const } }
+      return p
+    })
+    if (changed) localStorage.setItem(LS_PEDIDOS, JSON.stringify(migrated))
+    return migrated
   })
 
   const [suppliers, setSuppliers] = useState<DepositoSupplier[]>(() => {
@@ -178,7 +188,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
       date: new Date().toISOString(),
       createdBy,
       items: pedidoItems,
-      status: 'enviado',
+      status: 'armado',
     }
     setPedidos(prev => {
       const updated = [pedido, ...prev]
@@ -186,6 +196,18 @@ export function StockProvider({ children }: { children: ReactNode }) {
       return updated
     })
     return pedido
+  }, [])
+
+  const marcarPedido = useCallback((pedidoId: string, by: string) => {
+    setPedidos(prev => {
+      const updated = prev.map(p =>
+        p.id === pedidoId && p.status === 'armado'
+          ? { ...p, status: 'pedido' as const, pedidoAt: new Date().toISOString(), pedidoBy: by }
+          : p
+      )
+      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      return updated
+    })
   }, [])
 
   const deletePedido = useCallback((id: string, deletedBy: string) => {
@@ -352,7 +374,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos, suppliers,
-      addMovement, savePedido, deletePedido, setPedidoMonto, recibirPedido,
+      addMovement, savePedido, marcarPedido, deletePedido, setPedidoMonto, recibirPedido,
       addItem, updateItem, deleteItem,
       addSupplier, updateSupplier, deleteSupplier, resetStock,
     }}>

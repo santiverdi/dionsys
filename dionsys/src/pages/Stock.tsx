@@ -659,16 +659,21 @@ export default function Stock() {
                 {pedidos.map(pedido => {
                   const isBorrado = pedido.status === 'borrado'
                   const isRecibido = pedido.status === 'recibido'
+                  const isPedido = pedido.status === 'pedido'
                   const cardBg = isBorrado
                     ? 'bg-red-50 border-red-200 opacity-70'
                     : isRecibido
                       ? 'bg-green-50/30 border-green-200'
-                      : 'bg-white border-navy-100'
+                      : isPedido
+                        ? 'bg-blue-50/40 border-blue-200'
+                        : 'bg-white border-navy-100'
                   const badgeClass = isBorrado
                     ? 'bg-red-100 text-red-600'
                     : isRecibido
                       ? 'bg-green-100 text-green-700'
-                      : 'bg-gold-100 text-gold-700'
+                      : isPedido
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gold-100 text-gold-700'
                   return (
                     <div key={pedido.id} className={`rounded-xl p-4 shadow-sm border ${cardBg}`}>
                       <div className="flex justify-between items-start mb-2">
@@ -763,13 +768,18 @@ export default function Stock() {
                           </div>
                         ))
                       })()}
-                      {!isBorrado && !isRecibido && (
+                      {isPedido && (
                         <button
                           onClick={() => setRecibirTarget(pedido)}
                           className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 active:scale-[0.99] transition-all"
                         >
                           <PackageCheck size={16} /> Marcar recibido y sumar al depósito
                         </button>
+                      )}
+                      {pedido.status === 'armado' && (
+                        <p className="text-xs text-navy-400 mt-3 text-center italic">
+                          Esperando que administración lo pida a las distribuidoras.
+                        </p>
                       )}
                     </div>
                   )
