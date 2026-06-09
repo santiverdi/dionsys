@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
-import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, ClipboardList, Receipt, Cloud } from 'lucide-react'
+import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, ClipboardList, Receipt } from 'lucide-react'
 import type { Role } from '../types'
 import OccupancyReminder from './OccupancyReminder'
 import PedidosPorRecibir from './PedidosPorRecibir'
@@ -79,13 +79,6 @@ export default function Layout() {
               <p className="text-sm font-medium leading-tight">{employee?.name}</p>
               <p className="text-xs text-gold-400">{roleLabel[employee?.role ?? '']}</p>
             </div>
-            <button
-              onClick={() => navigate('/sync')}
-              className="p-2 rounded-lg hover:bg-navy-700 transition-colors text-gold-300 hover:text-gold-200"
-              title="Unificar / Sincronizar datos"
-            >
-              <Cloud size={20} />
-            </button>
             <button
               onClick={handleLogout}
               className="p-2 rounded-lg hover:bg-navy-700 transition-colors text-gold-300 hover:text-gold-200"

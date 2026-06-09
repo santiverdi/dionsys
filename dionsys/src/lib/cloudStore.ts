@@ -70,13 +70,33 @@ export async function pullAll(timeoutMs = 5000): Promise<void> {
     const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), timeoutMs))
     const result = await Promise.race([query, timeout])
     if (!result || result.error || !result.data) return
+    const cloudKeys = new Set<string>()
     for (const row of result.data as { key: string; value: unknown }[]) {
       if (!isSyncedKey(row.key)) continue
+      cloudKeys.add(row.key)
       // En modo consolidación no pisamos un almacén que este dispositivo ya tiene.
       if (CONSOLIDATION_MODE && localStorage.getItem(row.key) !== null) continue
       const json = JSON.stringify(row.value)
       lastSeen.set(row.key, json)
       localStorage.setItem(row.key, json)
+    }
+    // Auto-seed: si este dispositivo tiene un almacén que la nube TODAVÍA no tiene,
+    // lo sube solo al abrir (sin botones). Así un pedido/carga hecho en un equipo
+    // se publica automáticamente. No pisa nada en la nube: solo completa lo que falta.
+    if (!CONSOLIDATION_MODE) {
+      for (const key of SYNCED_KEYS) {
+        if (cloudKeys.has(key)) continue
+        const raw = localStorage.getItem(key)
+        if (raw === null) continue
+        try {
+          const value = JSON.parse(raw)
+          lastSeen.set(key, raw)
+          await supabase.from(TABLE).upsert(
+            { key, value, updated_at: new Date().toISOString() },
+            { onConflict: 'key' },
+          )
+        } catch { /* ignore */ }
+      }
     }
   } catch (err) {
     console.warn('[cloud] pullAll falló, sigo con localStorage:', err)
