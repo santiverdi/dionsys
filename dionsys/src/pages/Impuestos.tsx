@@ -1,12 +1,36 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useImpuestos } from '../context/ImpuestosContext'
 import { useAuth } from '../context/AuthContext'
 import { validateMonto } from '../utils/validators'
+import { extractInvoice } from '../lib/invoiceExtract'
 import {
   Receipt, ExternalLink, Calendar, ChevronLeft, ChevronRight,
-  Check, AlertTriangle, Clock, Edit3, Save, Copy, Plus, Trash2
+  Check, AlertTriangle, Clock, Edit3, Save, Copy, Plus, Trash2, FileUp, Loader2
 } from 'lucide-react'
 import type { ImpuestoServicio, FrecuenciaVto } from '../types'
+
+// Normaliza un texto para comparar (saca espacios, guiones, mayúsculas).
+function normKey(s: string): string {
+  return s.replace(/[^a-z0-9]/gi, '').toLowerCase()
+}
+
+// Busca el servicio que corresponde a una factura: primero por nro de cuenta, luego por nombre.
+function matchServicio(servicios: ImpuestoServicio[], nroCuenta: string, nombre: string): ImpuestoServicio | null {
+  const nro = normKey(nroCuenta)
+  if (nro) {
+    const byNro = servicios.find(s => s.nroCuenta && normKey(s.nroCuenta) === nro)
+    if (byNro) return byNro
+  }
+  const nom = normKey(nombre)
+  if (nom) {
+    const byNom = servicios.find(s => {
+      const sn = normKey(s.nombre)
+      return sn !== '' && (sn.includes(nom) || nom.includes(sn))
+    })
+    if (byNom) return byNom
+  }
+  return null
+}
 
 function mesLabel(year: number, month: number): string {
   const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -61,6 +85,16 @@ export default function Impuestos() {
   const [pagoVto, setPagoVto] = useState('')
   const [pagoVtoSig, setPagoVtoSig] = useState('')
   const [pagoError, setPagoError] = useState('')
+
+  // Lectura de factura con IA (PDF o foto)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [extracting, setExtracting] = useState(false)
+  const [extractError, setExtractError] = useState('')
+  // Cuando la factura no matchea ningún servicio, guardamos sus datos acá para
+  // autocompletar el pago apenas el usuario crea el servicio nuevo.
+  const [pendingFactura, setPendingFactura] = useState<
+    { nombre: string; nroCuenta: string; monto: string; vtoActual: string; vtoSiguiente: string } | null
+  >(null)
 
   // Mover pago de día en el calendario
   const [movingPagoId, setMovingPagoId] = useState<string | null>(null)
@@ -193,6 +227,64 @@ export default function Impuestos() {
   // Selector cuando hay varios pagos en el mismo día
   const [pickDayPagos, setPickDayPagos] = useState<string[]>([])
 
+  // Click en un recordatorio (vto del mes siguiente): abre "Cargar Pago" precargado
+  function handleRecordatorioClick(impuestoId: string, fechaVto: string) {
+    setShowNuevoForm(false)
+    setShowCargarPago(true)
+    setPagoServicioId(impuestoId)
+    setPagoVto(fechaVto)
+    setPagoMonto('')
+    setPagoVtoSig('')
+    setPagoError('')
+  }
+
+  // Precarga el formulario "Cargar Pago" con los datos extraídos de la factura.
+  function prefillPagoDesdeFactura(servicioId: string, monto: string, vtoActual: string, vtoSiguiente: string) {
+    setShowNuevoForm(false)
+    setShowCargarPago(true)
+    setPagoServicioId(servicioId)
+    setPagoMonto(monto)
+    setPagoVto(vtoActual)
+    setPagoVtoSig(vtoSiguiente)
+    setPagoError('')
+  }
+
+  // Lee la factura, extrae los datos y precarga el pago (o propone crear el servicio).
+  async function handleFactura(file: File) {
+    setExtractError('')
+    setExtracting(true)
+    try {
+      const data = await extractInvoice(file)
+      const match = matchServicio(servicios, data.nroCuenta, data.nombre)
+      if (match) {
+        setPendingFactura(null)
+        prefillPagoDesdeFactura(match.id, data.monto, data.vtoActual, data.vtoSiguiente)
+      } else {
+        // No existe el servicio: lo proponemos cargar con nombre + cuenta ya completos,
+        // y guardamos el resto para autocompletar el pago apenas se cree.
+        setShowCargarPago(false)
+        setNuevoServicio({ ...NUEVO_SERVICIO_VACIO, nombre: data.nombre, nroCuenta: data.nroCuenta })
+        setShowNuevoForm(true)
+        setPendingFactura(data)
+      }
+    } catch (e) {
+      setExtractError(e instanceof Error ? e.message : 'No se pudo leer la factura.')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  // Apenas el servicio nuevo (creado desde una factura) aparece en la lista,
+  // abrimos "Cargar Pago" autocompletado con los datos de esa factura.
+  useEffect(() => {
+    if (!pendingFactura) return
+    const match = matchServicio(servicios, pendingFactura.nroCuenta, pendingFactura.nombre)
+    if (match) {
+      prefillPagoDesdeFactura(match.id, pendingFactura.monto, pendingFactura.vtoActual, pendingFactura.vtoSiguiente)
+      setPendingFactura(null)
+    }
+  }, [servicios, pendingFactura])
+
   function startEditPago(pagoId: string) {
     const pago = pagos.find(p => p.id === pagoId)
     if (!pago) return
@@ -217,13 +309,40 @@ export default function Impuestos() {
   }
 
   // Calendar
+  type CalendarEvento = {
+    pagoId: string
+    impuestoId: string
+    nombre: string
+    pagado: boolean
+    vencido: boolean
+    esRecordatorio: boolean
+    fechaVto: string
+  }
+
   const calendarData = useMemo(() => {
     const daysInMonth = new Date(mesActual.year, mesActual.month, 0).getDate()
     const firstDayOfWeek = new Date(mesActual.year, mesActual.month - 1, 1).getDay()
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
 
-    const days: { dia: number | null; eventos: { pagoId: string; nombre: string; pagado: boolean; vencido: boolean }[] }[] = []
+    // Recordatorios: el "Vto. mes siguiente" de pagos previos que cae en este mes,
+    // mostrado solo si todavia no se cargo el pago real del servicio en este mes.
+    const recordatoriosPorServicio = new Map<string, { dia: number; nombre: string; fechaVto: string }>()
+    for (const pago of pagos) {
+      if (!pago.vtoSiguiente) continue
+      const vs = parseDateStr(pago.vtoSiguiente)
+      if (vs.year !== mesActual.year || vs.month !== mesActual.month) continue
+      if (pagosDelMes.some(p => p.impuestoId === pago.impuestoId)) continue
+      if (recordatoriosPorServicio.has(pago.impuestoId)) continue
+      const srv = servicios.find(s => s.id === pago.impuestoId)
+      recordatoriosPorServicio.set(pago.impuestoId, {
+        dia: vs.day,
+        nombre: srv?.nombre ?? '?',
+        fechaVto: pago.vtoSiguiente,
+      })
+    }
+
+    const days: { dia: number | null; eventos: CalendarEvento[] }[] = []
 
     for (let i = 0; i < firstDayOfWeek; i++) {
       days.push({ dia: null, eventos: [] })
@@ -232,7 +351,7 @@ export default function Impuestos() {
     for (let dia = 1; dia <= daysInMonth; dia++) {
       const fecha = new Date(mesActual.year, mesActual.month - 1, dia)
       fecha.setHours(0, 0, 0, 0)
-      const eventos: { pagoId: string; nombre: string; pagado: boolean; vencido: boolean }[] = []
+      const eventos: CalendarEvento[] = []
 
       for (const pago of pagosDelMes) {
         const vtoParsed = parseDateStr(pago.vtoActual)
@@ -240,9 +359,26 @@ export default function Impuestos() {
           const srv = servicios.find(s => s.id === pago.impuestoId)
           eventos.push({
             pagoId: pago.id,
+            impuestoId: pago.impuestoId,
             nombre: srv?.nombre ?? '?',
             pagado: pago.pagado,
             vencido: !pago.pagado && fecha < hoy,
+            esRecordatorio: false,
+            fechaVto: pago.vtoActual,
+          })
+        }
+      }
+
+      for (const [impuestoId, rec] of recordatoriosPorServicio) {
+        if (rec.dia === dia) {
+          eventos.push({
+            pagoId: '',
+            impuestoId,
+            nombre: rec.nombre,
+            pagado: false,
+            vencido: fecha < hoy,
+            esRecordatorio: true,
+            fechaVto: rec.fechaVto,
           })
         }
       }
@@ -251,7 +387,7 @@ export default function Impuestos() {
     }
 
     return days
-  }, [mesActual, servicios, pagosDelMes])
+  }, [mesActual, servicios, pagos, pagosDelMes])
 
   const totalMes = useMemo(() => pagosDelMes.reduce((sum, p) => sum + p.monto, 0), [pagosDelMes])
   const totalPagado = useMemo(() => pagosDelMes.filter(p => p.pagado).reduce((sum, p) => sum + p.monto, 0), [pagosDelMes])
@@ -269,7 +405,27 @@ export default function Impuestos() {
           <Receipt className="text-gold-400" size={28} />
           <h1 className="text-2xl font-bold text-navy-800">Impuestos y Servicios</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,image/*"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) handleFactura(f)
+              e.target.value = ''
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={extracting}
+            className="flex items-center gap-1.5 px-4 py-2 bg-gold-400 text-navy-900 rounded-lg text-sm font-semibold hover:bg-gold-500 disabled:opacity-50 disabled:cursor-wait transition-colors"
+            title="Subí un PDF o foto de la factura y completo los datos solo"
+          >
+            {extracting ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
+            {extracting ? 'Leyendo…' : 'Leer factura'}
+          </button>
           <button
             onClick={() => { setShowCargarPago(!showCargarPago); setShowNuevoForm(false) }}
             className="flex items-center gap-1.5 px-4 py-2 bg-navy-800 text-cream rounded-lg text-sm font-semibold hover:bg-navy-700 transition-colors"
@@ -279,13 +435,35 @@ export default function Impuestos() {
           </button>
           <button
             onClick={() => { setShowNuevoForm(!showNuevoForm); setShowCargarPago(false) }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gold-400 text-navy-900 rounded-lg text-sm font-semibold hover:bg-gold-500 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-navy-200 text-navy-700 rounded-lg text-sm font-semibold hover:bg-navy-50 transition-colors"
           >
             <Plus size={16} />
             Nuevo Servicio
           </button>
         </div>
       </div>
+
+      {/* Error al leer la factura */}
+      {extractError && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-3 flex items-start gap-2">
+          <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-red-700">{extractError}</div>
+          <button onClick={() => setExtractError('')} className="text-red-400 text-xs hover:text-red-600">Cerrar</button>
+        </div>
+      )}
+
+      {/* Factura leída pero el servicio no existe todavía */}
+      {pendingFactura && (
+        <div className="bg-indigo-50 border border-indigo-300 rounded-xl p-3 flex items-start gap-2">
+          <FileUp size={18} className="text-indigo-600 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-indigo-800">
+            Leí la factura de <strong>{pendingFactura.nombre || 'este servicio'}</strong>
+            {pendingFactura.nroCuenta && <> (cuenta {pendingFactura.nroCuenta})</>}, pero todavía no tenés ese servicio cargado.
+            Revisá los datos abajo y guardá el servicio: apenas lo hagas, completo el pago solo.
+          </div>
+          <button onClick={() => setPendingFactura(null)} className="text-indigo-400 text-xs hover:text-indigo-600">Descartar</button>
+        </div>
+      )}
 
       {/* Alerta: servicios sin cargar del mes actual */}
       {sinCargar.length > 0 && (
@@ -540,16 +718,23 @@ export default function Impuestos() {
                       {cell.eventos.map((ev, j) => (
                         <div
                           key={j}
+                          onClick={ev.esRecordatorio && !movingPagoId ? (e) => { e.stopPropagation(); handleRecordatorioClick(ev.impuestoId, ev.fechaVto) } : undefined}
                           className={`truncate rounded px-1 py-0.5 text-[10px] font-medium ${
-                            ev.pagoId === movingPagoId
-                              ? 'bg-blue-200 text-blue-800 ring-1 ring-blue-400'
-                              : ev.pagado
-                                ? 'bg-green-100 text-green-700'
-                                : ev.vencido
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-yellow-100 text-yellow-700'
+                            ev.esRecordatorio
+                              ? 'bg-indigo-50 text-indigo-600 border border-dashed border-indigo-300 cursor-pointer hover:bg-indigo-100'
+                              : ev.pagoId === movingPagoId
+                                ? 'bg-blue-200 text-blue-800 ring-1 ring-blue-400'
+                                : ev.pagado
+                                  ? 'bg-green-100 text-green-700'
+                                  : ev.vencido
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-yellow-100 text-yellow-700'
                           }`}
-                          title={movingPagoId ? 'Click en otro dia para mover' : `Click para mover ${ev.nombre}`}
+                          title={
+                            ev.esRecordatorio
+                              ? `Vto. del mes que viene — click para cargar el pago de ${ev.nombre}`
+                              : movingPagoId ? 'Click en otro dia para mover' : `Click para mover ${ev.nombre}`
+                          }
                         >
                           {ev.nombre.split('(')[0].trim()}
                         </div>
@@ -565,6 +750,7 @@ export default function Impuestos() {
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 border border-green-300" /> Pagado</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-100 border border-yellow-300" /> Pendiente</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-100 border border-red-300" /> Vencido</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-50 border border-dashed border-indigo-300" /> Próx. (a cargar)</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-300" /> Moviendo</span>
         </div>
       </div>
