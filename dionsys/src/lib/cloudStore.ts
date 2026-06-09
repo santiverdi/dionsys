@@ -41,6 +41,13 @@ export type SyncedKey = (typeof SYNCED_KEYS)[number]
 const TABLE = 'app_state'
 const SYNC_EVENT = 'dionsys-cloud-update'
 
+// MODO CONSOLIDACIÓN: mientras unificamos los datos que cada dispositivo cargó
+// por separado, NUNCA pisamos automáticamente lo local (ni al abrir la app ni por
+// Realtime). Todo el sync pasa a ser MANUAL desde la pantalla /sync (Subir/Bajar).
+// Esto evita que un dispositivo con datos buenos los pierda al bajar una versión
+// equivocada de la nube. Poner en false (y redeployar) cuando todo esté unificado.
+export const CONSOLIDATION_MODE = true
+
 // Recordamos el último JSON que escribimos por key para ignorar el "eco" de
 // nuestro propio cambio cuando Realtime nos lo devuelve.
 const lastSeen = new Map<string, string>()
@@ -63,6 +70,8 @@ export async function pullAll(timeoutMs = 5000): Promise<void> {
     if (!result || result.error || !result.data) return
     for (const row of result.data as { key: string; value: unknown }[]) {
       if (!isSyncedKey(row.key)) continue
+      // En modo consolidación no pisamos un almacén que este dispositivo ya tiene.
+      if (CONSOLIDATION_MODE && localStorage.getItem(row.key) !== null) continue
       const json = JSON.stringify(row.value)
       lastSeen.set(row.key, json)
       localStorage.setItem(row.key, json)
@@ -100,6 +109,9 @@ function pushKey(key: SyncedKey, value: unknown) {
  */
 export function persist(key: SyncedKey, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value))
+  // En modo consolidación NO subimos automáticamente: la nube solo se toca a mano
+  // desde /sync, para que el uso normal no pise datos sin unificar todavía.
+  if (CONSOLIDATION_MODE) return
   pushKey(key, value)
 }
 
@@ -119,6 +131,9 @@ export function subscribeRealtime(): () => void {
       payload => {
         const row = payload.new as { key?: string; value?: unknown } | null
         if (!row || !isSyncedKey(row.key)) return
+        // En modo consolidación no aplicamos cambios remotos sobre almacenes que
+        // este dispositivo ya tiene (se sincroniza a mano desde /sync).
+        if (CONSOLIDATION_MODE && localStorage.getItem(row.key) !== null) return
         const json = JSON.stringify(row.value)
         if (lastSeen.get(row.key) === json) return // es el eco de nuestro propio cambio
         lastSeen.set(row.key, json)
