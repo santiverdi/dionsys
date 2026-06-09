@@ -46,7 +46,9 @@ const SYNC_EVENT = 'dionsys-cloud-update'
 // Realtime). Todo el sync pasa a ser MANUAL desde la pantalla /sync (Subir/Bajar).
 // Esto evita que un dispositivo con datos buenos los pierda al bajar una versión
 // equivocada de la nube. Poner en false (y redeployar) cuando todo esté unificado.
-export const CONSOLIDATION_MODE = true
+// 2026-06-09: unificación cerrada → sync automático normal (cloud manda al abrir,
+// auto-push en cada cambio, Realtime). Sin cargas concurrentes en la misma sección.
+export const CONSOLIDATION_MODE = false
 
 // Recordamos el último JSON que escribimos por key para ignorar el "eco" de
 // nuestro propio cambio cuando Realtime nos lo devuelve.
