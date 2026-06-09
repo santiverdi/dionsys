@@ -19,6 +19,7 @@ import Stock from './pages/Stock'
 import Mantenimiento from './pages/Mantenimiento'
 import PedidosAdmin from './pages/PedidosAdmin'
 import Impuestos from './pages/Impuestos'
+import SyncPanel from './pages/SyncPanel'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { employee } = useAuth()
@@ -61,6 +62,8 @@ function AppRoutes() {
         <Route path="mantenimiento" element={<RoleRoute path="/mantenimiento"><Mantenimiento /></RoleRoute>} />
         <Route path="pedidos-admin" element={<RoleRoute path="/pedidos-admin"><PedidosAdmin /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
+        {/* Herramienta de unificación de datos (oculta del menú). Cualquier usuario logueado. */}
+        <Route path="sync" element={<SyncPanel />} />
       </Route>
     </Routes>
   )

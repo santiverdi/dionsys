@@ -132,6 +132,83 @@ export function subscribeRealtime(): () => void {
   }
 }
 
+// ============================================================================
+// Herramientas de UNIFICACIÓN (consolidación one-time entre dispositivos).
+// Usadas por la pantalla /sync. Operan a mano, nunca automáticamente.
+// ============================================================================
+
+export interface StoreMeta {
+  key: SyncedKey
+  localCount: number | null // null = no existe en este dispositivo
+  cloudCount: number | null // null = no existe en la nube
+  cloudUpdatedAt: string | null
+}
+
+function countOf(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  if (Array.isArray(value)) return value.length
+  if (typeof value === 'object') return Object.keys(value as object).length
+  return 1
+}
+
+function localValue(key: SyncedKey): unknown {
+  const raw = localStorage.getItem(key)
+  if (raw === null) return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
+
+/** Lee el estado local + nube de cada almacén, para mostrarlo lado a lado. */
+export async function fetchStoreMeta(): Promise<StoreMeta[]> {
+  const cloud = new Map<string, { value: unknown; updated_at: string }>()
+  if (supabase) {
+    const { data, error } = await supabase.from(TABLE).select('key, value, updated_at')
+    if (!error && data) {
+      for (const row of data as { key: string; value: unknown; updated_at: string }[]) {
+        cloud.set(row.key, { value: row.value, updated_at: row.updated_at })
+      }
+    }
+  }
+  return SYNCED_KEYS.map(key => {
+    const local = localValue(key)
+    const c = cloud.get(key)
+    return {
+      key,
+      localCount: countOf(local),
+      cloudCount: c ? countOf(c.value) : null,
+      cloudUpdatedAt: c?.updated_at ?? null,
+    }
+  })
+}
+
+/** Sube AHORA (sin debounce) el valor local de este dispositivo a la nube. */
+export async function pushNow(key: SyncedKey): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Nube no configurada' }
+  const value = localValue(key)
+  if (value === undefined) return { error: 'No hay nada local para subir' }
+  lastSeen.set(key, JSON.stringify(value))
+  const { error } = await supabase
+    .from(TABLE)
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+  return { error: error?.message ?? null }
+}
+
+/** Baja AHORA el valor de la nube a este dispositivo (pisa lo local). */
+export async function pullNow(key: SyncedKey): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Nube no configurada' }
+  const { data, error } = await supabase.from(TABLE).select('value').eq('key', key).maybeSingle()
+  if (error) return { error: error.message }
+  if (!data) return { error: 'No hay nada en la nube para este almacén' }
+  const json = JSON.stringify(data.value)
+  lastSeen.set(key, json)
+  localStorage.setItem(key, json)
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key, value: data.value } }))
+  return { error: null }
+}
+
 /**
  * Hook: conecta el estado de un Context con los cambios remotos de su almacén.
  * `onRemote` se llama con el nuevo valor cada vez que otro dispositivo lo cambia.
