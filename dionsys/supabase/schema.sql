@@ -11,7 +11,18 @@ create table if not exists public.app_state (
 );
 
 -- Realtime: que la tabla emita cambios para que los dispositivos se enteren al instante.
-alter publication supabase_realtime add table public.app_state;
+-- Idempotente: solo la agrega a la publicación si todavía no es miembro.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'app_state'
+  ) then
+    alter publication supabase_realtime add table public.app_state;
+  end if;
+end $$;
 
 -- ----------------------------------------------------------------------------
 -- Seguridad (RLS)
