@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type { Order, OrderItem } from '../types'
 import { generateId } from '../utils/imageCompressor'
+import { persist, useCloudSync } from '../lib/cloudStore'
+
+const LS_ORDERS = 'dionsys_orders'
 
 interface OrdersContextType {
   orders: Order[]
@@ -13,9 +16,11 @@ const OrdersContext = createContext<OrdersContextType | null>(null)
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('dionsys_orders')
+    const saved = localStorage.getItem(LS_ORDERS)
     return saved ? JSON.parse(saved) : []
   })
+
+  useCloudSync<Order[]>(LS_ORDERS, setOrders)
 
   const addOrder = useCallback((data: Omit<Order, 'id' | 'createdAt'>): Order => {
     const order: Order = {
@@ -25,7 +30,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }
     setOrders(prev => {
       const updated = [order, ...prev]
-      localStorage.setItem('dionsys_orders', JSON.stringify(updated))
+      persist(LS_ORDERS, updated)
       return updated
     })
     return order
@@ -38,7 +43,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ? { ...o, status: 'borrado' as const, deletedAt: new Date().toISOString(), deletedBy }
           : o
       )
-      localStorage.setItem('dionsys_orders', JSON.stringify(updated))
+      persist(LS_ORDERS, updated)
       return updated
     })
   }, [])
@@ -57,7 +62,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             }
           : o
       )
-      localStorage.setItem('dionsys_orders', JSON.stringify(updated))
+      persist(LS_ORDERS, updated)
       return updated
     })
   }, [])

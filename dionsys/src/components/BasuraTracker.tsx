@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, Trash2, CheckCircle2, Clock, Bell } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { persist, useCloudSync } from '../lib/cloudStore'
 
 interface BasuraRecord {
   date: string
@@ -23,13 +24,15 @@ function getStoredRecords(): BasuraRecord[] {
 }
 
 function saveRecords(records: BasuraRecord[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+  persist(STORAGE_KEY, records)
 }
 
 export default function BasuraTracker({ onBack }: { onBack: () => void }) {
   const { employee } = useAuth()
   const [records, setRecords] = useState<BasuraRecord[]>(getStoredRecords)
   const [showAlert, setShowAlert] = useState(false)
+
+  useCloudSync<BasuraRecord[]>(STORAGE_KEY, setRecords)
 
   const today = getTodayKey()
   const todayRecord = records.find(r => r.date === today)

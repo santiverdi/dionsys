@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
+import { persist, useCloudSync } from '../lib/cloudStore'
 
 export const HOTEL_CAPACITY = 53
 
@@ -68,7 +69,7 @@ function loadRecords(): OccupancyRecord[] {
 }
 
 function saveRecords(records: OccupancyRecord[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+  persist(STORAGE_KEY, records)
 }
 
 function todayStr(): string {
@@ -81,6 +82,8 @@ const OccupancyContext = createContext<OccupancyContextType | null>(null)
 export function OccupancyProvider({ children }: { children: ReactNode }) {
   const [records, setRecords] = useState<OccupancyRecord[]>(loadRecords)
   const currentTurno = getCurrentTurno()
+
+  useCloudSync<OccupancyRecord[]>(STORAGE_KEY, setRecords)
 
   const setToday = useCallback((guests: number, rooms: number, createdBy: string, extra?: Partial<OccupancyRecord>) => {
     setRecords(prev => {

@@ -7,6 +7,7 @@ import { generateId } from '../utils/imageCompressor'
 import { receptionSuppliers, lacteosProducts } from '../data/mock'
 import { useAuth } from '../context/AuthContext'
 import { useOrders, generateWhatsAppMessage } from '../context/OrdersContext'
+import { persist } from '../lib/cloudStore'
 import type { ConsumptionRecord } from '../types'
 
 const STORAGE_KEY = 'dionsys_lacteos_consumption'
@@ -17,7 +18,7 @@ function loadConsumption(): ConsumptionRecord[] {
 }
 
 function saveConsumption(records: ConsumptionRecord[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+  persist(STORAGE_KEY, records)
 }
 
 interface Props {

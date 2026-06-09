@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type { ImpuestoServicio, PagoMensual } from '../types'
+import { persist, useCloudSync } from '../lib/cloudStore'
 
 interface ImpuestosContextType {
   servicios: ImpuestoServicio[]
@@ -24,7 +25,7 @@ function loadServicios(): ImpuestoServicio[] {
 }
 
 function saveServicios(servicios: ImpuestoServicio[]) {
-  localStorage.setItem(SERVICIOS_KEY, JSON.stringify(servicios))
+  persist(SERVICIOS_KEY, servicios)
 }
 
 function loadPagos(): PagoMensual[] {
@@ -33,7 +34,7 @@ function loadPagos(): PagoMensual[] {
 }
 
 function savePagos(pagos: PagoMensual[]) {
-  localStorage.setItem(PAGOS_KEY, JSON.stringify(pagos))
+  persist(PAGOS_KEY, pagos)
 }
 
 const ImpuestosContext = createContext<ImpuestosContextType | null>(null)
@@ -41,6 +42,9 @@ const ImpuestosContext = createContext<ImpuestosContextType | null>(null)
 export function ImpuestosProvider({ children }: { children: ReactNode }) {
   const [servicios, setServicios] = useState<ImpuestoServicio[]>(loadServicios)
   const [pagos, setPagos] = useState<PagoMensual[]>(loadPagos)
+
+  useCloudSync<ImpuestoServicio[]>(SERVICIOS_KEY, setServicios)
+  useCloudSync<PagoMensual[]>(PAGOS_KEY, setPagos)
 
   const addServicio = useCallback((servicio: Omit<ImpuestoServicio, 'id'>) => {
     setServicios(prev => {

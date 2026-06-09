@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { getCurrentTurno, type Turno } from './OccupancyContext'
+import { persist, useCloudSync } from '../lib/cloudStore'
 
 export type { Turno }
 
@@ -44,7 +45,7 @@ function loadOverrides(): TurnoOverride[] {
 }
 
 function saveOverrides(overrides: TurnoOverride[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides))
+  persist(STORAGE_KEY, overrides)
 }
 
 function todayStr(): string {
@@ -56,6 +57,8 @@ const TurnosContext = createContext<TurnosContextType | null>(null)
 
 export function TurnosProvider({ children }: { children: ReactNode }) {
   const [overrides, setOverrides] = useState<TurnoOverride[]>(loadOverrides)
+
+  useCloudSync<TurnoOverride[]>(STORAGE_KEY, setOverrides)
 
   const findOverride = useCallback((date: string, turno: Turno): TurnoOverride | undefined => {
     return overrides.find(o => o.date === date && o.turno === turno)

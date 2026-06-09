@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { cloudEnabled } from './lib/supabase'
+import { pullAll, subscribeRealtime } from './lib/cloudStore'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
 import { StockProvider } from './context/StockContext'
@@ -63,8 +66,42 @@ function AppRoutes() {
   )
 }
 
+// Antes de montar los Context (que leen localStorage en su init), bajamos los
+// datos de la nube a localStorage. Mostramos un splash breve mientras tanto.
+// Si la nube no está configurada o tarda, arrancamos igual con lo local.
+function CloudGate({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(!cloudEnabled)
+
+  useEffect(() => {
+    if (!cloudEnabled) return
+    let unsubscribe = () => {}
+    let active = true
+    pullAll().finally(() => {
+      if (!active) return
+      setReady(true)
+      unsubscribe = subscribeRealtime()
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-cream">
+        <div className="w-10 h-10 rounded-full border-4 border-navy-200 border-t-navy-800 animate-spin" />
+        <p className="text-sm text-navy-500 font-medium">Sincronizando…</p>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}
+
 export default function App() {
   return (
+    <CloudGate>
     <BrowserRouter>
       <AuthProvider>
         <OrdersProvider>
@@ -82,5 +119,6 @@ export default function App() {
         </OrdersProvider>
       </AuthProvider>
     </BrowserRouter>
+    </CloudGate>
   )
 }

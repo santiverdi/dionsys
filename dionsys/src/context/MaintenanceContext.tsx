@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type { MaintenanceTask, MaintenanceMaterial, Role } from '../types'
 import { generateId } from '../utils/imageCompressor'
+import { persist, useCloudSync } from '../lib/cloudStore'
 
 const LS_KEY = 'dionsys_maintenance_tasks'
 
@@ -51,7 +52,7 @@ function loadTasks(): MaintenanceTask[] {
 
 function saveTasks(tasks: MaintenanceTask[]): boolean {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(tasks))
+    persist(LS_KEY, tasks)
     return true
   } catch {
     alert('Error: No hay espacio para guardar. Elimina tareas viejas del historial.')
@@ -61,6 +62,8 @@ function saveTasks(tasks: MaintenanceTask[]): boolean {
 
 export function MaintenanceProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<MaintenanceTask[]>(loadTasks)
+
+  useCloudSync<MaintenanceTask[]>(LS_KEY, setTasks)
 
   const createTask = useCallback((data: CreateTaskData): MaintenanceTask => {
     const task: MaintenanceTask = {

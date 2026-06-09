@@ -3,6 +3,7 @@ import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem, Dep
 import { generateId } from '../utils/imageCompressor'
 import { depositoItems as mockItems, depositoSuppliers as mockSuppliers, depositoItemSupplier } from '../data/mock'
 import { getOrderUnit, getPackSize } from '../utils/deposito'
+import { persist, useCloudSync } from '../lib/cloudStore'
 
 const LS_DEPOSITO = 'dionsys_deposito'
 const LS_MOVEMENTS = 'dionsys_stock_movements'
@@ -137,6 +138,12 @@ export function StockProvider({ children }: { children: ReactNode }) {
     return migrateSuppliers(saved ? JSON.parse(saved) : mockSuppliers)
   })
 
+  // Sync remoto: cuando otro dispositivo cambia un almacén, refrescamos el estado.
+  useCloudSync<DepositoItem[]>(LS_DEPOSITO, setItems)
+  useCloudSync<StockMovement[]>(LS_MOVEMENTS, setMovements)
+  useCloudSync<PedidoSemanal[]>(LS_PEDIDOS, setPedidos)
+  useCloudSync<DepositoSupplier[]>(LS_SUPPLIERS, setSuppliers)
+
   const addMovement = useCallback((
     itemId: string,
     type: 'entrada' | 'salida',
@@ -159,7 +166,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
         }
         return { ...item, stock: +(item.stock + quantity).toFixed(1) }
       })
-      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      persist(LS_DEPOSITO, updated)
       return updated
     })
 
@@ -178,7 +185,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     }
     setMovements(prev => {
       const updated = [movement, ...prev]
-      localStorage.setItem(LS_MOVEMENTS, JSON.stringify(updated))
+      persist(LS_MOVEMENTS, updated)
       return updated
     })
   }, [])
@@ -193,7 +200,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     }
     setPedidos(prev => {
       const updated = [pedido, ...prev]
-      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      persist(LS_PEDIDOS, updated)
       return updated
     })
     return pedido
@@ -206,7 +213,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
           ? { ...p, status: 'pedido' as const, pedidoAt: new Date().toISOString(), pedidoBy: by }
           : p
       )
-      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      persist(LS_PEDIDOS, updated)
       return updated
     })
   }, [])
@@ -218,7 +225,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
           ? { ...p, status: 'borrado' as const, deletedAt: new Date().toISOString(), deletedBy }
           : p
       )
-      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      persist(LS_PEDIDOS, updated)
       return updated
     })
   }, [])
@@ -249,7 +256,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
         orderUnitById.set(item.id, getOrderUnit(item))
         return { ...item, stock: +(item.stock + base).toFixed(2) }
       })
-      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      persist(LS_DEPOSITO, updated)
       return updated
     })
 
@@ -274,7 +281,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     if (newMovements.length > 0) {
       setMovements(prev => {
         const updated = [...newMovements, ...prev]
-        localStorage.setItem(LS_MOVEMENTS, JSON.stringify(updated))
+        persist(LS_MOVEMENTS, updated)
         return updated
       })
     }
@@ -294,7 +301,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
           })),
         }
       })
-      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      persist(LS_PEDIDOS, updated)
       return updated
     })
   }, [])
@@ -312,7 +319,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
             }
           : p
       )
-      localStorage.setItem(LS_PEDIDOS, JSON.stringify(updated))
+      persist(LS_PEDIDOS, updated)
       return updated
     })
   }, [])
@@ -321,7 +328,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     const item: DepositoItem = { ...data, id: generateId() }
     setItems(prev => {
       const updated = [...prev, item]
-      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      persist(LS_DEPOSITO, updated)
       return updated
     })
   }, [])
@@ -329,7 +336,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const updateItem = useCallback((id: string, data: Partial<Omit<DepositoItem, 'id'>>) => {
     setItems(prev => {
       const updated = prev.map(it => (it.id === id ? { ...it, ...data } : it))
-      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      persist(LS_DEPOSITO, updated)
       return updated
     })
   }, [])
@@ -337,7 +344,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const deleteItem = useCallback((id: string) => {
     setItems(prev => {
       const updated = prev.filter(it => it.id !== id)
-      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      persist(LS_DEPOSITO, updated)
       return updated
     })
   }, [])
@@ -346,7 +353,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
     const supplier: DepositoSupplier = { ...data, id: generateId() }
     setSuppliers(prev => {
       const updated = [...prev, supplier]
-      localStorage.setItem(LS_SUPPLIERS, JSON.stringify(updated))
+      persist(LS_SUPPLIERS, updated)
       return updated
     })
   }, [])
@@ -354,7 +361,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const updateSupplier = useCallback((id: string, data: Partial<Omit<DepositoSupplier, 'id'>>) => {
     setSuppliers(prev => {
       const updated = prev.map(s => (s.id === id ? { ...s, ...data } : s))
-      localStorage.setItem(LS_SUPPLIERS, JSON.stringify(updated))
+      persist(LS_SUPPLIERS, updated)
       return updated
     })
   }, [])
@@ -362,7 +369,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const deleteSupplier = useCallback((id: string) => {
     setSuppliers(prev => {
       const updated = prev.filter(s => s.id !== id)
-      localStorage.setItem(LS_SUPPLIERS, JSON.stringify(updated))
+      persist(LS_SUPPLIERS, updated)
       return updated
     })
   }, [])
@@ -372,14 +379,14 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const clearAllStock = useCallback(() => {
     setItems(prev => {
       const updated = prev.map(it => ({ ...it, stock: 0 }))
-      localStorage.setItem(LS_DEPOSITO, JSON.stringify(updated))
+      persist(LS_DEPOSITO, updated)
       return updated
     })
   }, [])
 
   const resetStock = useCallback(() => {
     setItems(mockItems)
-    localStorage.setItem(LS_DEPOSITO, JSON.stringify(mockItems))
+    persist(LS_DEPOSITO, mockItems)
   }, [])
 
   return (
