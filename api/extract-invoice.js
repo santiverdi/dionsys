@@ -10,7 +10,7 @@
 // Request  (POST application/json): { mimeType: string, data: string(base64 sin prefijo) }
 // Response (200): { nombre, nroCuenta, monto, vtoActual, vtoSiguiente }
 
-const MODEL = 'gemini-2.0-flash'
+const MODEL = 'gemini-2.5-flash'
 
 const PROMPT = `Sos un asistente que extrae datos de facturas argentinas de servicios e impuestos (luz, gas, agua, ABL/municipales, expensas, etc.).
 Analizá el documento adjunto y devolvé EXACTAMENTE estos campos:
