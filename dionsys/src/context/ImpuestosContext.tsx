@@ -10,6 +10,7 @@ interface ImpuestosContextType {
   deleteServicio: (id: string) => void
   addPago: (pago: Omit<PagoMensual, 'id'>) => void
   updatePago: (pago: PagoMensual) => void
+  deletePago: (pagoId: string) => void
   togglePagado: (pagoId: string) => void
   getPagosByMes: (mes: string) => PagoMensual[]
   getVencimientosMes: (year: number, month: number) => { dia: number; servicios: { nombre: string; pagado: boolean; vencido: boolean }[] }[]
@@ -103,6 +104,14 @@ export function ImpuestosProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const deletePago = useCallback((pagoId: string) => {
+    setPagos(prev => {
+      const updated = prev.filter(p => p.id !== pagoId)
+      savePagos(updated)
+      return updated
+    })
+  }, [])
+
   const togglePagado = useCallback((pagoId: string) => {
     setPagos(prev => {
       const updated = prev.map(p =>
@@ -151,7 +160,7 @@ export function ImpuestosProvider({ children }: { children: ReactNode }) {
 
   return (
     <ImpuestosContext.Provider value={{
-      servicios, pagos, addServicio, updateServicio, deleteServicio, addPago, updatePago, togglePagado, getPagosByMes, getVencimientosMes
+      servicios, pagos, addServicio, updateServicio, deleteServicio, addPago, updatePago, deletePago, togglePagado, getPagosByMes, getVencimientosMes
     }}>
       {children}
     </ImpuestosContext.Provider>

@@ -67,7 +67,7 @@ const NUEVO_SERVICIO_VACIO: Omit<ImpuestoServicio, 'id'> = {
 }
 
 export default function Impuestos() {
-  const { servicios, pagos, addServicio, deleteServicio, addPago, updatePago, togglePagado, updateServicio } = useImpuestos()
+  const { servicios, pagos, addServicio, deleteServicio, addPago, updatePago, deletePago, togglePagado, updateServicio } = useImpuestos()
   const { employee } = useAuth()
 
   const now = new Date()
@@ -99,8 +99,9 @@ export default function Impuestos() {
   // Mover pago de día en el calendario
   const [movingPagoId, setMovingPagoId] = useState<string | null>(null)
 
-  // Editar pago desde la lista de abajo
+  // Editar / borrar pago desde la lista de abajo
   const [editingPagoId, setEditingPagoId] = useState<string | null>(null)
+  const [confirmDeletePagoId, setConfirmDeletePagoId] = useState<string | null>(null)
   const [editPagoVto, setEditPagoVto] = useState('')
   const [editPagoMonto, setEditPagoMonto] = useState('')
   const [editPagoVtoSig, setEditPagoVtoSig] = useState('')
@@ -908,13 +909,39 @@ export default function Impuestos() {
                     </div>
 
                     <div className="flex flex-col gap-2 shrink-0 items-end">
-                      <button
-                        onClick={() => startEditPago(pago.id)}
-                        className="p-1.5 rounded-lg hover:bg-navy-50 transition-colors"
-                        title="Editar pago"
-                      >
-                        <Edit3 size={14} className="text-navy-400" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => startEditPago(pago.id)}
+                          className="p-1.5 rounded-lg hover:bg-navy-50 transition-colors"
+                          title="Editar pago"
+                        >
+                          <Edit3 size={14} className="text-navy-400" />
+                        </button>
+                        {confirmDeletePagoId === pago.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => { deletePago(pago.id); setConfirmDeletePagoId(null) }}
+                              className="px-2 py-1 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600"
+                            >
+                              Borrar
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeletePagoId(null)}
+                              className="px-2 py-1 text-navy-400 rounded text-xs hover:bg-navy-50"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeletePagoId(pago.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Borrar pago"
+                          >
+                            <Trash2 size={14} className="text-navy-300" />
+                          </button>
+                        )}
+                      </div>
                       {srv.urlPago && (
                         <a
                           href={srv.urlPago}
