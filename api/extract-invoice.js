@@ -10,7 +10,11 @@
 // Request  (POST application/json): { mimeType: string, data: string(base64 sin prefijo) }
 // Response (200): { nombre, nroCuenta, monto, vtoActual, vtoSiguiente }
 
-const MODEL = 'gemini-2.5-flash'
+// Probamos los modelos en orden: si el 1ro está saturado (503), caemos al siguiente.
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash']
+const RETRYABLE = new Set([429, 500, 503]) // saturación / sobrecarga transitoria
+const MAX_TRIES_PER_MODEL = 3
+const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 const PROMPT = `Sos un asistente que extrae datos de facturas argentinas de servicios e impuestos (luz, gas, agua, ABL/municipales, expensas, etc.).
 Analizá el documento adjunto y devolvé EXACTAMENTE estos campos:
@@ -61,7 +65,6 @@ module.exports = async (req, res) => {
     return
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`
   const payload = {
     contents: [
       {
@@ -78,45 +81,68 @@ module.exports = async (req, res) => {
     },
   }
 
-  try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+  // Recorre los modelos; en cada uno reintenta ante sobrecarga transitoria (503/429/500)
+  // con backoff creciente. Solo aborta ante un error NO recuperable (ej: 400, 403).
+  let lastStatus = 0
+  let lastReason = ''
+  for (const model of MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    for (let attempt = 1; attempt <= MAX_TRIES_PER_MODEL; attempt++) {
+      let r
+      try {
+        r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } catch (err) {
+        console.error('[extract-invoice] fetch fallo', model, err)
+        lastStatus = 0
+        lastReason = 'No se pudo conectar con el servicio de IA.'
+        await sleep(attempt * 600)
+        continue
+      }
 
-    if (!r.ok) {
+      if (r.ok) {
+        const json = await r.json()
+        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text
+        if (!text) {
+          res.status(502).json({ error: 'La IA no devolvió datos legibles de la factura.' })
+          return
+        }
+        let parsed
+        try { parsed = JSON.parse(text) } catch {
+          res.status(502).json({ error: 'No se pudo interpretar la respuesta de la IA.' })
+          return
+        }
+        res.status(200).json({
+          nombre: String(parsed.nombre ?? '').trim(),
+          nroCuenta: String(parsed.nroCuenta ?? '').trim(),
+          monto: String(parsed.monto ?? '').trim(),
+          vtoActual: String(parsed.vtoActual ?? '').trim(),
+          vtoSiguiente: String(parsed.vtoSiguiente ?? '').trim(),
+        })
+        return
+      }
+
       const detail = await r.text()
-      console.error('[extract-invoice] Gemini error', r.status, detail)
-      // DIAGNÓSTICO TEMPORAL: mostramos el motivo real de Gemini en pantalla.
-      let reason = detail
-      try { reason = JSON.parse(detail)?.error?.message || detail } catch { /* texto plano */ }
-      res.status(502).json({ error: `IA rechazó (HTTP ${r.status}): ${String(reason).slice(0, 300)}` })
-      return
-    }
+      console.error('[extract-invoice] Gemini error', model, r.status, detail)
+      lastStatus = r.status
+      try { lastReason = JSON.parse(detail)?.error?.message || detail } catch { lastReason = detail }
 
-    const json = await r.json()
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) {
-      res.status(502).json({ error: 'La IA no devolvió datos legibles de la factura.' })
-      return
+      if (!RETRYABLE.has(r.status)) {
+        // Error definitivo (key inválida, request mal armado, etc.): no insistir.
+        res.status(502).json({ error: `IA rechazó (HTTP ${r.status}): ${String(lastReason).slice(0, 300)}` })
+        return
+      }
+      // Sobrecarga transitoria: esperar y reintentar (backoff 0.6s, 1.2s, 1.8s).
+      if (attempt < MAX_TRIES_PER_MODEL) await sleep(attempt * 600)
     }
-
-    let parsed
-    try { parsed = JSON.parse(text) } catch {
-      res.status(502).json({ error: 'No se pudo interpretar la respuesta de la IA.' })
-      return
-    }
-
-    res.status(200).json({
-      nombre: String(parsed.nombre ?? '').trim(),
-      nroCuenta: String(parsed.nroCuenta ?? '').trim(),
-      monto: String(parsed.monto ?? '').trim(),
-      vtoActual: String(parsed.vtoActual ?? '').trim(),
-      vtoSiguiente: String(parsed.vtoSiguiente ?? '').trim(),
-    })
-  } catch (err) {
-    console.error('[extract-invoice] fallo', err)
-    res.status(500).json({ error: 'Error inesperado al procesar la factura.' })
+    // Este modelo no respondió tras varios intentos: probamos el siguiente.
   }
+
+  res.status(503).json({
+    error: 'El servicio de IA está saturado en este momento. Probá de nuevo en un minuto.',
+    detail: `HTTP ${lastStatus}: ${String(lastReason).slice(0, 200)}`,
+  })
 }
