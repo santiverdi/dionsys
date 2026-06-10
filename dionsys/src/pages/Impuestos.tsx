@@ -240,6 +240,13 @@ export default function Impuestos() {
 
   // Precarga el formulario "Cargar Pago" con los datos extraídos de la factura.
   function prefillPagoDesdeFactura(servicioId: string, monto: string, vtoActual: string, vtoSiguiente: string) {
+    // El pago se archiva en el mes que muestra el calendario (mesStr). Por eso, al venir
+    // de una factura, llevamos el calendario al mes del vencimiento para que NO quede
+    // cargado en el mes actual si la factura es de otro mes (ej: factura de mayo en junio).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(vtoActual)) {
+      const { year, month } = parseDateStr(vtoActual)
+      setMesActual({ year, month })
+    }
     setShowNuevoForm(false)
     setShowCargarPago(true)
     setPagoServicioId(servicioId)

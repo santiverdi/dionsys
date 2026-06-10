@@ -132,7 +132,8 @@ module.exports = async (req, res) => {
 
       if (!RETRYABLE.has(r.status)) {
         // Error definitivo (key inválida, request mal armado, etc.): no insistir.
-        res.status(502).json({ error: `IA rechazó (HTTP ${r.status}): ${String(lastReason).slice(0, 300)}` })
+        // El detalle real queda en los logs (console.error de arriba).
+        res.status(502).json({ error: 'No se pudo leer la factura (error del servicio de IA).' })
         return
       }
       // Sobrecarga transitoria: esperar y reintentar (backoff 0.6s, 1.2s, 1.8s).
