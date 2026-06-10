@@ -3,9 +3,11 @@ import { useImpuestos } from '../context/ImpuestosContext'
 import { useAuth } from '../context/AuthContext'
 import { validateMonto } from '../utils/validators'
 import { extractInvoice } from '../lib/invoiceExtract'
+import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
 import {
   Receipt, ExternalLink, Calendar, ChevronLeft, ChevronRight,
-  Check, AlertTriangle, Clock, Edit3, Save, Copy, Plus, Trash2, FileUp, Loader2
+  Check, AlertTriangle, Clock, Edit3, Save, Copy, Plus, Trash2, FileUp, Loader2,
+  Paperclip, Eye, Download, X
 } from 'lucide-react'
 import type { ImpuestoServicio, FrecuenciaVto } from '../types'
 
@@ -85,6 +87,12 @@ export default function Impuestos() {
   const [pagoVto, setPagoVto] = useState('')
   const [pagoVtoSig, setPagoVtoSig] = useState('')
   const [pagoError, setPagoError] = useState('')
+  // Archivo de factura adjunto al pago que se está cargando.
+  const [pagoFacturaUrl, setPagoFacturaUrl] = useState('')
+  const [pagoFacturaNombre, setPagoFacturaNombre] = useState('')
+  const [subiendoFactura, setSubiendoFactura] = useState(false)
+  const [facturaUploadError, setFacturaUploadError] = useState('')
+  const cargarFacturaInputRef = useRef<HTMLInputElement>(null)
 
   // Lectura de factura con IA (PDF o foto)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -167,12 +175,37 @@ export default function Impuestos() {
       pagado: false,
       createdBy: employee?.name,
       createdAt: new Date().toISOString(),
+      facturaUrl: pagoFacturaUrl || undefined,
+      facturaNombre: pagoFacturaNombre || undefined,
     })
     setPagoServicioId('')
     setPagoMonto('')
     setPagoVto('')
     setPagoVtoSig('')
+    clearPagoFactura()
     setShowCargarPago(false)
+  }
+
+  function clearPagoFactura() {
+    setPagoFacturaUrl('')
+    setPagoFacturaNombre('')
+    setFacturaUploadError('')
+    setSubiendoFactura(false)
+  }
+
+  // Sube un archivo adjuntado a mano en el formulario "Cargar Pago".
+  async function handleAdjuntarFactura(file: File) {
+    setFacturaUploadError('')
+    setSubiendoFactura(true)
+    try {
+      const { url, nombre } = await uploadFactura(file)
+      setPagoFacturaUrl(url)
+      setPagoFacturaNombre(nombre)
+    } catch (e) {
+      setFacturaUploadError(e instanceof Error ? e.message : 'No se pudo adjuntar el archivo.')
+    } finally {
+      setSubiendoFactura(false)
+    }
   }
 
   function handleCopyNroCuenta(nro: string, id: string) {
@@ -237,6 +270,7 @@ export default function Impuestos() {
     setPagoMonto('')
     setPagoVtoSig('')
     setPagoError('')
+    clearPagoFactura()
   }
 
   // Precarga el formulario "Cargar Pago" con los datos extraídos de la factura.
@@ -260,9 +294,19 @@ export default function Impuestos() {
   // Lee la factura, extrae los datos y precarga el pago (o propone crear el servicio).
   async function handleFactura(file: File) {
     setExtractError('')
+    setFacturaUploadError('')
     setExtracting(true)
     try {
       const data = await extractInvoice(file)
+      // Adjuntamos el MISMO archivo que se leyó, para que quede guardado y Charo lo vea.
+      // Si la subida falla, igual seguimos con los datos extraídos (el adjunto es opcional).
+      try {
+        const { url, nombre } = await uploadFactura(file)
+        setPagoFacturaUrl(url)
+        setPagoFacturaNombre(nombre)
+      } catch (up) {
+        setFacturaUploadError(up instanceof Error ? up.message : 'Se leyó la factura pero no se pudo adjuntar el archivo.')
+      }
       const match = matchServicio(servicios, data.nroCuenta, data.nombre)
       if (match) {
         setPendingFactura(null)
@@ -435,7 +479,7 @@ export default function Impuestos() {
             {extracting ? 'Leyendo…' : 'Leer factura'}
           </button>
           <button
-            onClick={() => { setShowCargarPago(!showCargarPago); setShowNuevoForm(false) }}
+            onClick={() => { const opening = !showCargarPago; setShowCargarPago(opening); setShowNuevoForm(false); if (opening) clearPagoFactura() }}
             className="flex items-center gap-1.5 px-4 py-2 bg-navy-800 text-cream rounded-lg text-sm font-semibold hover:bg-navy-700 transition-colors"
           >
             <Plus size={16} />
@@ -551,19 +595,65 @@ export default function Impuestos() {
                   className="w-full text-sm border border-navy-200 rounded-lg px-3 py-2 mt-0.5 text-navy-600"
                 />
               </div>
+
+              {/* Adjuntar archivo de la factura (para que Charo lo vea y lo descargue) */}
+              <div>
+                <label className="text-xs text-navy-500 font-medium">Archivo de la factura (PDF o foto)</label>
+                <input
+                  ref={cargarFacturaInputRef}
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) handleAdjuntarFactura(f)
+                    e.target.value = ''
+                  }}
+                />
+                <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+                  {pagoFacturaUrl ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 border border-green-300 rounded-lg text-xs text-green-700 max-w-full">
+                      <Paperclip size={13} className="shrink-0" />
+                      <span className="truncate">{pagoFacturaNombre || 'Archivo adjunto'}</span>
+                      <button
+                        type="button"
+                        onClick={clearPagoFactura}
+                        className="text-green-500 hover:text-green-700 shrink-0"
+                        title="Quitar adjunto"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => cargarFacturaInputRef.current?.click()}
+                      disabled={subiendoFactura}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-navy-200 text-navy-600 rounded-lg text-xs font-medium hover:bg-navy-50 disabled:opacity-50 disabled:cursor-wait"
+                    >
+                      {subiendoFactura ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
+                      {subiendoFactura ? 'Subiendo…' : 'Adjuntar archivo'}
+                    </button>
+                  )}
+                </div>
+                {facturaUploadError && (
+                  <p className="text-xs text-amber-600 mt-1">{facturaUploadError}</p>
+                )}
+              </div>
+
               {pagoError && (
                 <p className="text-xs text-red-600 -mt-1">{pagoError}</p>
               )}
               <div className="flex gap-2 justify-end pt-1">
                 <button
-                  onClick={() => { setShowCargarPago(false); setPagoError('') }}
+                  onClick={() => { setShowCargarPago(false); setPagoError(''); clearPagoFactura() }}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-navy-500 hover:bg-navy-50"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleCargarPago}
-                  disabled={!pagoServicioId || !pagoMonto || !pagoVto}
+                  disabled={!pagoServicioId || !pagoMonto || !pagoVto || subiendoFactura}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-navy-800 text-cream hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <Save size={14} /> Cargar
@@ -884,6 +974,25 @@ export default function Impuestos() {
                         <p className="text-xs text-navy-400 mb-1.5">
                           Prox vto: {formatDateAR(pago.vtoSiguiente)}
                         </p>
+                      )}
+
+                      {pago.facturaUrl && (
+                        <div className="flex items-center gap-3 mb-1.5">
+                          <a
+                            href={pago.facturaUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                          >
+                            <Eye size={13} /> Ver factura
+                          </a>
+                          <a
+                            href={downloadUrl(pago.facturaUrl, pago.facturaNombre || 'factura')}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                          >
+                            <Download size={13} /> Descargar
+                          </a>
+                        </div>
                       )}
 
                       {srv.nroCuenta && (

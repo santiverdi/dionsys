@@ -83,7 +83,15 @@ export function ImpuestosProvider({ children }: { children: ReactNode }) {
       if (exists) {
         const updated = prev.map(p =>
           p.impuestoId === pago.impuestoId && p.mes === pago.mes
-            ? { ...p, monto: pago.monto, vtoActual: pago.vtoActual, vtoSiguiente: pago.vtoSiguiente }
+            ? {
+                ...p,
+                monto: pago.monto,
+                vtoActual: pago.vtoActual,
+                vtoSiguiente: pago.vtoSiguiente,
+                // Solo reemplazamos el adjunto si vino uno nuevo (no lo borramos sin querer).
+                facturaUrl: pago.facturaUrl ?? p.facturaUrl,
+                facturaNombre: pago.facturaNombre ?? p.facturaNombre,
+              }
             : p
         )
         savePagos(updated)

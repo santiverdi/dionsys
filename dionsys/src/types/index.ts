@@ -171,6 +171,8 @@ export interface PagoMensual {
   fechaPago?: string
   createdBy?: string
   createdAt?: string
+  facturaUrl?: string // URL pública del archivo de factura adjunto (Supabase Storage)
+  facturaNombre?: string // nombre original del archivo, para mostrar y descargar
 }
 
 export interface MaintenanceTask {
