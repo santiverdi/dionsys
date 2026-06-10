@@ -88,7 +88,10 @@ module.exports = async (req, res) => {
     if (!r.ok) {
       const detail = await r.text()
       console.error('[extract-invoice] Gemini error', r.status, detail)
-      res.status(502).json({ error: 'No se pudo leer la factura (error del servicio de IA).' })
+      // DIAGNÓSTICO TEMPORAL: mostramos el motivo real de Gemini en pantalla.
+      let reason = detail
+      try { reason = JSON.parse(detail)?.error?.message || detail } catch { /* texto plano */ }
+      res.status(502).json({ error: `IA rechazó (HTTP ${r.status}): ${String(reason).slice(0, 300)}` })
       return
     }
 
