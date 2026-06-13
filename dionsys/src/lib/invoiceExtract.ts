@@ -16,6 +16,7 @@ export interface ExtractedInvoiceItem {
   descripcion: string
   cantidad: string // número o ''
   importe: string  // número con punto decimal o ''
+  concepto: 'producto' | 'impuesto'
 }
 
 export interface ExtractedProviderInvoice {

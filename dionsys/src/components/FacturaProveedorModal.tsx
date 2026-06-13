@@ -15,7 +15,7 @@ interface Props {
 }
 
 // Fila editable: todo string para los inputs; se convierte a números al guardar.
-interface Row { descripcion: string; cantidad: string; importe: string }
+interface Row { descripcion: string; cantidad: string; importe: string; concepto: 'producto' | 'impuesto' }
 
 const TIPOS: TipoFactura[] = ['A', 'B', 'C']
 
@@ -24,6 +24,7 @@ function rowsFromItems(items?: FacturaItemLinea[]): Row[] {
     descripcion: it.descripcion,
     cantidad: it.cantidad != null ? String(it.cantidad) : '',
     importe: formatMonto(it.importe),
+    concepto: it.concepto === 'impuesto' ? 'impuesto' : 'producto',
   }))
 }
 
@@ -44,6 +45,8 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
   const [rows, setRows] = useState<Row[]>(rowsFromItems(initial?.items))
   // monto manual: solo se usa cuando no hay renglones cargados
   const [montoManual, setMontoManual] = useState(initial?.monto && !initial.items?.length ? formatMonto(initial.monto) : '')
+  // Total impreso que dice la factura (lo devuelve la IA); sirve para avisar si la suma de renglones no coincide.
+  const [montoFactura, setMontoFactura] = useState<number | null>(initial?.monto ?? null)
   const [facturaUrl, setFacturaUrl] = useState(initial?.facturaUrl)
   const [facturaNombre, setFacturaNombre] = useState(initial?.facturaNombre)
   const [extracting, setExtracting] = useState(false)
@@ -59,6 +62,8 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
 
   const itemsTotal = rows.reduce((acc, r) => acc + rowImporte(r.importe), 0)
   const hasRows = rows.length > 0
+  // Aviso si la suma de renglones no coincide con el total que dice la factura (suele faltar IVA o una percepción).
+  const mismatch = montoFactura != null && hasRows && Math.abs(montoFactura - itemsTotal) > 0.5
 
   async function handleFactura(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -70,6 +75,8 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
       const data = await extractProviderInvoice(file)
       if (data.tipoFactura && data.tipoFactura !== 'M') setTipo(data.tipoFactura)
       if (data.fecha) setFecha(data.fecha)
+      const totalFactura = validateMonto(data.monto || '')
+      setMontoFactura(totalFactura.ok ? totalFactura.value! : null)
       if (data.items?.length) {
         setRows(data.items.map(it => {
           const v = validateMonto(it.importe || '')
@@ -77,11 +84,11 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
             descripcion: it.descripcion,
             cantidad: it.cantidad || '',
             importe: v.ok ? formatMonto(v.value!) : (it.importe || ''),
+            concepto: it.concepto === 'impuesto' ? 'impuesto' : 'producto',
           }
         }))
       } else if (data.monto) {
-        const v = validateMonto(data.monto)
-        setMontoManual(v.ok ? formatMonto(v.value!) : data.monto)
+        setMontoManual(totalFactura.ok ? formatMonto(totalFactura.value!) : data.monto)
       }
       try {
         const { url, nombre } = await uploadFactura(file)
@@ -105,7 +112,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
     setRows(prev => prev.filter((_, i) => i !== idx))
   }
   function addRow() {
-    setRows(prev => [...prev, { descripcion: '', cantidad: '', importe: '' }])
+    setRows(prev => [...prev, { descripcion: '', cantidad: '', importe: '', concepto: 'producto' }])
   }
 
   function handleSave() {
@@ -121,6 +128,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
           descripcion: r.descripcion.trim() || 'Sin descripción',
           cantidad: parseCantidad(r.cantidad),
           importe: rowImporte(r.importe),
+          concepto: r.concepto,
         }))
       if (items.length === 0) { setError('Agregá al menos un renglón o un monto'); return }
       monto = items.reduce((a, it) => a + it.importe, 0)
@@ -241,45 +249,61 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
           <div className="space-y-1.5 mb-3">
             {/* encabezados */}
             <div className="flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-navy-400">
-              <span className="flex-1">Producto</span>
-              <span className="w-12 text-center">Cant.</span>
+              <span className="w-9" />
+              <span className="flex-1">Detalle</span>
+              <span className="w-10 text-center">Cant.</span>
               <span className="w-20 text-right">Importe</span>
               <span className="w-5" />
             </div>
-            {rows.map((r, idx) => (
-              <div key={idx} className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={r.descripcion}
-                  onChange={e => updateRow(idx, { descripcion: e.target.value })}
-                  placeholder="Producto"
-                  className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
-                />
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={r.cantidad}
-                  onChange={e => updateRow(idx, { cantidad: e.target.value })}
-                  placeholder="—"
-                  className="w-12 px-1.5 py-1.5 rounded-lg border border-navy-200 text-sm text-center focus:outline-none focus:border-gold-400"
-                />
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={r.importe}
-                  onChange={e => updateRow(idx, { importe: e.target.value })}
-                  placeholder="0,00"
-                  className="w-20 px-1.5 py-1.5 rounded-lg border border-navy-200 text-sm text-right focus:outline-none focus:border-gold-400"
-                />
-                <button onClick={() => removeRow(idx)} className="w-5 text-navy-300 hover:text-red-500 shrink-0" title="Quitar renglón">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+            {rows.map((r, idx) => {
+              const esImp = r.concepto === 'impuesto'
+              return (
+                <div key={idx} className={`flex items-center gap-1.5 ${esImp ? 'bg-amber-50 rounded-lg p-0.5' : ''}`}>
+                  <button
+                    onClick={() => updateRow(idx, { concepto: esImp ? 'producto' : 'impuesto' })}
+                    title={esImp ? 'Es impuesto/percepción (tocá para producto)' : 'Es producto (tocá para impuesto/percepción)'}
+                    className={`w-9 shrink-0 text-[10px] font-bold rounded py-2 ${esImp ? 'bg-amber-200 text-amber-800' : 'bg-navy-100 text-navy-400'}`}
+                  >
+                    {esImp ? 'IMP' : 'Prod'}
+                  </button>
+                  <input
+                    type="text"
+                    value={r.descripcion}
+                    onChange={e => updateRow(idx, { descripcion: e.target.value })}
+                    placeholder={esImp ? 'IVA / percepción' : 'Producto'}
+                    className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+                  />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={r.cantidad}
+                    onChange={e => updateRow(idx, { cantidad: e.target.value })}
+                    placeholder="—"
+                    className="w-10 px-1 py-1.5 rounded-lg border border-navy-200 text-sm text-center focus:outline-none focus:border-gold-400"
+                  />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={r.importe}
+                    onChange={e => updateRow(idx, { importe: e.target.value })}
+                    placeholder="0,00"
+                    className="w-20 px-1.5 py-1.5 rounded-lg border border-navy-200 text-sm text-right focus:outline-none focus:border-gold-400"
+                  />
+                  <button onClick={() => removeRow(idx)} className="w-5 text-navy-300 hover:text-red-500 shrink-0" title="Quitar renglón">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )
+            })}
             <div className="flex items-center justify-between pt-2 mt-1 border-t border-navy-100">
               <span className="text-sm font-semibold text-navy-600">Total</span>
               <span className="text-lg font-bold text-navy-800">{formatMontoCurrency(itemsTotal)}</span>
             </div>
+            {mismatch && (
+              <p className="text-[11px] text-amber-600 mt-1">
+                ⚠ La factura dice {formatMontoCurrency(montoFactura!)}. Revisá si falta algún renglón (IVA, percepción).
+              </p>
+            )}
           </div>
         ) : (
           <div className="mb-3">

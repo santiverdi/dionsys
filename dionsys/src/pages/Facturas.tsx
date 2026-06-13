@@ -78,6 +78,7 @@ export default function Facturas() {
       tipos: Record<string, number>
       proveedores: Map<string, number>
       productos: Map<string, { display: string; total: number }>
+      impuestos: Map<string, { display: string; total: number }>
     }
     const meses = new Map<string, MesAgg>()
     // Las facturas son registro financiero: cuentan aunque el pedido se haya borrado.
@@ -85,7 +86,7 @@ export default function Facturas() {
       for (const f of p.facturas ?? []) {
         const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
         if (!mes) continue
-        if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map(), productos: new Map() })
+        if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map(), productos: new Map(), impuestos: new Map() })
         const m = meses.get(mes)!
         m.total += f.monto
         const t = f.tipoFactura || 'Otra'
@@ -94,9 +95,10 @@ export default function Facturas() {
         for (const it of f.items ?? []) {
           const key = it.descripcion.trim().toUpperCase()
           if (!key) continue
-          const cur = m.productos.get(key) ?? { display: it.descripcion.trim(), total: 0 }
+          const dest = it.concepto === 'impuesto' ? m.impuestos : m.productos
+          const cur = dest.get(key) ?? { display: it.descripcion.trim(), total: 0 }
           cur.total += it.importe
-          m.productos.set(key, cur)
+          dest.set(key, cur)
         }
       }
     }
@@ -108,6 +110,7 @@ export default function Facturas() {
         tipos: d.tipos,
         proveedores: Array.from(d.proveedores.entries()).sort((a, b) => b[1] - a[1]),
         productos: Array.from(d.productos.values()).sort((a, b) => b.total - a.total),
+        impuestos: Array.from(d.impuestos.values()).sort((a, b) => b.total - a.total),
       }))
   }, [pedidos])
 
@@ -303,6 +306,19 @@ export default function Facturas() {
                               </li>
                             ))}
                           </ul>
+                        )}
+                        {m.impuestos.length > 0 && (
+                          <>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mb-1.5 mt-3">Impuestos y percepciones</p>
+                            <ul className="space-y-1">
+                              {m.impuestos.map(p => (
+                                <li key={p.display} className="flex items-center justify-between text-sm gap-2">
+                                  <span className="text-navy-600 truncate">{p.display}</span>
+                                  <span className="font-semibold text-navy-800 shrink-0">{formatMontoCurrency(p.total)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </>
                         )}
                       </div>
                     </div>

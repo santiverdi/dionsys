@@ -44,11 +44,18 @@ Analizá el documento adjunto y devolvé EXACTAMENTE estos campos:
 - proveedor: razón social o nombre del emisor de la factura (el que vende/cobra). Corto, sin CUIT ni domicilio.
 - monto: importe TOTAL de la factura, como número con punto decimal, sin separador de miles ni símbolo (ej: "15234.50").
 - fecha: fecha de emisión de la factura en formato YYYY-MM-DD.
-- items: lista con CADA renglón/producto de la factura. Para cada uno:
-    - descripcion: nombre del producto, corto.
-    - cantidad: cantidad de unidades como número (ej: "12"); si no figura, "".
-    - importe: importe TOTAL del renglón (cantidad × precio), número con punto decimal, sin separador de miles ni símbolo.
-  Incluí TODOS los renglones de productos. No incluyas subtotales, IVA, descuentos ni el total final como si fueran productos.
+- items: lista con CADA renglón del detalle. Incluí, como renglones SEPARADOS:
+    * Cada PRODUCTO con su importe NETO (sin sumarle el IVA al producto).
+    * Si el IVA está discriminado (típico en Factura A), agregalo como un renglón aparte (ej "IVA 21%") con su importe.
+    * Cada PERCEPCIÓN o impuesto (ej "Percepción IIBB", "Percepción IVA") como un renglón aparte.
+    * Cualquier otro cargo (flete, redondeo, etc.) como renglón aparte.
+  Para cada renglón:
+    - descripcion: nombre del producto, o del impuesto/percepción.
+    - cantidad: cantidad de unidades como número si es un producto (ej "12"); "" para impuestos/percepciones o si no figura.
+    - importe: importe del renglón, número con punto decimal, sin separador de miles ni símbolo.
+    - concepto: "impuesto" si el renglón es IVA, una percepción u otro cargo impositivo; si no, "producto".
+  En facturas B o C el IVA NO se discrimina (ya está incluido en el precio de los productos): en ese caso NO agregues un renglón de IVA.
+  NO incluyas el SUBTOTAL ni el TOTAL final como renglones. La suma de TODOS los renglones (productos + IVA + percepciones) debe dar el TOTAL de la factura.
 Si un dato no aparece, devolvé cadena vacía "" en ese campo. No inventes datos.`
 
 const RESPONSE_SCHEMA_PROVEEDOR = {
@@ -66,8 +73,9 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
           descripcion: { type: 'STRING' },
           cantidad: { type: 'STRING' },
           importe: { type: 'STRING' },
+          concepto: { type: 'STRING' },
         },
-        required: ['descripcion', 'cantidad', 'importe'],
+        required: ['descripcion', 'cantidad', 'importe', 'concepto'],
       },
     },
   },
@@ -163,6 +171,7 @@ module.exports = async (req, res) => {
                 descripcion: String(it?.descripcion ?? '').trim(),
                 cantidad: String(it?.cantidad ?? '').trim(),
                 importe: String(it?.importe ?? '').trim(),
+                concepto: String(it?.concepto ?? '').trim().toLowerCase() === 'impuesto' ? 'impuesto' : 'producto',
               })).filter(it => it.descripcion || it.importe)
             : []
           res.status(200).json({

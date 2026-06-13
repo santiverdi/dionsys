@@ -113,11 +113,13 @@ export interface DepositoSupplier {
 
 export type TipoFactura = 'A' | 'B' | 'C' | ''
 
-// Un renglón/producto de la factura (lo lee la IA, item por item).
+// Un renglón de la factura (lo lee la IA, item por item).
+// concepto distingue un producto de un impuesto/percepción (IVA, IIBB, etc.).
 export interface FacturaItemLinea {
   descripcion: string
   cantidad?: number
-  importe: number           // importe total del renglón
+  importe: number           // importe del renglón
+  concepto?: 'producto' | 'impuesto'
 }
 
 // Factura de UNA distribuidora dentro de un pedido semanal. Charo la carga al
