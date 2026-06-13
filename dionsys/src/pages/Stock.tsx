@@ -35,6 +35,7 @@ export default function Stock() {
   const [itemModal, setItemModal] = useState<DepositoItem | null | undefined>(undefined)
   const [tab, setTab] = useState<MainTab>(employee?.role === 'encargada' ? 'pedido' : 'deposito')
   const [catFilter, setCatFilter] = useState<CategoryFilter>('todos')
+  const [depositoSearch, setDepositoSearch] = useState('')
   const [histTab, setHistTab] = useState<HistorialTab>('pedidos')
   const [movFilter, setMovFilter] = useState<'todos' | 'entrada' | 'salida'>('todos')
   const [movHistSearch, setMovHistSearch] = useState('')
@@ -122,11 +123,15 @@ export default function Stock() {
     return c
   }, [pedidoItems, itemById])
 
-  // Filtered items
+  // Filtered items (categoria + busqueda por nombre)
   const filteredItems = useMemo(() => {
-    if (catFilter === 'todos') return items
-    return items.filter(i => i.category === catFilter)
-  }, [items, catFilter])
+    const q = depositoSearch.trim().toLowerCase()
+    return items.filter(i => {
+      if (catFilter !== 'todos' && i.category !== catFilter) return false
+      if (q && !i.name.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [items, catFilter, depositoSearch])
 
   const lowStockCount = useMemo(
     () => items.filter(i => i.stock < i.stockIdeal).length,
@@ -354,9 +359,31 @@ export default function Stock() {
             )}
           </div>
 
+          {/* Buscador por nombre */}
+          <div className="relative mb-4">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy-400" />
+            <input
+              type="text"
+              value={depositoSearch}
+              onChange={e => setDepositoSearch(e.target.value)}
+              placeholder="Buscar articulo para sacar o cargar..."
+              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+            />
+            {depositoSearch && (
+              <button
+                onClick={() => setDepositoSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-navy-400 hover:text-navy-600"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
           {/* Items list */}
           <div className="space-y-2">
-            {filteredItems.map(item => {
+            {filteredItems.length === 0 ? (
+              <p className="text-navy-400 text-center py-12 text-sm">No hay articulos que coincidan</p>
+            ) : filteredItems.map(item => {
               const pct = item.stockIdeal > 0 ? Math.min(100, (item.stock / item.stockIdeal) * 100) : 0
               return (
                 <div
