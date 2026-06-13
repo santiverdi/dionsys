@@ -114,6 +114,8 @@ export default function Facturas() {
       }))
   }, [pedidos])
 
+  const hoyStr = new Date().toISOString().slice(0, 10)
+
   const [expandedMes, setExpandedMes] = useState<Set<string>>(new Set())
   function toggleMes(mes: string) {
     setExpandedMes(prev => {
@@ -138,8 +140,10 @@ export default function Facturas() {
         porProveedor.set(f.supplierId, g)
       }
     }
+    // Orden por vencimiento (lo que vence antes primero); sin vencimiento al final.
+    const vKey = (f: FacturaProveedor) => f.vencimiento || f.fecha || '9999-99-99'
     const grupos = Array.from(porProveedor.values())
-      .map(g => ({ ...g, facturas: g.facturas.sort((a, b) => (a.factura.fecha || '').localeCompare(b.factura.fecha || '')) }))
+      .map(g => ({ ...g, facturas: g.facturas.sort((a, b) => vKey(a.factura).localeCompare(vKey(b.factura))) }))
       .sort((a, b) => b.total - a.total)
     return { totalPendiente, grupos }
   }, [pedidos])
@@ -354,21 +358,29 @@ export default function Facturas() {
                   <span className="text-base font-bold text-amber-700 shrink-0">{formatMontoCurrency(g.total)}</span>
                 </div>
                 <div className="space-y-1.5">
-                  {g.facturas.map(({ pedido, factura }, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-navy-100">
-                      <div className="min-w-0 text-xs">
-                        <span className="font-bold text-navy-800">{formatMontoCurrency(factura.monto)}</span>
-                        {factura.tipoFactura && <span className="ml-1 text-navy-400">Factura {factura.tipoFactura}</span>}
-                        {factura.fecha && <span className="text-navy-400"> · {shortDate(factura.fecha)}</span>}
+                  {g.facturas.map(({ pedido, factura }, i) => {
+                    const vencida = factura.vencimiento && factura.vencimiento < hoyStr
+                    return (
+                      <div key={i} className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border ${vencida ? 'border-red-200 bg-red-50' : 'border-navy-100'}`}>
+                        <div className="min-w-0 text-xs">
+                          <span className="font-bold text-navy-800">{formatMontoCurrency(factura.monto)}</span>
+                          {factura.tipoFactura && <span className="ml-1 text-navy-400">Factura {factura.tipoFactura}</span>}
+                          {factura.fecha && <span className="text-navy-400"> · {shortDate(factura.fecha)}</span>}
+                          {factura.vencimiento && (
+                            <span className={`block mt-0.5 font-semibold ${vencida ? 'text-red-600' : 'text-amber-600'}`}>
+                              {vencida ? 'Venció' : 'Vence'} {shortDate(factura.vencimiento)}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => marcarPagada(pedido, factura)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"
+                        >
+                          <Check size={13} /> Marcar pagada
+                        </button>
                       </div>
-                      <button
-                        onClick={() => marcarPagada(pedido, factura)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"
-                      >
-                        <Check size={13} /> Marcar pagada
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             ))}

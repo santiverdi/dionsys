@@ -44,6 +44,8 @@ Analizá el documento adjunto y devolvé EXACTAMENTE estos campos:
 - proveedor: razón social o nombre del emisor de la factura (el que vende/cobra). Corto, sin CUIT ni domicilio.
 - monto: importe TOTAL de la factura, como número con punto decimal, sin separador de miles ni símbolo (ej: "15234.50").
 - fecha: fecha de emisión de la factura en formato YYYY-MM-DD.
+- condicionVenta: condición de venta de la factura: "contado" o "cuenta_corriente". Mirá el campo "Condición de venta"/"Cond. Venta". Si no figura, "".
+- vencimiento: fecha de VENCIMIENTO del pago en formato YYYY-MM-DD (campo "Vencimiento"/"Vto", común en cuenta corriente). Si no figura, "".
 - items: lista con CADA renglón del detalle. Incluí, como renglones SEPARADOS:
     * Cada PRODUCTO con su importe NETO (sin sumarle el IVA al producto).
     * Si el IVA está discriminado (típico en Factura A), agregalo como un renglón aparte (ej "IVA 21%") con su importe.
@@ -65,6 +67,8 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
     proveedor: { type: 'STRING' },
     monto: { type: 'STRING' },
     fecha: { type: 'STRING' },
+    condicionVenta: { type: 'STRING' },
+    vencimiento: { type: 'STRING' },
     items: {
       type: 'ARRAY',
       items: {
@@ -79,7 +83,7 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
       },
     },
   },
-  required: ['tipoFactura', 'proveedor', 'monto', 'fecha', 'items'],
+  required: ['tipoFactura', 'proveedor', 'monto', 'fecha', 'condicionVenta', 'vencimiento', 'items'],
 }
 
 module.exports = async (req, res) => {
@@ -174,11 +178,16 @@ module.exports = async (req, res) => {
                 concepto: String(it?.concepto ?? '').trim().toLowerCase() === 'impuesto' ? 'impuesto' : 'producto',
               })).filter(it => it.descripcion || it.importe)
             : []
+          const cond = String(parsed.condicionVenta ?? '').trim().toLowerCase()
+          const condicionVenta = cond.includes('corriente') || cond.includes('cta') ? 'cuenta_corriente'
+            : cond.includes('contado') ? 'contado' : ''
           res.status(200).json({
             tipoFactura: ['A', 'B', 'C', 'M'].includes(tipo) ? tipo : '',
             proveedor: String(parsed.proveedor ?? '').trim(),
             monto: String(parsed.monto ?? '').trim(),
             fecha: String(parsed.fecha ?? '').trim(),
+            condicionVenta,
+            vencimiento: String(parsed.vencimiento ?? '').trim(),
             items,
           })
           return

@@ -24,6 +24,8 @@ export interface ExtractedProviderInvoice {
   proveedor: string
   monto: string // número con punto decimal, listo para validateMonto
   fecha: string // YYYY-MM-DD o ''
+  condicionVenta: 'contado' | 'cuenta_corriente' | ''
+  vencimiento: string // YYYY-MM-DD o ''
   items: ExtractedInvoiceItem[]
 }
 

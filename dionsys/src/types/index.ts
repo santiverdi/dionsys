@@ -134,6 +134,7 @@ export interface FacturaProveedor {
   fecha: string             // YYYY-MM-DD (fecha de la factura, para el reporte mensual)
   items?: FacturaItemLinea[] // detalle por renglón (para el gasto por producto)
   pago?: FormaPago          // contado | cuenta corriente (default: contado si falta)
+  vencimiento?: string      // solo cuenta corriente: fecha de vencimiento del pago (YYYY-MM-DD)
   pagado?: boolean          // solo cuenta corriente: si ya se saldó
   fechaPago?: string        // YYYY-MM-DD en que se pagó (cuenta corriente saldada)
   facturaUrl?: string       // archivo en Supabase Storage

@@ -11,7 +11,7 @@ interface Props {
   initial?: FacturaProveedor
   onClose: () => void
   // Devuelve los campos de la factura (el padre completa supplierId/cargadoBy/cargadoAt + el seguimiento de pago).
-  onSave: (data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'facturaUrl' | 'facturaNombre'>) => void
+  onSave: (data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'vencimiento' | 'facturaUrl' | 'facturaNombre'>) => void
 }
 
 // Fila editable: todo string para los inputs; se convierte a números al guardar.
@@ -41,6 +41,7 @@ function rowImporte(s: string): number {
 export default function FacturaProveedorModal({ supplierName, subtitle, initial, onClose, onSave }: Props) {
   const [tipo, setTipo] = useState<TipoFactura>(initial?.tipoFactura ?? '')
   const [pago, setPago] = useState<FormaPago>(initial?.pago ?? 'contado')
+  const [vencimiento, setVencimiento] = useState(initial?.vencimiento ?? '')
   const [fecha, setFecha] = useState(initial?.fecha ?? '')
   const [rows, setRows] = useState<Row[]>(rowsFromItems(initial?.items))
   // monto manual: solo se usa cuando no hay renglones cargados
@@ -75,6 +76,8 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
       const data = await extractProviderInvoice(file)
       if (data.tipoFactura && data.tipoFactura !== 'M') setTipo(data.tipoFactura)
       if (data.fecha) setFecha(data.fecha)
+      if (data.condicionVenta) setPago(data.condicionVenta)
+      if (data.vencimiento) setVencimiento(data.vencimiento)
       const totalFactura = validateMonto(data.monto || '')
       setMontoFactura(totalFactura.ok ? totalFactura.value! : null)
       if (data.items?.length) {
@@ -140,7 +143,11 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
       items = undefined
     }
 
-    onSave({ tipoFactura: tipo, monto, fecha, items, pago, facturaUrl, facturaNombre })
+    onSave({
+      tipoFactura: tipo, monto, fecha, items, pago,
+      vencimiento: pago === 'cuenta_corriente' ? (vencimiento || undefined) : undefined,
+      facturaUrl, facturaNombre,
+    })
   }
 
   return (
@@ -227,6 +234,19 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
             </button>
           ))}
         </div>
+
+        {/* Vencimiento (solo cuenta corriente) */}
+        {pago === 'cuenta_corriente' && (
+          <>
+            <label className="block text-xs font-semibold text-navy-500 mb-1">Vencimiento del pago</label>
+            <input
+              type="date"
+              value={vencimiento}
+              onChange={e => setVencimiento(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400 mb-4"
+            />
+          </>
+        )}
 
         {/* Fecha */}
         <label className="block text-xs font-semibold text-navy-500 mb-1">Fecha de la factura *</label>
