@@ -44,6 +44,11 @@ Analizá el documento adjunto y devolvé EXACTAMENTE estos campos:
 - proveedor: razón social o nombre del emisor de la factura (el que vende/cobra). Corto, sin CUIT ni domicilio.
 - monto: importe TOTAL de la factura, como número con punto decimal, sin separador de miles ni símbolo (ej: "15234.50").
 - fecha: fecha de emisión de la factura en formato YYYY-MM-DD.
+- items: lista con CADA renglón/producto de la factura. Para cada uno:
+    - descripcion: nombre del producto, corto.
+    - cantidad: cantidad de unidades como número (ej: "12"); si no figura, "".
+    - importe: importe TOTAL del renglón (cantidad × precio), número con punto decimal, sin separador de miles ni símbolo.
+  Incluí TODOS los renglones de productos. No incluyas subtotales, IVA, descuentos ni el total final como si fueran productos.
 Si un dato no aparece, devolvé cadena vacía "" en ese campo. No inventes datos.`
 
 const RESPONSE_SCHEMA_PROVEEDOR = {
@@ -53,8 +58,20 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
     proveedor: { type: 'STRING' },
     monto: { type: 'STRING' },
     fecha: { type: 'STRING' },
+    items: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          descripcion: { type: 'STRING' },
+          cantidad: { type: 'STRING' },
+          importe: { type: 'STRING' },
+        },
+        required: ['descripcion', 'cantidad', 'importe'],
+      },
+    },
   },
-  required: ['tipoFactura', 'proveedor', 'monto', 'fecha'],
+  required: ['tipoFactura', 'proveedor', 'monto', 'fecha', 'items'],
 }
 
 module.exports = async (req, res) => {
@@ -141,11 +158,19 @@ module.exports = async (req, res) => {
         }
         if (mode === 'proveedor') {
           const tipo = String(parsed.tipoFactura ?? '').trim().toUpperCase()
+          const items = Array.isArray(parsed.items)
+            ? parsed.items.map(it => ({
+                descripcion: String(it?.descripcion ?? '').trim(),
+                cantidad: String(it?.cantidad ?? '').trim(),
+                importe: String(it?.importe ?? '').trim(),
+              })).filter(it => it.descripcion || it.importe)
+            : []
           res.status(200).json({
             tipoFactura: ['A', 'B', 'C', 'M'].includes(tipo) ? tipo : '',
             proveedor: String(parsed.proveedor ?? '').trim(),
             monto: String(parsed.monto ?? '').trim(),
             fecha: String(parsed.fecha ?? '').trim(),
+            items,
           })
           return
         }

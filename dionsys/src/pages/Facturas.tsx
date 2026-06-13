@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
@@ -62,20 +62,33 @@ export default function Facturas() {
     setTarget(null)
   }
 
-  // ---- Reporte: gasto por mes ----
+  // ---- Reporte: gasto por mes (con desglose por proveedor y por producto) ----
   const gastoPorMes = useMemo(() => {
-    const meses = new Map<string, { total: number; tipos: Record<string, number>; proveedores: Map<string, number> }>()
+    interface MesAgg {
+      total: number
+      tipos: Record<string, number>
+      proveedores: Map<string, number>
+      productos: Map<string, { display: string; total: number }>
+    }
+    const meses = new Map<string, MesAgg>()
     for (const p of pedidos) {
       if (p.status === 'borrado') continue
       for (const f of p.facturas ?? []) {
         const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
         if (!mes) continue
-        if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map() })
+        if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map(), productos: new Map() })
         const m = meses.get(mes)!
         m.total += f.monto
         const t = f.tipoFactura || 'Otra'
         m.tipos[t] = (m.tipos[t] ?? 0) + f.monto
         m.proveedores.set(f.supplierName, (m.proveedores.get(f.supplierName) ?? 0) + f.monto)
+        for (const it of f.items ?? []) {
+          const key = it.descripcion.trim().toUpperCase()
+          if (!key) continue
+          const cur = m.productos.get(key) ?? { display: it.descripcion.trim(), total: 0 }
+          cur.total += it.importe
+          m.productos.set(key, cur)
+        }
       }
     }
     return Array.from(meses.entries())
@@ -85,8 +98,18 @@ export default function Facturas() {
         total: d.total,
         tipos: d.tipos,
         proveedores: Array.from(d.proveedores.entries()).sort((a, b) => b[1] - a[1]),
+        productos: Array.from(d.productos.values()).sort((a, b) => b.total - a.total),
       }))
   }, [pedidos])
+
+  const [expandedMes, setExpandedMes] = useState<Set<string>>(new Set())
+  function toggleMes(mes: string) {
+    setExpandedMes(prev => {
+      const next = new Set(prev)
+      if (next.has(mes)) next.delete(mes); else next.add(mes)
+      return next
+    })
+  }
 
   return (
     <div>
@@ -149,6 +172,7 @@ export default function Facturas() {
                                 )}
                                 <span className="font-bold text-navy-800">{formatMontoCurrency(f.monto)}</span>
                                 {f.fecha && <span className="text-navy-400">· {shortDate(f.fecha)}</span>}
+                                {f.items?.length ? <span className="text-navy-400">· {f.items.length} reng.</span> : null}
                                 {f.facturaUrl && (
                                   <a
                                     href={downloadUrl(f.facturaUrl, f.facturaNombre || 'factura')}
@@ -195,31 +219,61 @@ export default function Facturas() {
           </div>
         ) : (
           <div className="space-y-4">
-            {gastoPorMes.map(m => (
-              <div key={m.mes} className="rounded-xl border border-navy-100 bg-white p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-navy-800">{mesLabel(m.mes)}</h3>
-                  <span className="text-lg font-bold text-green-700">{formatMontoCurrency(m.total)}</span>
+            {gastoPorMes.map(m => {
+              const open = expandedMes.has(m.mes)
+              return (
+                <div key={m.mes} className="rounded-xl border border-navy-100 bg-white p-4">
+                  <button onClick={() => toggleMes(m.mes)} className="w-full flex items-center justify-between gap-2">
+                    <h3 className="font-bold text-navy-800">{mesLabel(m.mes)}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-green-700">{formatMontoCurrency(m.total)}</span>
+                      {open ? <ChevronUp size={16} className="text-navy-400" /> : <ChevronDown size={16} className="text-navy-400" />}
+                    </div>
+                  </button>
+                  {/* Por tipo (siempre visible) */}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {Object.entries(m.tipos).map(([t, v]) => (
+                      <span key={t} className="text-xs px-2 py-1 rounded-full bg-navy-100 text-navy-700">
+                        <span className="font-bold">{t === 'Otra' ? 'Otras' : `Factura ${t}`}:</span> {formatMontoCurrency(v)}
+                      </span>
+                    ))}
+                  </div>
+
+                  {open && (
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Por proveedor */}
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mb-1.5">Por proveedor</p>
+                        <ul className="space-y-1">
+                          {m.proveedores.map(([nombre, v]) => (
+                            <li key={nombre} className="flex items-center justify-between text-sm gap-2">
+                              <span className="text-navy-600 truncate">{nombre}</span>
+                              <span className="font-semibold text-navy-800 shrink-0">{formatMontoCurrency(v)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      {/* Por producto */}
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mb-1.5">Por producto</p>
+                        {m.productos.length === 0 ? (
+                          <p className="text-xs text-navy-300">Sin detalle de renglones cargado.</p>
+                        ) : (
+                          <ul className="space-y-1">
+                            {m.productos.map(p => (
+                              <li key={p.display} className="flex items-center justify-between text-sm gap-2">
+                                <span className="text-navy-600 truncate">{p.display}</span>
+                                <span className="font-semibold text-navy-800 shrink-0">{formatMontoCurrency(p.total)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {/* Por tipo */}
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {Object.entries(m.tipos).map(([t, v]) => (
-                    <span key={t} className="text-xs px-2 py-1 rounded-full bg-navy-100 text-navy-700">
-                      <span className="font-bold">{t === 'Otra' ? 'Otras' : `Factura ${t}`}:</span> {formatMontoCurrency(v)}
-                    </span>
-                  ))}
-                </div>
-                {/* Por proveedor */}
-                <ul className="space-y-1">
-                  {m.proveedores.map(([nombre, v]) => (
-                    <li key={nombre} className="flex items-center justify-between text-sm">
-                      <span className="text-navy-600">{nombre}</span>
-                      <span className="font-semibold text-navy-800">{formatMontoCurrency(v)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )
       )}

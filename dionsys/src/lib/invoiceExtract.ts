@@ -12,11 +12,18 @@ export interface ExtractedInvoice {
   vtoSiguiente: string // YYYY-MM-DD o ''
 }
 
+export interface ExtractedInvoiceItem {
+  descripcion: string
+  cantidad: string // número o ''
+  importe: string  // número con punto decimal o ''
+}
+
 export interface ExtractedProviderInvoice {
   tipoFactura: 'A' | 'B' | 'C' | 'M' | ''
   proveedor: string
   monto: string // número con punto decimal, listo para validateMonto
   fecha: string // YYYY-MM-DD o ''
+  items: ExtractedInvoiceItem[]
 }
 
 const MAX_IMAGE_DIM = 2000 // px del lado más largo tras comprimir

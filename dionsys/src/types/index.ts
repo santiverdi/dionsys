@@ -113,14 +113,22 @@ export interface DepositoSupplier {
 
 export type TipoFactura = 'A' | 'B' | 'C' | ''
 
+// Un renglón/producto de la factura (lo lee la IA, item por item).
+export interface FacturaItemLinea {
+  descripcion: string
+  cantidad?: number
+  importe: number           // importe total del renglón
+}
+
 // Factura de UNA distribuidora dentro de un pedido semanal. Charo la carga al
-// recibir la mercadería; la IA detecta tipo (A/B/C), monto y fecha.
+// recibir la mercadería; la IA detecta tipo (A/B/C), monto, fecha y los renglones.
 export interface FacturaProveedor {
   supplierId: string
   supplierName: string
   tipoFactura: TipoFactura
   monto: number
   fecha: string             // YYYY-MM-DD (fecha de la factura, para el reporte mensual)
+  items?: FacturaItemLinea[] // detalle por renglón (para el gasto por producto)
   facturaUrl?: string       // archivo en Supabase Storage
   facturaNombre?: string
   cargadoBy?: string
