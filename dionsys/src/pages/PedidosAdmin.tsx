@@ -88,11 +88,11 @@ function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onDeletePedido
           }`}>
             {pedido.status}
           </span>
-          {isAdmin && !isRecibido && (
+          {isAdmin && (
             <button
               onClick={onDeletePedido}
               className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-              title="Borrar el pedido completo"
+              title={isRecibido ? 'Borrar el pedido (las facturas cargadas se conservan en el reporte)' : 'Borrar el pedido completo'}
             >
               <Trash2 size={16} />
             </button>
@@ -398,8 +398,10 @@ export default function PedidosAdmin() {
 
       <ConfirmDialog
         open={deletePedidoTarget !== null}
-        title="Borrar pedido completo"
-        message="Se va a marcar como borrado todo el pedido semanal (todas las distribuidoras). Esta acción no se puede deshacer."
+        title="Borrar pedido"
+        message={deletePedidoTarget?.status === 'recibido'
+          ? 'Se borra el pedido de esta lista. Las facturas ya cargadas se conservan en el gasto mensual. Cargá las facturas que falten antes de borrarlo.'
+          : 'Se va a marcar como borrado todo el pedido semanal (todas las distribuidoras). Esta acción no se puede deshacer.'}
         confirmLabel="Borrar pedido"
         onConfirm={confirmDeletePedido}
         onCancel={() => setDeletePedidoTarget(null)}

@@ -80,8 +80,8 @@ export default function Facturas() {
       productos: Map<string, { display: string; total: number }>
     }
     const meses = new Map<string, MesAgg>()
+    // Las facturas son registro financiero: cuentan aunque el pedido se haya borrado.
     for (const p of pedidos) {
-      if (p.status === 'borrado') continue
       for (const f of p.facturas ?? []) {
         const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
         if (!mes) continue
@@ -124,8 +124,8 @@ export default function Facturas() {
   const cuentaCorriente = useMemo(() => {
     const porProveedor = new Map<string, { nombre: string; total: number; facturas: { pedido: PedidoSemanal; factura: FacturaProveedor }[] }>()
     let totalPendiente = 0
+    // Las deudas en cuenta corriente siguen vigentes aunque el pedido se haya borrado.
     for (const p of pedidos) {
-      if (p.status === 'borrado') continue
       for (const f of p.facturas ?? []) {
         if (f.pago !== 'cuenta_corriente' || f.pagado) continue
         totalPendiente += f.monto
