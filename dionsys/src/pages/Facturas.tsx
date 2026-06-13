@@ -68,7 +68,7 @@ export default function Facturas() {
     return pedido.facturas?.find(f => f.supplierId === supplierId)
   }
 
-  function handleSaveFactura(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'facturaUrl' | 'facturaNombre'>) {
+  function handleSaveFactura(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'vencimiento' | 'facturaUrl' | 'facturaNombre'>) {
     if (!target || !employee) return
     const esCC = data.pago === 'cuenta_corriente'
     setFacturaProveedor(target.pedido.id, {
