@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
-import { downloadUrl } from '../lib/facturaStorage'
+import { downloadUrl, uploadFactura } from '../lib/facturaStorage'
+import { scanImageFile } from '../lib/scanDocument'
+import { fileToPdf } from '../lib/imageToPdf'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
 import type { PedidoSemanal, FacturaProveedor, DepositoSupplier } from '../types'
 
@@ -136,16 +138,17 @@ export default function Facturas() {
 
   // ---- Para contadora: facturas A por mes (con neto/IVA y archivo) ----
   const contadoraPorMes = useMemo(() => {
-    const meses = new Map<string, { facturas: FacturaProveedor[]; total: number; iva: number; neto: number }>()
+    type Entry = { pedido: PedidoSemanal; factura: FacturaProveedor }
+    const meses = new Map<string, { entries: Entry[]; total: number; iva: number; neto: number }>()
     for (const p of pedidos) {
       for (const f of p.facturas ?? []) {
         if (f.tipoFactura !== 'A') continue
         const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
         if (!mes) continue
-        if (!meses.has(mes)) meses.set(mes, { facturas: [], total: 0, iva: 0, neto: 0 })
+        if (!meses.has(mes)) meses.set(mes, { entries: [], total: 0, iva: 0, neto: 0 })
         const m = meses.get(mes)!
         const d = desglosar(f)
-        m.facturas.push(f)
+        m.entries.push({ pedido: p, factura: f })
         m.total += f.monto
         m.iva += d.iva
         m.neto += d.neto
@@ -155,10 +158,24 @@ export default function Facturas() {
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mes, d]) => ({
         mes,
-        facturas: d.facturas.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')),
+        entries: d.entries.sort((a, b) => (a.factura.fecha || '').localeCompare(b.factura.fecha || '')),
         total: d.total, iva: d.iva, neto: d.neto,
       }))
   }, [pedidos])
+
+  // Adjuntar/escaneo del archivo a una factura que quedó sin archivo (misma automatización).
+  const [attaching, setAttaching] = useState<string | null>(null)
+  async function attachArchivo(pedido: PedidoSemanal, factura: FacturaProveedor, file: File) {
+    const key = `${pedido.id}:${factura.supplierId}`
+    setAttaching(key)
+    try {
+      const scanned = await scanImageFile(file)
+      const pdf = await fileToPdf(scanned)
+      const { url, nombre } = await uploadFactura(pdf)
+      setFacturaProveedor(pedido.id, { ...factura, facturaUrl: url, facturaNombre: nombre })
+    } catch { /* ignore */ }
+    finally { setAttaching(null) }
+  }
 
   const [copiedMes, setCopiedMes] = useState<string | null>(null)
   async function copiarMes(mes: string, facturas: FacturaProveedor[]) {
@@ -472,18 +489,19 @@ export default function Facturas() {
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <h3 className="font-bold text-navy-800">{mesLabel(m.mes)}</h3>
                   <button
-                    onClick={() => copiarMes(m.mes, m.facturas)}
+                    onClick={() => copiarMes(m.mes, m.entries.map(e => e.factura))}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy-800 text-cream hover:bg-navy-700 active:scale-95 transition-all shrink-0"
                   >
                     {copiedMes === m.mes ? <><Check size={13} /> Copiado</> : <><Copy size={13} /> Copiar</>}
                   </button>
                 </div>
                 <p className="text-xs text-navy-500 mb-3">
-                  {m.facturas.length} {m.facturas.length === 1 ? 'factura A' : 'facturas A'} · Neto {formatMontoCurrency(m.neto)} · IVA {formatMontoCurrency(m.iva)} · Total {formatMontoCurrency(m.total)}
+                  {m.entries.length} {m.entries.length === 1 ? 'factura A' : 'facturas A'} · Neto {formatMontoCurrency(m.neto)} · IVA {formatMontoCurrency(m.iva)} · Total {formatMontoCurrency(m.total)}
                 </p>
                 <div className="space-y-1.5">
-                  {m.facturas.map((f, i) => {
+                  {m.entries.map(({ pedido, factura: f }, i) => {
                     const d = desglosar(f)
+                    const key = `${pedido.id}:${f.supplierId}`
                     return (
                       <div key={i} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-navy-100">
                         <div className="min-w-0 text-xs">
@@ -503,7 +521,17 @@ export default function Facturas() {
                             <FileText size={13} /> archivo
                           </a>
                         ) : (
-                          <span className="text-[10px] text-amber-600 shrink-0">sin archivo</span>
+                          <label className={`flex items-center gap-1 text-xs font-semibold shrink-0 cursor-pointer ${attaching === key ? 'text-navy-400' : 'text-amber-600 hover:text-amber-700'}`}>
+                            <Camera size={13} /> {attaching === key ? 'Escaneando…' : 'Escanear'}
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              capture="environment"
+                              disabled={attaching === key}
+                              onChange={e => { const file = e.target.files?.[0]; if (file) attachArchivo(pedido, f, file) }}
+                              className="hidden"
+                            />
+                          </label>
                         )}
                       </div>
                     )
