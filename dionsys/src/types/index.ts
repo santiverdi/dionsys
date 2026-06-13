@@ -111,6 +111,22 @@ export interface DepositoSupplier {
   category: string
 }
 
+export type TipoFactura = 'A' | 'B' | 'C' | ''
+
+// Factura de UNA distribuidora dentro de un pedido semanal. Charo la carga al
+// recibir la mercadería; la IA detecta tipo (A/B/C), monto y fecha.
+export interface FacturaProveedor {
+  supplierId: string
+  supplierName: string
+  tipoFactura: TipoFactura
+  monto: number
+  fecha: string             // YYYY-MM-DD (fecha de la factura, para el reporte mensual)
+  facturaUrl?: string       // archivo en Supabase Storage
+  facturaNombre?: string
+  cargadoBy?: string
+  cargadoAt?: string
+}
+
 export interface PedidoSemanal {
   id: string
   date: string
@@ -128,6 +144,7 @@ export interface PedidoSemanal {
   montoCargadoBy?: string
   montoCargadoAt?: string
   receiptPhoto?: string
+  facturas?: FacturaProveedor[]   // facturas por distribuidora (fuente del gasto mensual)
 }
 
 // --- Mantenimiento ---

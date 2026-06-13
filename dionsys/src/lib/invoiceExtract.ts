@@ -12,6 +12,13 @@ export interface ExtractedInvoice {
   vtoSiguiente: string // YYYY-MM-DD o ''
 }
 
+export interface ExtractedProviderInvoice {
+  tipoFactura: 'A' | 'B' | 'C' | 'M' | ''
+  proveedor: string
+  monto: string // número con punto decimal, listo para validateMonto
+  fecha: string // YYYY-MM-DD o ''
+}
+
 const MAX_IMAGE_DIM = 2000 // px del lado más largo tras comprimir
 const IMAGE_QUALITY = 0.8
 
@@ -55,7 +62,8 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
   }
 }
 
-export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
+// Comprime/codifica el archivo y llama al endpoint con el modo indicado.
+async function callExtract(file: File, mode: 'servicio' | 'proveedor'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -66,7 +74,7 @@ export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
     res = await fetch('/api/extract-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mimeType, data }),
+      body: JSON.stringify({ mimeType, data, mode }),
     })
   } catch {
     throw new Error('No se pudo conectar con el lector de facturas. ¿Estás en el sitio publicado?')
@@ -81,5 +89,14 @@ export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
     throw new Error(msg)
   }
 
-  return (await res.json()) as ExtractedInvoice
+  return await res.json()
+}
+
+export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
+  return (await callExtract(file, 'servicio')) as ExtractedInvoice
+}
+
+/** Lee una factura comercial de proveedor (detecta tipo A/B/C, monto y fecha). */
+export async function extractProviderInvoice(file: File): Promise<ExtractedProviderInvoice> {
+  return (await callExtract(file, 'proveedor')) as ExtractedProviderInvoice
 }

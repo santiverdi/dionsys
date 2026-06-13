@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Receipt } from 'lucide-react'
+import { ClipboardList, Receipt, FileText } from 'lucide-react'
 
 export default function Administracion() {
   const navigate = useNavigate()
@@ -19,6 +19,17 @@ export default function Administracion() {
           </div>
           <h3 className="font-bold text-navy-800 text-lg">Proveedores</h3>
           <p className="text-sm text-navy-500 mt-1">El pedido semanal que arma el conserje, para enviar a cada distribuidora y cargar montos.</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/facturas-proveedores')}
+          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
+            <FileText size={24} />
+          </div>
+          <h3 className="font-bold text-navy-800 text-lg">Facturas de Proveedores</h3>
+          <p className="text-sm text-navy-500 mt-1">Cargá la factura (A/C) de cada distribuidora al recibir y mirá el gasto por mes.</p>
         </button>
 
         <button

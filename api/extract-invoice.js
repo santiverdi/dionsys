@@ -37,6 +37,26 @@ const RESPONSE_SCHEMA = {
   required: ['nombre', 'nroCuenta', 'monto', 'vtoActual', 'vtoSiguiente'],
 }
 
+// --- Modo "proveedor": facturas/remitos comerciales de distribuidoras ---
+const PROMPT_PROVEEDOR = `Sos un asistente que extrae datos de facturas comerciales argentinas de proveedores/distribuidoras (alimentos, limpieza, etc.).
+Analizá el documento adjunto y devolvé EXACTAMENTE estos campos:
+- tipoFactura: la LETRA de la factura. En las facturas argentinas hay un recuadro grande con una letra: "A", "B", "C" o "M". Devolvé solo esa letra en mayúscula. Si no se distingue, devolvé "".
+- proveedor: razón social o nombre del emisor de la factura (el que vende/cobra). Corto, sin CUIT ni domicilio.
+- monto: importe TOTAL de la factura, como número con punto decimal, sin separador de miles ni símbolo (ej: "15234.50").
+- fecha: fecha de emisión de la factura en formato YYYY-MM-DD.
+Si un dato no aparece, devolvé cadena vacía "" en ese campo. No inventes datos.`
+
+const RESPONSE_SCHEMA_PROVEEDOR = {
+  type: 'OBJECT',
+  properties: {
+    tipoFactura: { type: 'STRING' },
+    proveedor: { type: 'STRING' },
+    monto: { type: 'STRING' },
+    fecha: { type: 'STRING' },
+  },
+  required: ['tipoFactura', 'proveedor', 'monto', 'fecha'],
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método no permitido' })
@@ -55,6 +75,7 @@ module.exports = async (req, res) => {
   }
   const mimeType = body && body.mimeType
   const data = body && body.data
+  const mode = body && body.mode === 'proveedor' ? 'proveedor' : 'servicio'
   if (!mimeType || !data) {
     res.status(400).json({ error: 'Faltan datos del archivo (mimeType / data).' })
     return
@@ -65,19 +86,22 @@ module.exports = async (req, res) => {
     return
   }
 
+  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : PROMPT
+  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : RESPONSE_SCHEMA
+
   const payload = {
     contents: [
       {
         parts: [
           { inline_data: { mime_type: mimeType, data } },
-          { text: PROMPT },
+          { text: prompt },
         ],
       },
     ],
     generationConfig: {
       temperature: 0,
       responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
+      responseSchema: schema,
     },
   }
 
@@ -113,6 +137,16 @@ module.exports = async (req, res) => {
         let parsed
         try { parsed = JSON.parse(text) } catch {
           res.status(502).json({ error: 'No se pudo interpretar la respuesta de la IA.' })
+          return
+        }
+        if (mode === 'proveedor') {
+          const tipo = String(parsed.tipoFactura ?? '').trim().toUpperCase()
+          res.status(200).json({
+            tipoFactura: ['A', 'B', 'C', 'M'].includes(tipo) ? tipo : '',
+            proveedor: String(parsed.proveedor ?? '').trim(),
+            monto: String(parsed.monto ?? '').trim(),
+            fecha: String(parsed.fecha ?? '').trim(),
+          })
           return
         }
         res.status(200).json({

@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem, DepositoSupplier } from '../types'
+import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem, DepositoSupplier, FacturaProveedor } from '../types'
 import { generateId } from '../utils/imageCompressor'
 import { depositoItems as mockItems, depositoSuppliers as mockSuppliers, depositoItemSupplier } from '../data/mock'
-import { getOrderUnit, getPackSize } from '../utils/deposito'
+import { getOrderUnit, getPackSize, resolveSupplierId } from '../utils/deposito'
 import { persist, useCloudSync } from '../lib/cloudStore'
 
 const LS_DEPOSITO = 'dionsys_deposito'
@@ -103,6 +103,8 @@ interface StockContextType {
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   marcarPedido: (pedidoId: string, by: string) => void
   deletePedido: (id: string, deletedBy: string) => void
+  removeSupplierFromPedido: (pedidoId: string, supplierId: string, by: string) => void
+  setFacturaProveedor: (pedidoId: string, factura: FacturaProveedor) => void
   setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
   recibirPedido: (pedidoId: string, recibidoBy: string, recibidos: { itemId: string; cantidad: number }[]) => void
   addItem: (data: Omit<DepositoItem, 'id'>) => void
@@ -234,6 +236,38 @@ export function StockProvider({ children }: { children: ReactNode }) {
           ? { ...p, status: 'borrado' as const, deletedAt: new Date().toISOString(), deletedBy }
           : p
       )
+      persist(LS_PEDIDOS, updated)
+      return updated
+    })
+  }, [])
+
+  // Saca todos los items de UNA distribuidora del pedido. Si no queda ningún item
+  // a pedir, marca el pedido como borrado (para no dejar pedidos vacíos).
+  const removeSupplierFromPedido = useCallback((pedidoId: string, supplierId: string, by: string) => {
+    setPedidos(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== pedidoId) return p
+        const remaining = p.items.filter(it => resolveSupplierId(it.itemId, items) !== supplierId)
+        const facturas = (p.facturas ?? []).filter(f => f.supplierId !== supplierId)
+        const quedan = remaining.some(it => it.aPedir > 0)
+        if (!quedan) {
+          return { ...p, items: remaining, facturas, status: 'borrado' as const, deletedAt: new Date().toISOString(), deletedBy: by }
+        }
+        return { ...p, items: remaining, facturas }
+      })
+      persist(LS_PEDIDOS, updated)
+      return updated
+    })
+  }, [items])
+
+  // Carga / actualiza la factura de una distribuidora dentro de un pedido (upsert por supplierId).
+  const setFacturaProveedor = useCallback((pedidoId: string, factura: FacturaProveedor) => {
+    setPedidos(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== pedidoId) return p
+        const rest = (p.facturas ?? []).filter(f => f.supplierId !== factura.supplierId)
+        return { ...p, facturas: [...rest, factura] }
+      })
       persist(LS_PEDIDOS, updated)
       return updated
     })
@@ -401,7 +435,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos, suppliers,
-      addMovement, savePedido, marcarPedido, deletePedido, setPedidoMonto, recibirPedido,
+      addMovement, savePedido, marcarPedido, deletePedido, removeSupplierFromPedido, setFacturaProveedor, setPedidoMonto, recibirPedido,
       addItem, updateItem, deleteItem,
       addSupplier, updateSupplier, deleteSupplier, clearAllStock, resetStock,
     }}>

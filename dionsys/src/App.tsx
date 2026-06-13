@@ -20,6 +20,7 @@ import Mantenimiento from './pages/Mantenimiento'
 import PedidosAdmin from './pages/PedidosAdmin'
 import Impuestos from './pages/Impuestos'
 import Administracion from './pages/Administracion'
+import Facturas from './pages/Facturas'
 import SyncPanel from './pages/SyncPanel'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="deposito" element={<RoleRoute path="/deposito"><Stock /></RoleRoute>} />
         <Route path="mantenimiento" element={<RoleRoute path="/mantenimiento"><Mantenimiento /></RoleRoute>} />
         <Route path="pedidos-admin" element={<RoleRoute path="/pedidos-admin"><PedidosAdmin /></RoleRoute>} />
+        <Route path="facturas-proveedores" element={<RoleRoute path="/facturas-proveedores"><Facturas /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Cualquier usuario logueado. */}
         <Route path="sync" element={<SyncPanel />} />

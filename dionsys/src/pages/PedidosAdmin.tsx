@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Send, Clock, Package, MessageCircle, DollarSign, Edit3, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle } from 'lucide-react'
+import { Send, Clock, Package, MessageCircle, DollarSign, Edit3, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle, Trash2 } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
@@ -7,6 +7,7 @@ import { formatMontoCurrency } from '../utils/validators'
 import MontoModal from '../components/MontoModal'
 import RecibirPedidoModal from '../components/RecibirPedidoModal'
 import SupplierModal from '../components/SupplierModal'
+import ConfirmDialog from '../components/ConfirmDialog'
 import type { PedidoSemanal, DepositoSupplier } from '../types'
 
 function formatDate(iso: string) {
@@ -16,7 +17,7 @@ function formatDate(iso: string) {
   })
 }
 
-function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void; onRecibir: () => void; onMarcarPedido: () => void }) {
+function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido, onDeletePedido, onRemoveSupplier }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void; onRecibir: () => void; onMarcarPedido: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void }) {
   const { items, suppliers } = useStock()
   const isArmado = pedido.status === 'armado'
   const isPedido = pedido.status === 'pedido'
@@ -83,11 +84,22 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido 
             </p>
           )}
         </div>
-        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-          isRecibido ? 'bg-green-100 text-green-700' : isPedido ? 'bg-blue-100 text-blue-700' : 'bg-gold-100 text-gold-700'
-        }`}>
-          {pedido.status}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+            isRecibido ? 'bg-green-100 text-green-700' : isPedido ? 'bg-blue-100 text-blue-700' : 'bg-gold-100 text-gold-700'
+          }`}>
+            {pedido.status}
+          </span>
+          {isAdmin && !isRecibido && (
+            <button
+              onClick={onDeletePedido}
+              className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              title="Borrar el pedido completo"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Monto recibido */}
@@ -139,13 +151,13 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido 
                 <span className="text-sm font-semibold text-navy-700">{supplier.name}</span>
                 <span className="text-xs text-navy-400">({supplier.category})</span>
               </div>
-              {!isRecibido && (
-                <div className="flex items-center gap-1.5">
-                  {!supplier.phone && (
-                    <span className="flex items-center gap-1 text-[10px] text-amber-600" title="Esta distribuidora no tiene teléfono cargado">
-                      <AlertTriangle size={11} /> sin tel
-                    </span>
-                  )}
+              <div className="flex items-center gap-1.5">
+                {!isRecibido && !supplier.phone && (
+                  <span className="flex items-center gap-1 text-[10px] text-amber-600" title="Esta distribuidora no tiene teléfono cargado">
+                    <AlertTriangle size={11} /> sin tel
+                  </span>
+                )}
+                {!isRecibido && (
                   <a
                     href={waUrl}
                     target="_blank"
@@ -154,8 +166,17 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido 
                   >
                     <MessageCircle size={14} /> WhatsApp
                   </a>
-                </div>
-              )}
+                )}
+                {isAdmin && !isRecibido && (
+                  <button
+                    onClick={() => onRemoveSupplier(supplier.id, supplier.name)}
+                    className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title={`Sacar ${supplier.name} de este pedido`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="bg-navy-50 rounded-lg p-3">
@@ -214,11 +235,13 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido 
 export default function PedidosAdmin() {
   const { employee } = useAuth()
   const {
-    pedidos, setPedidoMonto, recibirPedido, marcarPedido,
+    pedidos, setPedidoMonto, recibirPedido, marcarPedido, deletePedido, removeSupplierFromPedido,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
   } = useStock()
   const [montoTarget, setMontoTarget] = useState<PedidoSemanal | null>(null)
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
+  const [deletePedidoTarget, setDeletePedidoTarget] = useState<PedidoSemanal | null>(null)
+  const [removeSupplierTarget, setRemoveSupplierTarget] = useState<{ pedidoId: string; supplierId: string; supplierName: string } | null>(null)
   // Distribuidoras: undefined = panel cerrado-modal cerrado; modal target separado
   const [showDistribuidoras, setShowDistribuidoras] = useState(false)
   const [supplierModal, setSupplierModal] = useState<DepositoSupplier | null | undefined>(undefined)
@@ -252,6 +275,18 @@ export default function PedidosAdmin() {
   function handleMarcarPedido(pedido: PedidoSemanal) {
     if (!employee) return
     marcarPedido(pedido.id, employee.name)
+  }
+
+  function confirmDeletePedido() {
+    if (!deletePedidoTarget || !employee) return
+    deletePedido(deletePedidoTarget.id, employee.name)
+    setDeletePedidoTarget(null)
+  }
+
+  function confirmRemoveSupplier() {
+    if (!removeSupplierTarget || !employee) return
+    removeSupplierFromPedido(removeSupplierTarget.pedidoId, removeSupplierTarget.supplierId, employee.name)
+    setRemoveSupplierTarget(null)
   }
 
   function handleSaveSupplier(data: Omit<DepositoSupplier, 'id'>) {
@@ -346,6 +381,8 @@ export default function PedidosAdmin() {
                   onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
+                  onDeletePedido={() => setDeletePedidoTarget(pedido)}
+                  onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
                 />
               ))}
             </>
@@ -364,6 +401,8 @@ export default function PedidosAdmin() {
                   onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
+                  onDeletePedido={() => setDeletePedidoTarget(pedido)}
+                  onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
                 />
               ))}
             </>
@@ -382,6 +421,8 @@ export default function PedidosAdmin() {
                   onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
+                  onDeletePedido={() => setDeletePedidoTarget(pedido)}
+                  onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
                 />
               ))}
             </>
@@ -415,6 +456,24 @@ export default function PedidosAdmin() {
           onDelete={handleDeleteSupplier}
         />
       )}
+
+      <ConfirmDialog
+        open={deletePedidoTarget !== null}
+        title="Borrar pedido completo"
+        message="Se va a marcar como borrado todo el pedido semanal (todas las distribuidoras). Esta acción no se puede deshacer."
+        confirmLabel="Borrar pedido"
+        onConfirm={confirmDeletePedido}
+        onCancel={() => setDeletePedidoTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={removeSupplierTarget !== null}
+        title={`Sacar ${removeSupplierTarget?.supplierName ?? ''} del pedido`}
+        message={`Se quitan del pedido los artículos de ${removeSupplierTarget?.supplierName ?? 'esta distribuidora'}. El resto del pedido queda igual. Si era la única distribuidora, el pedido se marca como borrado.`}
+        confirmLabel="Sacar proveedor"
+        onConfirm={confirmRemoveSupplier}
+        onCancel={() => setRemoveSupplierTarget(null)}
+      />
     </div>
   )
 }
