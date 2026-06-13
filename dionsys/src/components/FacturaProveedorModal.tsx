@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent } from 'react'
 import { X, Save, Sparkles, FileText, Trash2, Plus } from 'lucide-react'
 import { extractProviderInvoice } from '../lib/invoiceExtract'
 import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
+import DateField from './DateField'
 import { validateMonto, formatMonto, formatMontoCurrency } from '../utils/validators'
 import type { FacturaProveedor, FacturaItemLinea, TipoFactura, FormaPago } from '../types'
 
@@ -239,10 +240,9 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
         {pago === 'cuenta_corriente' && (
           <>
             <label className="block text-xs font-semibold text-navy-500 mb-1">Vencimiento del pago</label>
-            <input
-              type="date"
+            <DateField
               value={vencimiento}
-              onChange={e => setVencimiento(e.target.value)}
+              onChange={setVencimiento}
               className="w-full px-3 py-2.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400 mb-4"
             />
           </>
@@ -250,10 +250,9 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
 
         {/* Fecha */}
         <label className="block text-xs font-semibold text-navy-500 mb-1">Fecha de la factura *</label>
-        <input
-          type="date"
+        <DateField
           value={fecha}
-          onChange={e => { setFecha(e.target.value); setError('') }}
+          onChange={v => { setFecha(v); setError('') }}
           className="w-full px-3 py-2.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400 mb-4"
         />
 

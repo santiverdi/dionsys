@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
@@ -8,7 +8,19 @@ import { downloadUrl } from '../lib/facturaStorage'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
 import type { PedidoSemanal, FacturaProveedor, DepositoSupplier } from '../types'
 
-type Tab = 'recibidas' | 'gasto' | 'cuentacorriente'
+type Tab = 'recibidas' | 'gasto' | 'cuentacorriente' | 'contadora'
+
+// Neto / IVA / percepciones de una factura, a partir de sus renglones.
+function desglosar(f: FacturaProveedor) {
+  let neto = 0, iva = 0, percep = 0
+  for (const it of f.items ?? []) {
+    if (it.concepto === 'impuesto') {
+      if (it.descripcion.toUpperCase().includes('IVA')) iva += it.importe
+      else percep += it.importe
+    } else neto += it.importe
+  }
+  return { neto, iva, percep }
+}
 
 function mesLabel(yyyymm: string): string {
   const [y, m] = yyyymm.split('-').map(Number)
@@ -18,6 +30,12 @@ function mesLabel(yyyymm: string): string {
 }
 
 function shortDate(iso: string) {
+  // Fechas 'YYYY-MM-DD' (sin hora) se formatean a mano para evitar el corrimiento de
+  // un día por zona horaria (new Date('YYYY-MM-DD') se interpreta como UTC).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-')
+    return `${d}/${m}/${y}`
+  }
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
@@ -116,6 +134,56 @@ export default function Facturas() {
 
   const hoyStr = new Date().toISOString().slice(0, 10)
 
+  // ---- Para contadora: facturas A por mes (con neto/IVA y archivo) ----
+  const contadoraPorMes = useMemo(() => {
+    const meses = new Map<string, { facturas: FacturaProveedor[]; total: number; iva: number; neto: number }>()
+    for (const p of pedidos) {
+      for (const f of p.facturas ?? []) {
+        if (f.tipoFactura !== 'A') continue
+        const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
+        if (!mes) continue
+        if (!meses.has(mes)) meses.set(mes, { facturas: [], total: 0, iva: 0, neto: 0 })
+        const m = meses.get(mes)!
+        const d = desglosar(f)
+        m.facturas.push(f)
+        m.total += f.monto
+        m.iva += d.iva
+        m.neto += d.neto
+      }
+    }
+    return Array.from(meses.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([mes, d]) => ({
+        mes,
+        facturas: d.facturas.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')),
+        total: d.total, iva: d.iva, neto: d.neto,
+      }))
+  }, [pedidos])
+
+  const [copiedMes, setCopiedMes] = useState<string | null>(null)
+  async function copiarMes(mes: string, facturas: FacturaProveedor[]) {
+    const lines: string[] = [`*Facturas A — ${mesLabel(mes)}* (Hotel Dion)`, '']
+    let tN = 0, tI = 0, tT = 0
+    for (const f of facturas) {
+      const d = desglosar(f)
+      lines.push(`${f.supplierName}${f.fecha ? ` — ${shortDate(f.fecha)}` : ''}`)
+      if (f.items?.length) {
+        lines.push(`  Neto: ${formatMontoCurrency(d.neto)} · IVA: ${formatMontoCurrency(d.iva)}${d.percep ? ` · Percep.: ${formatMontoCurrency(d.percep)}` : ''} · Total: ${formatMontoCurrency(f.monto)}`)
+      } else {
+        lines.push(`  Total: ${formatMontoCurrency(f.monto)} (sin desglose)`)
+      }
+      if (f.facturaUrl) lines.push(`  Archivo: ${downloadUrl(f.facturaUrl, f.facturaNombre || 'factura')}`)
+      lines.push('')
+      tN += d.neto; tI += d.iva; tT += f.monto
+    }
+    lines.push(`TOTALES — Neto: ${formatMontoCurrency(tN)} · IVA: ${formatMontoCurrency(tI)} · Total: ${formatMontoCurrency(tT)}`)
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setCopiedMes(mes)
+      setTimeout(() => setCopiedMes(null), 2000)
+    } catch { /* ignore */ }
+  }
+
   const [expandedMes, setExpandedMes] = useState<Set<string>>(new Set())
   function toggleMes(mes: string) {
     setExpandedMes(prev => {
@@ -157,8 +225,9 @@ export default function Facturas() {
       <div className="flex gap-1 mb-5 bg-navy-100 rounded-xl p-1">
         {([
           { key: 'recibidas' as const, label: 'Recibidas', icon: FileText },
-          { key: 'gasto' as const, label: 'Gasto por mes', icon: CalendarDays },
-          { key: 'cuentacorriente' as const, label: 'Cuenta cte.', icon: CreditCard },
+          { key: 'gasto' as const, label: 'Gasto', icon: CalendarDays },
+          { key: 'cuentacorriente' as const, label: 'Cta cte', icon: CreditCard },
+          { key: 'contadora' as const, label: 'Contadora', icon: Calculator },
         ]).map(t => (
           <button
             key={t.key}
@@ -378,6 +447,64 @@ export default function Facturas() {
                         >
                           <Check size={13} /> Marcar pagada
                         </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* ============ CONTADORA (facturas A por mes) ============ */}
+      {tab === 'contadora' && (
+        contadoraPorMes.length === 0 ? (
+          <div className="text-center py-16">
+            <Calculator size={48} className="mx-auto text-navy-200 mb-3" />
+            <p className="text-navy-400 font-medium">No hay facturas A cargadas</p>
+            <p className="text-sm text-navy-300 mt-1">Las facturas tipo A aparecen acá para enviarle a la contadora.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {contadoraPorMes.map(m => (
+              <div key={m.mes} className="rounded-xl border border-navy-100 bg-white p-4">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <h3 className="font-bold text-navy-800">{mesLabel(m.mes)}</h3>
+                  <button
+                    onClick={() => copiarMes(m.mes, m.facturas)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy-800 text-cream hover:bg-navy-700 active:scale-95 transition-all shrink-0"
+                  >
+                    {copiedMes === m.mes ? <><Check size={13} /> Copiado</> : <><Copy size={13} /> Copiar</>}
+                  </button>
+                </div>
+                <p className="text-xs text-navy-500 mb-3">
+                  {m.facturas.length} {m.facturas.length === 1 ? 'factura A' : 'facturas A'} · Neto {formatMontoCurrency(m.neto)} · IVA {formatMontoCurrency(m.iva)} · Total {formatMontoCurrency(m.total)}
+                </p>
+                <div className="space-y-1.5">
+                  {m.facturas.map((f, i) => {
+                    const d = desglosar(f)
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-navy-100">
+                        <div className="min-w-0 text-xs">
+                          <span className="font-semibold text-navy-800">{f.supplierName}</span>
+                          {f.fecha && <span className="text-navy-400"> · {shortDate(f.fecha)}</span>}
+                          <span className="block text-navy-500">
+                            {f.items?.length ? `Neto ${formatMontoCurrency(d.neto)} · IVA ${formatMontoCurrency(d.iva)} · ` : ''}Total {formatMontoCurrency(f.monto)}
+                          </span>
+                        </div>
+                        {f.facturaUrl ? (
+                          <a
+                            href={downloadUrl(f.facturaUrl, f.facturaNombre || 'factura')}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 shrink-0"
+                          >
+                            <FileText size={13} /> archivo
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 shrink-0">sin archivo</span>
+                        )}
                       </div>
                     )
                   })}
