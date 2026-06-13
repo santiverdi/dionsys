@@ -103,9 +103,6 @@ export const depositoItemSupplier: Record<string, string> = {
   // === Cafe La Virginia ===
   'des-5': 'cafe-virginia',  // Cafe filtro
   'des-6': 'cafe-virginia',  // Edulcorante
-  // === La Paulina ===
-  'des-34': 'la-paulina',    // Jamon → Paleta
-  'des-35': 'la-paulina',    // Queso → Queso untable
   // === La Galletera ===
   'des-13': 'la-galletera',  // Tapitas
   'des-28': 'la-galletera',  // Biscuit
@@ -245,8 +242,7 @@ export const depositoItems: DepositoItem[] = [
   { id: 'des-31', name: 'Coco', unit: 'kg', category: 'desayunador', stock: 0, stockIdeal: 1 },
   { id: 'des-32', name: 'Servilletas', unit: 'caja', category: 'desayunador', stock: 0, stockIdeal: 4 },
   { id: 'des-33', name: 'Membrillo', unit: 'kg', category: 'desayunador', stock: 0, stockIdeal: 1 },
-  { id: 'des-34', name: 'Jamon', unit: 'unidad', category: 'desayunador', stock: 0, stockIdeal: 1 },
-  { id: 'des-35', name: 'Queso', unit: 'unidad', category: 'desayunador', stock: 0, stockIdeal: 1 },
+  // Jamon (des-34) y Queso (des-35): se piden por pilon desde Recepcion (El Amanecer), no van al deposito.
   { id: 'des-36', name: 'Gelatina', unit: 'caja', category: 'desayunador', stock: 0, stockIdeal: 1 },
   { id: 'des-37', name: 'Azucar impalpable', unit: 'kg', category: 'desayunador', stock: 0, stockIdeal: 1 },
   { id: 'des-38', name: 'Mix de semillas', unit: 'kg', category: 'desayunador', stock: 0, stockIdeal: 1 },

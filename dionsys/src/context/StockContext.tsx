@@ -57,9 +57,16 @@ function migrateSuppliers(list: DepositoSupplier[]): DepositoSupplier[] {
   return next
 }
 
+// Items que ya no van al deposito (se piden por pilon desde Recepcion y van directo al desayunador).
+const ITEM_REMOVE = new Set(['des-34', 'des-35']) // Jamon, Queso
+
 function migrateItems(list: DepositoItem[]): DepositoItem[] {
   let changed = false
-  const next = list.map(it => {
+  const base = list.filter(it => {
+    if (ITEM_REMOVE.has(it.id)) { changed = true; return false }
+    return true
+  })
+  const next = base.map(it => {
     // Harina/Azucar: forzar unidad 'paquete' y sacar cualquier pack (revierte la versión con bulto).
     const fixUnit = ITEM_UNIT_FIX[it.id]
     if (fixUnit && (it.unit !== fixUnit || it.packUnit)) {
