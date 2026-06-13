@@ -3,15 +3,15 @@ import { X, Save, Sparkles, FileText, Trash2, Plus } from 'lucide-react'
 import { extractProviderInvoice } from '../lib/invoiceExtract'
 import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
 import { validateMonto, formatMonto, formatMontoCurrency } from '../utils/validators'
-import type { FacturaProveedor, FacturaItemLinea, TipoFactura } from '../types'
+import type { FacturaProveedor, FacturaItemLinea, TipoFactura, FormaPago } from '../types'
 
 interface Props {
   supplierName: string
   subtitle?: string
   initial?: FacturaProveedor
   onClose: () => void
-  // Devuelve los campos de la factura (el padre completa supplierId/cargadoBy/cargadoAt).
-  onSave: (data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'facturaUrl' | 'facturaNombre'>) => void
+  // Devuelve los campos de la factura (el padre completa supplierId/cargadoBy/cargadoAt + el seguimiento de pago).
+  onSave: (data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'facturaUrl' | 'facturaNombre'>) => void
 }
 
 // Fila editable: todo string para los inputs; se convierte a números al guardar.
@@ -39,6 +39,7 @@ function rowImporte(s: string): number {
 
 export default function FacturaProveedorModal({ supplierName, subtitle, initial, onClose, onSave }: Props) {
   const [tipo, setTipo] = useState<TipoFactura>(initial?.tipoFactura ?? '')
+  const [pago, setPago] = useState<FormaPago>(initial?.pago ?? 'contado')
   const [fecha, setFecha] = useState(initial?.fecha ?? '')
   const [rows, setRows] = useState<Row[]>(rowsFromItems(initial?.items))
   // monto manual: solo se usa cuando no hay renglones cargados
@@ -131,7 +132,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
       items = undefined
     }
 
-    onSave({ tipoFactura: tipo, monto, fecha, items, facturaUrl, facturaNombre })
+    onSave({ tipoFactura: tipo, monto, fecha, items, pago, facturaUrl, facturaNombre })
   }
 
   return (
@@ -196,6 +197,25 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
               }`}
             >
               {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Forma de pago */}
+        <label className="block text-xs font-semibold text-navy-500 mb-1">Forma de pago</label>
+        <div className="flex gap-2 mb-4">
+          {([
+            { key: 'contado' as const, label: 'Contado' },
+            { key: 'cuenta_corriente' as const, label: 'Cuenta corriente' },
+          ]).map(p => (
+            <button
+              key={p.key}
+              onClick={() => setPago(p.key)}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-all ${
+                pago === p.key ? 'bg-navy-800 text-cream border-navy-800' : 'bg-white text-navy-600 border-navy-200 hover:bg-navy-50'
+              }`}
+            >
+              {p.label}
             </button>
           ))}
         </div>

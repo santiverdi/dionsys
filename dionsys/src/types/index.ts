@@ -122,6 +122,8 @@ export interface FacturaItemLinea {
 
 // Factura de UNA distribuidora dentro de un pedido semanal. Charo la carga al
 // recibir la mercadería; la IA detecta tipo (A/B/C), monto, fecha y los renglones.
+export type FormaPago = 'contado' | 'cuenta_corriente'
+
 export interface FacturaProveedor {
   supplierId: string
   supplierName: string
@@ -129,6 +131,9 @@ export interface FacturaProveedor {
   monto: number
   fecha: string             // YYYY-MM-DD (fecha de la factura, para el reporte mensual)
   items?: FacturaItemLinea[] // detalle por renglón (para el gasto por producto)
+  pago?: FormaPago          // contado | cuenta corriente (default: contado si falta)
+  pagado?: boolean          // solo cuenta corriente: si ya se saldó
+  fechaPago?: string        // YYYY-MM-DD en que se pagó (cuenta corriente saldada)
   facturaUrl?: string       // archivo en Supabase Storage
   facturaNombre?: string
   cargadoBy?: string

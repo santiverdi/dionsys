@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
@@ -8,7 +8,7 @@ import { downloadUrl } from '../lib/facturaStorage'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
 import type { PedidoSemanal, FacturaProveedor, DepositoSupplier } from '../types'
 
-type Tab = 'recibidas' | 'gasto'
+type Tab = 'recibidas' | 'gasto' | 'cuentacorriente'
 
 function mesLabel(yyyymm: string): string {
   const [y, m] = yyyymm.split('-').map(Number)
@@ -50,16 +50,25 @@ export default function Facturas() {
     return pedido.facturas?.find(f => f.supplierId === supplierId)
   }
 
-  function handleSaveFactura(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'facturaUrl' | 'facturaNombre'>) {
+  function handleSaveFactura(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'facturaUrl' | 'facturaNombre'>) {
     if (!target || !employee) return
+    const esCC = data.pago === 'cuenta_corriente'
     setFacturaProveedor(target.pedido.id, {
       supplierId: target.supplier.id,
       supplierName: target.supplier.name,
       ...data,
+      // El seguimiento de pago solo aplica a cuenta corriente; se preserva al editar.
+      pagado: esCC ? (target.initial?.pagado ?? false) : undefined,
+      fechaPago: esCC ? target.initial?.fechaPago : undefined,
       cargadoBy: employee.name,
       cargadoAt: new Date().toISOString(),
     })
     setTarget(null)
+  }
+
+  // Marca una factura de cuenta corriente como pagada (hoy).
+  function marcarPagada(pedido: PedidoSemanal, f: FacturaProveedor) {
+    setFacturaProveedor(pedido.id, { ...f, pagado: true, fechaPago: new Date().toISOString().slice(0, 10) })
   }
 
   // ---- Reporte: gasto por mes (con desglose por proveedor y por producto) ----
@@ -111,6 +120,27 @@ export default function Facturas() {
     })
   }
 
+  // ---- Cuenta corriente: facturas pendientes de pago, agrupadas por proveedor ----
+  const cuentaCorriente = useMemo(() => {
+    const porProveedor = new Map<string, { nombre: string; total: number; facturas: { pedido: PedidoSemanal; factura: FacturaProveedor }[] }>()
+    let totalPendiente = 0
+    for (const p of pedidos) {
+      if (p.status === 'borrado') continue
+      for (const f of p.facturas ?? []) {
+        if (f.pago !== 'cuenta_corriente' || f.pagado) continue
+        totalPendiente += f.monto
+        const g = porProveedor.get(f.supplierId) ?? { nombre: f.supplierName, total: 0, facturas: [] }
+        g.total += f.monto
+        g.facturas.push({ pedido: p, factura: f })
+        porProveedor.set(f.supplierId, g)
+      }
+    }
+    const grupos = Array.from(porProveedor.values())
+      .map(g => ({ ...g, facturas: g.facturas.sort((a, b) => (a.factura.fecha || '').localeCompare(b.factura.fecha || '')) }))
+      .sort((a, b) => b.total - a.total)
+    return { totalPendiente, grupos }
+  }, [pedidos])
+
   return (
     <div>
       <h2 className="text-xl font-bold text-navy-800 mb-2">Facturas de Proveedores</h2>
@@ -121,6 +151,7 @@ export default function Facturas() {
         {([
           { key: 'recibidas' as const, label: 'Recibidas', icon: FileText },
           { key: 'gasto' as const, label: 'Gasto por mes', icon: CalendarDays },
+          { key: 'cuentacorriente' as const, label: 'Cuenta cte.', icon: CreditCard },
         ]).map(t => (
           <button
             key={t.key}
@@ -173,6 +204,11 @@ export default function Facturas() {
                                 <span className="font-bold text-navy-800">{formatMontoCurrency(f.monto)}</span>
                                 {f.fecha && <span className="text-navy-400">· {shortDate(f.fecha)}</span>}
                                 {f.items?.length ? <span className="text-navy-400">· {f.items.length} reng.</span> : null}
+                                {f.pago === 'cuenta_corriente' && (
+                                  f.pagado
+                                    ? <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold">cta cte · pagada</span>
+                                    : <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">cta cte · debe</span>
+                                )}
                                 {f.facturaUrl && (
                                   <a
                                     href={downloadUrl(f.facturaUrl, f.facturaNombre || 'factura')}
@@ -274,6 +310,52 @@ export default function Facturas() {
                 </div>
               )
             })}
+          </div>
+        )
+      )}
+
+      {/* ============ CUENTA CORRIENTE ============ */}
+      {tab === 'cuentacorriente' && (
+        cuentaCorriente.grupos.length === 0 ? (
+          <div className="text-center py-16">
+            <CreditCard size={48} className="mx-auto text-navy-200 mb-3" />
+            <p className="text-navy-400 font-medium">No hay deudas en cuenta corriente</p>
+            <p className="text-sm text-navy-300 mt-1">Las facturas marcadas como "cuenta corriente" sin pagar aparecen acá.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-center justify-between">
+              <span className="text-sm font-semibold text-amber-800">Total pendiente de pago</span>
+              <span className="text-xl font-bold text-amber-900">{formatMontoCurrency(cuentaCorriente.totalPendiente)}</span>
+            </div>
+            {cuentaCorriente.grupos.map(g => (
+              <div key={g.nombre} className="rounded-xl border border-navy-100 bg-white p-4">
+                <div className="flex items-center justify-between mb-3 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Package size={14} className="text-navy-500 shrink-0" />
+                    <span className="font-bold text-navy-800 truncate">{g.nombre}</span>
+                  </div>
+                  <span className="text-base font-bold text-amber-700 shrink-0">{formatMontoCurrency(g.total)}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {g.facturas.map(({ pedido, factura }, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-navy-100">
+                      <div className="min-w-0 text-xs">
+                        <span className="font-bold text-navy-800">{formatMontoCurrency(factura.monto)}</span>
+                        {factura.tipoFactura && <span className="ml-1 text-navy-400">Factura {factura.tipoFactura}</span>}
+                        {factura.fecha && <span className="text-navy-400"> · {shortDate(factura.fecha)}</span>}
+                      </div>
+                      <button
+                        onClick={() => marcarPagada(pedido, factura)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"
+                      >
+                        <Check size={13} /> Marcar pagada
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )
       )}
