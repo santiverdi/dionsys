@@ -2,18 +2,18 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
-import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, ClipboardList, Receipt } from 'lucide-react'
+import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase } from 'lucide-react'
 import type { Role } from '../types'
 import OccupancyReminder from './OccupancyReminder'
 import PedidosPorRecibir from './PedidosPorRecibir'
 
+// Impuestos y Proveedores no tienen entrada propia: se acceden desde Administracion.
 const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
+  { to: '/administracion', label: 'Administracion', icon: Briefcase },
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/recepcion', label: 'Recepcion', icon: ConciergeBell },
   { to: '/deposito', label: 'Pedido Semanal', icon: Warehouse },
   { to: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },
-  { to: '/pedidos-admin', label: 'Proveedores', icon: ClipboardList },
-  { to: '/impuestos', label: 'Impuestos', icon: Receipt },
 ]
 
 export default function Layout() {
@@ -119,7 +119,7 @@ export default function Layout() {
 
       {/* Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6">
-        <OccupancyReminder />
+        {role && canAccess(role, '/recepcion') && <OccupancyReminder />}
         <PedidosPorRecibir />
         <Outlet />
       </main>

@@ -28,13 +28,12 @@ export default function Stock() {
   } = useStock()
 
   const isAdmin = canDelete(employee?.role ?? 'mucama')
-  const isEncargada = employee?.role === 'encargada'
   const [deleteTargetPedidoId, setDeleteTargetPedidoId] = useState<string | null>(null)
   const [confirmClearStock, setConfirmClearStock] = useState(false)
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
   // Item editor: undefined = closed, null = nuevo item, DepositoItem = editar
   const [itemModal, setItemModal] = useState<DepositoItem | null | undefined>(undefined)
-  const [tab, setTab] = useState<MainTab>(employee?.role === 'encargada' ? 'pedido' : 'deposito')
+  const [tab, setTab] = useState<MainTab>('deposito')
   const [catFilter, setCatFilter] = useState<CategoryFilter>('todos')
   const [depositoSearch, setDepositoSearch] = useState('')
   const [compact, setCompact] = useState(() => localStorage.getItem('dionsys_deposito_compact') === '1')
@@ -153,12 +152,6 @@ export default function Stock() {
       return true
     })
   }, [movements, movFilter, movHistSearch])
-
-  // La encargada entra directo al armado del pedido, ya precargado.
-  useEffect(() => {
-    if (isEncargada) initPedido()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // ---- Movement handlers ----
   function openMovement(item: DepositoItem, type: 'entrada' | 'salida') {

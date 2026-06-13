@@ -19,6 +19,7 @@ import Stock from './pages/Stock'
 import Mantenimiento from './pages/Mantenimiento'
 import PedidosAdmin from './pages/PedidosAdmin'
 import Impuestos from './pages/Impuestos'
+import Administracion from './pages/Administracion'
 import SyncPanel from './pages/SyncPanel'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -55,6 +56,7 @@ function AppRoutes() {
         }
       >
         <Route index element={<DefaultRedirect />} />
+        <Route path="administracion" element={<RoleRoute path="/administracion"><Administracion /></RoleRoute>} />
         <Route path="dashboard" element={<RoleRoute path="/dashboard"><Dashboard /></RoleRoute>} />
         <Route path="pedidos" element={<RoleRoute path="/pedidos"><Pedidos /></RoleRoute>} />
         <Route path="recepcion" element={<RoleRoute path="/recepcion"><PedidosRecepcion /></RoleRoute>} />

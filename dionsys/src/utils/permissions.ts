@@ -1,11 +1,14 @@
 import type { Role } from '../types'
 
 export const ROLE_ROUTES: Record<Role, string[]> = {
-  admin:         ['/dashboard', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin', '/impuestos'],
+  // Admin (Charo): entra por Administración pero mantiene acceso total.
+  admin:         ['/administracion', '/dashboard', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin', '/impuestos'],
+  // Recepcionista (conserje): recepción + depósito (incluye armar el pedido semanal).
   concierge:     ['/recepcion', '/deposito'],
   mucama:        ['/recepcion', '/deposito'],
   mantenimiento: ['/recepcion', '/mantenimiento'],
-  encargada:     ['/deposito', '/recepcion'],
+  // Encargada (Roxy): solo depósito.
+  encargada:     ['/deposito'],
 }
 
 export function canAccess(role: Role, path: string): boolean {
@@ -13,7 +16,7 @@ export function canAccess(role: Role, path: string): boolean {
 }
 
 export function getDefaultRoute(role: Role): string {
-  return role === 'admin' ? '/dashboard' : ROLE_ROUTES[role]?.[0] ?? '/recepcion'
+  return role === 'admin' ? '/administracion' : ROLE_ROUTES[role]?.[0] ?? '/recepcion'
 }
 
 export function canDelete(role: Role): boolean {
