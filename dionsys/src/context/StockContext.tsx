@@ -42,6 +42,8 @@ const ITEM_PACKS: Record<string, { unit: string; packUnit: string; packSize: num
   'lim-4':  { unit: 'unidad',  packUnit: 'caja',    packSize: 500, scale: true },  // Jaboncitos x500
   'lim-6':  { unit: 'unidad',  packUnit: 'bolson',  packSize: 50,  scale: true },  // Bolsa camiseta x50
   'lim-14': { unit: 'unidad',  packUnit: 'paquete', packSize: 50,  scale: true },  // Bolsa consorcio x50
+  'des-27': { unit: 'paquete', packUnit: 'caja',    packSize: 18,  scale: true },  // Galletas de arroz: sale por paquete, ingresa por caja x18
+  'des-30': { unit: 'kg',      packUnit: 'balde',   packSize: 10,  scale: true },  // Dulce de leche repostero: balde de 10kg
 }
 
 function migrateSuppliers(list: DepositoSupplier[]): DepositoSupplier[] {
