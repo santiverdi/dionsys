@@ -139,16 +139,6 @@ export default function Stock() {
     })
   }, [items, catFilter, depositoSearch])
 
-  // Resumen de faltantes (sobre la categoria/busqueda visibles)
-  const stockSummary = useMemo(() => {
-    let cero = 0, bajo = 0
-    for (const i of filteredItems) {
-      if (i.stock <= 0) cero++
-      else if (i.stock < i.stockIdeal) bajo++
-    }
-    return { cero, bajo }
-  }, [filteredItems])
-
   const lowStockCount = useMemo(
     () => items.filter(i => i.stock < i.stockIdeal).length,
     [items]
@@ -434,21 +424,6 @@ export default function Stock() {
               </button>
             )}
           </div>
-
-          {/* Resumen de faltantes */}
-          {(stockSummary.cero > 0 || stockSummary.bajo > 0) && (
-            <div className="mb-3 bg-white border border-navy-100 rounded-xl px-3 py-2">
-              <p className="text-xs text-navy-500">
-                {stockSummary.cero > 0 && (
-                  <span className="font-semibold text-red-600">{stockSummary.cero} en cero</span>
-                )}
-                {stockSummary.cero > 0 && stockSummary.bajo > 0 && <span className="text-navy-300"> · </span>}
-                {stockSummary.bajo > 0 && (
-                  <span className="font-semibold text-amber-600">{stockSummary.bajo} bajo el ideal</span>
-                )}
-              </p>
-            </div>
-          )}
 
           {/* Items list */}
           <div className={compact ? 'space-y-1' : 'space-y-2'}>
