@@ -39,7 +39,7 @@ const ITEM_UNIT_FIX: Record<string, string> = {
 const ITEM_PACKS: Record<string, { unit: string; packUnit: string; packSize: number; scale?: boolean }> = {
   'des-5':  { unit: 'unidad',  packUnit: 'caja',    packSize: 6,   scale: true },  // Cafe x6
   'lim-28': { unit: 'unidad',  packUnit: 'paquete', packSize: 12,  scale: true },  // Esponjas amarillas x12
-  'lim-4':  { unit: 'unidad',  packUnit: 'caja',    packSize: 500, scale: true },  // Jaboncitos x500
+  'lim-4':  { unit: 'unidad',  packUnit: 'caja',    packSize: 280, scale: true },  // Jaboncitos x280
   'lim-6':  { unit: 'unidad',  packUnit: 'bolson',  packSize: 50,  scale: true },  // Bolsa camiseta x50
   'lim-14': { unit: 'unidad',  packUnit: 'paquete', packSize: 50,  scale: true },  // Bolsa consorcio x50
   'des-27': { unit: 'paquete', packUnit: 'caja',    packSize: 18,  scale: true },  // Galletas de arroz: sale por paquete, ingresa por caja x18
@@ -59,6 +59,12 @@ function migrateSuppliers(list: DepositoSupplier[]): DepositoSupplier[] {
 
 // Items que ya no van al deposito (se piden por pilon desde Recepcion y van directo al desayunador).
 const ITEM_REMOVE = new Set(['des-34', 'des-35']) // Jamon, Queso
+
+// Correcciones de packSize para items YA migrados (la migración por packs no re-aplica
+// si el item ya tiene packUnit; esto fuerza el valor correcto sobre datos viejos).
+const PACK_SIZE_FIX: Record<string, number> = {
+  'lim-4': 280, // Jabones: la caja trae 280 unidades, no 500
+}
 
 function migrateItems(list: DepositoItem[]): DepositoItem[] {
   let changed = false
@@ -87,6 +93,12 @@ function migrateItems(list: DepositoItem[]): DepositoItem[] {
           ? { stock: +(it.stock * packSize).toFixed(2), stockIdeal: +(it.stockIdeal * packSize).toFixed(2) }
           : {}),
       }
+    }
+    // Corrección de packSize sobre items ya migrados (no toca stock; los ideales se retunean aparte).
+    const sizeFix = PACK_SIZE_FIX[it.id]
+    if (sizeFix && it.packUnit && it.packSize !== sizeFix) {
+      changed = true
+      return { ...it, packSize: sizeFix }
     }
     return it
   })
