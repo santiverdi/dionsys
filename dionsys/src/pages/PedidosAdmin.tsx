@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Send, Clock, Package, MessageCircle, DollarSign, Edit3, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle, Trash2 } from 'lucide-react'
+import { Send, Clock, Package, MessageCircle, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle, Trash2 } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
-import { formatMontoCurrency } from '../utils/validators'
-import MontoModal from '../components/MontoModal'
 import RecibirPedidoModal from '../components/RecibirPedidoModal'
 import SupplierModal from '../components/SupplierModal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -17,7 +15,7 @@ function formatDate(iso: string) {
   })
 }
 
-function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido, onDeletePedido, onRemoveSupplier }: { pedido: PedidoSemanal; isAdmin: boolean; onCargarMonto: () => void; onRecibir: () => void; onMarcarPedido: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void }) {
+function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onDeletePedido, onRemoveSupplier }: { pedido: PedidoSemanal; isAdmin: boolean; onRecibir: () => void; onMarcarPedido: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void }) {
   const { items, suppliers } = useStock()
   const isArmado = pedido.status === 'armado'
   const isPedido = pedido.status === 'pedido'
@@ -100,45 +98,6 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido,
             </button>
           )}
         </div>
-      </div>
-
-      {/* Monto recibido */}
-      <div className={`rounded-lg p-3 mb-3 border ${
-        pedido.monto != null
-          ? 'bg-green-50 border-green-200'
-          : 'bg-navy-50 border-navy-100'
-      }`}>
-        {pedido.monto != null ? (
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-wide font-semibold text-green-700">Monto recibido</p>
-              <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(pedido.monto)}</p>
-              <p className="text-xs text-navy-500">
-                Cargado por {pedido.montoCargadoBy ?? '?'}
-                {pedido.montoCargadoAt && ` — ${new Date(pedido.montoCargadoAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`}
-              </p>
-            </div>
-            {isAdmin && (
-              <button
-                onClick={onCargarMonto}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-700 hover:bg-navy-50 border border-navy-200 shrink-0"
-              >
-                <Edit3 size={12} /> Editar
-              </button>
-            )}
-          </div>
-        ) : isAdmin ? (
-          <button
-            onClick={onCargarMonto}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold bg-navy-800 text-cream hover:bg-navy-700 transition-colors"
-          >
-            <DollarSign size={16} /> Cargar monto recibido
-          </button>
-        ) : (
-          <p className="text-xs text-navy-400 italic text-center">
-            Monto pendiente de cargar por administración
-          </p>
-        )}
       </div>
 
       {supplierGroups.map(({ supplier, items }) => {
@@ -235,10 +194,9 @@ function PedidoCard({ pedido, isAdmin, onCargarMonto, onRecibir, onMarcarPedido,
 export default function PedidosAdmin() {
   const { employee } = useAuth()
   const {
-    pedidos, setPedidoMonto, recibirPedido, marcarPedido, deletePedido, removeSupplierFromPedido,
+    pedidos, recibirPedido, marcarPedido, deletePedido, removeSupplierFromPedido,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
   } = useStock()
-  const [montoTarget, setMontoTarget] = useState<PedidoSemanal | null>(null)
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
   const [deletePedidoTarget, setDeletePedidoTarget] = useState<PedidoSemanal | null>(null)
   const [removeSupplierTarget, setRemoveSupplierTarget] = useState<{ pedidoId: string; supplierId: string; supplierName: string } | null>(null)
@@ -259,12 +217,6 @@ export default function PedidosAdmin() {
     () => pedidos.filter(p => p.status === 'recibido').slice(0, 10),
     [pedidos]
   )
-
-  function handleSaveMonto({ monto, receiptPhoto }: { monto: number; receiptPhoto?: string }) {
-    if (!montoTarget || !employee) return
-    setPedidoMonto(montoTarget.id, monto, employee.name, receiptPhoto)
-    setMontoTarget(null)
-  }
 
   function handleConfirmRecibir(recibidosItems: { itemId: string; cantidad: number }[]) {
     if (!recibirTarget || !employee) return
@@ -378,7 +330,6 @@ export default function PedidosAdmin() {
                   key={pedido.id}
                   pedido={pedido}
                   isAdmin={isAdmin}
-                  onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
@@ -398,7 +349,6 @@ export default function PedidosAdmin() {
                   key={pedido.id}
                   pedido={pedido}
                   isAdmin={isAdmin}
-                  onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
@@ -418,7 +368,6 @@ export default function PedidosAdmin() {
                   key={pedido.id}
                   pedido={pedido}
                   isAdmin={isAdmin}
-                  onCargarMonto={() => setMontoTarget(pedido)}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
@@ -429,16 +378,6 @@ export default function PedidosAdmin() {
           )}
         </>
       )}
-
-      <MontoModal
-        open={montoTarget !== null}
-        title={montoTarget?.monto != null ? 'Editar monto del pedido' : 'Cargar monto recibido'}
-        subtitle={montoTarget ? `Pedido semanal del ${new Date(montoTarget.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : ''}
-        initialMonto={montoTarget?.monto}
-        initialReceiptPhoto={montoTarget?.receiptPhoto}
-        onClose={() => setMontoTarget(null)}
-        onSave={handleSaveMonto}
-      />
 
       {recibirTarget && (
         <RecibirPedidoModal
