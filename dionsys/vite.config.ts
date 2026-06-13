@@ -27,6 +27,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // OpenCV (~10MB, solo para escanear facturas) NO va al precache: se baja
+        // on-demand desde la red la primera vez que se escanea.
+        globIgnores: ['**/opencv-*.js'],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,

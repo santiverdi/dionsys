@@ -3,6 +3,7 @@ import { X, Save, Sparkles, FileText, Trash2, Plus } from 'lucide-react'
 import { extractProviderInvoice } from '../lib/invoiceExtract'
 import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
 import { fileToPdf } from '../lib/imageToPdf'
+import { scanImageFile } from '../lib/scanDocument'
 import DateField from './DateField'
 import { validateMonto, formatMonto, formatMontoCurrency } from '../utils/validators'
 import type { FacturaProveedor, FacturaItemLinea, TipoFactura, FormaPago } from '../types'
@@ -96,8 +97,9 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
         setMontoManual(totalFactura.ok ? formatMonto(totalFactura.value!) : data.monto)
       }
       try {
-        // Para la contadora: si es una foto, la guardamos como PDF.
-        const pdf = await fileToPdf(file)
+        // Para la contadora: escaneamos la foto (recorte + enderezado + realce) y la guardamos como PDF.
+        const scanned = await scanImageFile(file)
+        const pdf = await fileToPdf(scanned)
         const { url, nombre } = await uploadFactura(pdf)
         setFacturaUrl(url)
         setFacturaNombre(nombre)
