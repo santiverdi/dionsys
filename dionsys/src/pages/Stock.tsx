@@ -6,7 +6,7 @@ import {
   Package, ClipboardList, Clock, Coffee, SprayCanIcon,
   Minus, Plus, X, Copy, Check, ChevronLeft, Trash2,
   ArrowDownCircle, ArrowUpCircle, Send, Search, RotateCcw, Eraser, Pencil, PackageCheck,
-  LayoutGrid, List, Undo2, Sparkles,
+  LayoutGrid, List, Undo2,
 } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import DepositoItemModal from '../components/DepositoItemModal'
@@ -129,26 +129,14 @@ export default function Stock() {
     return c
   }, [pedidoItems, itemById])
 
-  // Rango de prioridad: 0 = en cero (rojo), 1 = bajo el ideal (amarillo), 2 = ok (verde)
-  function stockRank(it: DepositoItem) {
-    if (it.stock <= 0) return 0
-    if (it.stock < it.stockIdeal) return 1
-    return 2
-  }
-
-  // Filtered items (categoria + busqueda por nombre) ordenados: faltantes arriba
+  // Filtered items (categoria + busqueda por nombre), en el orden original
   const filteredItems = useMemo(() => {
     const q = depositoSearch.trim().toLowerCase()
-    const list = items.filter(i => {
+    return items.filter(i => {
       if (catFilter !== 'todos' && i.category !== catFilter) return false
       if (q && !i.name.toLowerCase().includes(q)) return false
       return true
     })
-    // Orden estable por estado de stock (el orden original se preserva dentro de cada grupo)
-    return list
-      .map((it, idx) => ({ it, idx }))
-      .sort((a, b) => stockRank(a.it) - stockRank(b.it) || a.idx - b.idx)
-      .map(x => x.it)
   }, [items, catFilter, depositoSearch])
 
   // Resumen de faltantes (sobre la categoria/busqueda visibles)
@@ -273,26 +261,6 @@ export default function Stock() {
     setPedidoItems(built)
     setPedidoCat('todos')
     setPedidoSearch('')
-    setPedidoView('edit')
-    setTab('pedido')
-  }
-
-  // Pedido sugerido: precarga lo que falta para llegar al ideal y muestra solo eso.
-  function initPedidoSugerido() {
-    const built: PedidoSemanalItem[] = items.map(item => ({
-      itemId: item.id,
-      name: item.name,
-      unit: item.unit,
-      stockActual: item.stock,
-      stockIdeal: item.stockIdeal,
-      aPedir: packsToReachIdeal(item.stock, item.stockIdeal, getPackSize(item)),
-      orderUnit: getOrderUnit(item),
-      packSize: getPackSize(item),
-    }))
-    setPedidoItems(built)
-    setPedidoCat('todos')
-    setPedidoSearch('')
-    setOnlySelected(true)
     setPedidoView('edit')
     setTab('pedido')
   }
@@ -467,10 +435,10 @@ export default function Stock() {
             )}
           </div>
 
-          {/* Resumen de faltantes + atajo a pedido sugerido */}
+          {/* Resumen de faltantes */}
           {(stockSummary.cero > 0 || stockSummary.bajo > 0) && (
-            <div className="flex items-center justify-between gap-3 mb-3 bg-white border border-navy-100 rounded-xl px-3 py-2">
-              <p className="text-xs text-navy-500 min-w-0">
+            <div className="mb-3 bg-white border border-navy-100 rounded-xl px-3 py-2">
+              <p className="text-xs text-navy-500">
                 {stockSummary.cero > 0 && (
                   <span className="font-semibold text-red-600">{stockSummary.cero} en cero</span>
                 )}
@@ -479,13 +447,6 @@ export default function Stock() {
                   <span className="font-semibold text-amber-600">{stockSummary.bajo} bajo el ideal</span>
                 )}
               </p>
-              <button
-                onClick={initPedidoSugerido}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gold-400 text-navy-900 hover:bg-gold-500 active:scale-95 transition-all shrink-0"
-                title="Armar el pedido con lo que falta hasta el stock ideal"
-              >
-                <Sparkles size={14} /> Pedido sugerido
-              </button>
             </div>
           )}
 
