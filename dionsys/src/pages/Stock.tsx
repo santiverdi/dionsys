@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useStock, generatePedidoText } from '../context/StockContext'
 import type { PedidoSemanalItem, DepositoItem, PedidoSemanal } from '../types'
@@ -6,6 +6,7 @@ import {
   Package, ClipboardList, Clock, Coffee, SprayCanIcon,
   Minus, Plus, X, Copy, Check, ChevronLeft, Trash2,
   ArrowDownCircle, ArrowUpCircle, Send, Search, RotateCcw, Eraser, Pencil, PackageCheck,
+  LayoutGrid, List, Undo2, Sparkles,
 } from 'lucide-react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import DepositoItemModal from '../components/DepositoItemModal'
@@ -36,7 +37,12 @@ export default function Stock() {
   const [tab, setTab] = useState<MainTab>(employee?.role === 'encargada' ? 'pedido' : 'deposito')
   const [catFilter, setCatFilter] = useState<CategoryFilter>('todos')
   const [depositoSearch, setDepositoSearch] = useState('')
+  const [compact, setCompact] = useState(() => localStorage.getItem('dionsys_deposito_compact') === '1')
   const [histTab, setHistTab] = useState<HistorialTab>('pedidos')
+
+  // Toast "deshacer" para los movimientos rápidos (±1 en la tarjeta)
+  const [undo, setUndo] = useState<{ itemId: string; type: 'entrada' | 'salida'; qty: number; name: string } | null>(null)
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [movFilter, setMovFilter] = useState<'todos' | 'entrada' | 'salida'>('todos')
   const [movHistSearch, setMovHistSearch] = useState('')
 
@@ -123,15 +129,37 @@ export default function Stock() {
     return c
   }, [pedidoItems, itemById])
 
-  // Filtered items (categoria + busqueda por nombre)
+  // Rango de prioridad: 0 = en cero (rojo), 1 = bajo el ideal (amarillo), 2 = ok (verde)
+  function stockRank(it: DepositoItem) {
+    if (it.stock <= 0) return 0
+    if (it.stock < it.stockIdeal) return 1
+    return 2
+  }
+
+  // Filtered items (categoria + busqueda por nombre) ordenados: faltantes arriba
   const filteredItems = useMemo(() => {
     const q = depositoSearch.trim().toLowerCase()
-    return items.filter(i => {
+    const list = items.filter(i => {
       if (catFilter !== 'todos' && i.category !== catFilter) return false
       if (q && !i.name.toLowerCase().includes(q)) return false
       return true
     })
+    // Orden estable por estado de stock (el orden original se preserva dentro de cada grupo)
+    return list
+      .map((it, idx) => ({ it, idx }))
+      .sort((a, b) => stockRank(a.it) - stockRank(b.it) || a.idx - b.idx)
+      .map(x => x.it)
   }, [items, catFilter, depositoSearch])
+
+  // Resumen de faltantes (sobre la categoria/busqueda visibles)
+  const stockSummary = useMemo(() => {
+    let cero = 0, bajo = 0
+    for (const i of filteredItems) {
+      if (i.stock <= 0) cero++
+      else if (i.stock < i.stockIdeal) bajo++
+    }
+    return { cero, bajo }
+  }, [filteredItems])
 
   const lowStockCount = useMemo(
     () => items.filter(i => i.stock < i.stockIdeal).length,
@@ -164,6 +192,36 @@ export default function Stock() {
     setMovNotes('')
     setMovUnit('base')
   }
+
+  // Movimiento rápido de 1 desde la tarjeta (sin abrir modal), con toast para deshacer.
+  function quickMove(item: DepositoItem, type: 'entrada' | 'salida') {
+    if (!employee) return
+    const qty = type === 'salida' ? Math.min(1, item.stock) : 1
+    if (qty <= 0) return
+    addMovement(item.id, type, qty, employee.name)
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    setUndo({ itemId: item.id, type, qty, name: item.name })
+    undoTimer.current = setTimeout(() => setUndo(null), 5000)
+  }
+
+  function handleUndo() {
+    if (!undo || !employee) return
+    const opposite = undo.type === 'salida' ? 'entrada' : 'salida'
+    addMovement(undo.itemId, opposite, undo.qty, employee.name, 'Deshacer movimiento rápido')
+    if (undoTimer.current) clearTimeout(undoTimer.current)
+    setUndo(null)
+  }
+
+  function toggleCompact() {
+    setCompact(v => {
+      const next = !v
+      localStorage.setItem('dionsys_deposito_compact', next ? '1' : '0')
+      return next
+    })
+  }
+
+  // Limpia el timer del toast al desmontar
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current) }, [])
 
   function confirmMovement() {
     if (!movModal || !employee || movQty <= 0) return
@@ -215,6 +273,26 @@ export default function Stock() {
     setPedidoItems(built)
     setPedidoCat('todos')
     setPedidoSearch('')
+    setPedidoView('edit')
+    setTab('pedido')
+  }
+
+  // Pedido sugerido: precarga lo que falta para llegar al ideal y muestra solo eso.
+  function initPedidoSugerido() {
+    const built: PedidoSemanalItem[] = items.map(item => ({
+      itemId: item.id,
+      name: item.name,
+      unit: item.unit,
+      stockActual: item.stock,
+      stockIdeal: item.stockIdeal,
+      aPedir: packsToReachIdeal(item.stock, item.stockIdeal, getPackSize(item)),
+      orderUnit: getOrderUnit(item),
+      packSize: getPackSize(item),
+    }))
+    setPedidoItems(built)
+    setPedidoCat('todos')
+    setPedidoSearch('')
+    setOnlySelected(true)
     setPedidoView('edit')
     setTab('pedido')
   }
@@ -340,23 +418,33 @@ export default function Stock() {
                 </button>
               ))}
             </div>
-            {isAdmin && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setConfirmClearStock(true)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
-                  title="Poner el stock de todos los articulos en 0 (no borra items ni configuracion)"
-                >
-                  <RotateCcw size={14} /> Poner en 0
-                </button>
-                <button
-                  onClick={() => setItemModal(null)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 transition-colors"
-                >
-                  <Plus size={14} /> Agregar
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button
+                onClick={toggleCompact}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-600 border border-navy-200 hover:bg-navy-50 transition-colors"
+                title={compact ? 'Ver tarjetas' : 'Ver lista compacta'}
+              >
+                {compact ? <LayoutGrid size={14} /> : <List size={14} />}
+                {compact ? 'Tarjetas' : 'Compacto'}
+              </button>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => setConfirmClearStock(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+                    title="Poner el stock de todos los articulos en 0 (no borra items ni configuracion)"
+                  >
+                    <RotateCcw size={14} /> Poner en 0
+                  </button>
+                  <button
+                    onClick={() => setItemModal(null)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 transition-colors"
+                  >
+                    <Plus size={14} /> Agregar
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Buscador por nombre */}
@@ -379,79 +467,168 @@ export default function Stock() {
             )}
           </div>
 
+          {/* Resumen de faltantes + atajo a pedido sugerido */}
+          {(stockSummary.cero > 0 || stockSummary.bajo > 0) && (
+            <div className="flex items-center justify-between gap-3 mb-3 bg-white border border-navy-100 rounded-xl px-3 py-2">
+              <p className="text-xs text-navy-500 min-w-0">
+                {stockSummary.cero > 0 && (
+                  <span className="font-semibold text-red-600">{stockSummary.cero} en cero</span>
+                )}
+                {stockSummary.cero > 0 && stockSummary.bajo > 0 && <span className="text-navy-300"> · </span>}
+                {stockSummary.bajo > 0 && (
+                  <span className="font-semibold text-amber-600">{stockSummary.bajo} bajo el ideal</span>
+                )}
+              </p>
+              <button
+                onClick={initPedidoSugerido}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gold-400 text-navy-900 hover:bg-gold-500 active:scale-95 transition-all shrink-0"
+                title="Armar el pedido con lo que falta hasta el stock ideal"
+              >
+                <Sparkles size={14} /> Pedido sugerido
+              </button>
+            </div>
+          )}
+
           {/* Items list */}
-          <div className="space-y-2">
+          <div className={compact ? 'space-y-1' : 'space-y-2'}>
             {filteredItems.length === 0 ? (
               <p className="text-navy-400 text-center py-12 text-sm">No hay articulos que coincidan</p>
-            ) : filteredItems.map(item => {
-              const pct = item.stockIdeal > 0 ? Math.min(100, (item.stock / item.stockIdeal) * 100) : 0
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-xl p-3 border transition-colors ${
-                    item.stock === 0
-                      ? 'bg-red-50 border-red-200'
-                      : item.stock < item.stockIdeal
-                        ? 'bg-amber-50 border-amber-200'
-                        : 'bg-white border-navy-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5 gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {item.category === 'desayunador'
-                        ? <Coffee size={14} className="text-gold-500 shrink-0" />
-                        : <SprayCanIcon size={14} className="text-navy-500 shrink-0" />
-                      }
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-navy-800 text-sm truncate">{item.name}</span>
-                          {isAdmin && (
-                            <button
-                              onClick={() => setItemModal(item)}
-                              className="text-navy-300 hover:text-navy-600 p-0.5 shrink-0"
-                              title="Editar articulo"
-                            >
-                              <Pencil size={12} />
-                            </button>
+            ) : compact ? (
+              /* ----- Vista compacta: fila densa con ±1 rápido ----- */
+              filteredItems.map(item => {
+                const statusBg = item.stock === 0
+                  ? 'bg-red-50 border-red-200'
+                  : item.stock < item.stockIdeal
+                    ? 'bg-amber-50 border-amber-200'
+                    : 'bg-white border-navy-100'
+                return (
+                  <div key={item.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${statusBg}`}>
+                    {item.category === 'desayunador'
+                      ? <Coffee size={13} className="text-gold-500 shrink-0" />
+                      : <SprayCanIcon size={13} className="text-navy-500 shrink-0" />
+                    }
+                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                      <span className="text-sm font-medium text-navy-800 truncate">{item.name}</span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => setItemModal(item)}
+                          className="text-navy-300 hover:text-navy-600 p-0.5 shrink-0"
+                          title="Editar articulo"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                      )}
+                    </div>
+                    <span className={`text-xs font-bold shrink-0 tabular-nums ${stockColor(item.stock, item.stockIdeal)}`}>
+                      {item.stock}/{item.stockIdeal} {item.unit}
+                    </span>
+                    <button
+                      onClick={() => quickMove(item, 'salida')}
+                      disabled={item.stock === 0}
+                      className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center hover:bg-red-200 disabled:opacity-30 disabled:cursor-not-allowed active:scale-90 transition-all shrink-0"
+                      title="Sacar 1"
+                    >
+                      <Minus size={15} />
+                    </button>
+                    <button
+                      onClick={() => quickMove(item, 'entrada')}
+                      className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 active:scale-90 transition-all shrink-0"
+                      title="Cargar 1"
+                    >
+                      <Plus size={15} />
+                    </button>
+                  </div>
+                )
+              })
+            ) : (
+              /* ----- Vista tarjetas: ±1 rápido + Salida/Entrada para cantidad/bulto/notas ----- */
+              filteredItems.map(item => {
+                const pct = item.stockIdeal > 0 ? Math.min(100, (item.stock / item.stockIdeal) * 100) : 0
+                return (
+                  <div
+                    key={item.id}
+                    className={`rounded-xl p-3 border transition-colors ${
+                      item.stock === 0
+                        ? 'bg-red-50 border-red-200'
+                        : item.stock < item.stockIdeal
+                          ? 'bg-amber-50 border-amber-200'
+                          : 'bg-white border-navy-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5 gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {item.category === 'desayunador'
+                          ? <Coffee size={14} className="text-gold-500 shrink-0" />
+                          : <SprayCanIcon size={14} className="text-navy-500 shrink-0" />
+                        }
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-navy-800 text-sm truncate">{item.name}</span>
+                            {isAdmin && (
+                              <button
+                                onClick={() => setItemModal(item)}
+                                className="text-navy-300 hover:text-navy-600 p-0.5 shrink-0"
+                                title="Editar articulo"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            )}
+                          </div>
+                          {packLabel(item) && (
+                            <p className="text-[10px] text-indigo-400">{packLabel(item)}</p>
                           )}
                         </div>
-                        {packLabel(item) && (
-                          <p className="text-[10px] text-indigo-400">{packLabel(item)}</p>
-                        )}
                       </div>
+                      <span className={`text-sm font-bold shrink-0 ${stockColor(item.stock, item.stockIdeal)}`}>
+                        {item.stock} / {item.stockIdeal} {item.unit}
+                      </span>
                     </div>
-                    <span className={`text-sm font-bold shrink-0 ${stockColor(item.stock, item.stockIdeal)}`}>
-                      {item.stock} / {item.stockIdeal} {item.unit}
-                    </span>
-                  </div>
 
-                  {/* Stock bar */}
-                  <div className="w-full h-1.5 bg-navy-100 rounded-full mb-2">
-                    <div
-                      className={`h-full rounded-full transition-all ${stockBarBg(item.stock, item.stockIdeal)}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
+                    {/* Stock bar */}
+                    <div className="w-full h-1.5 bg-navy-100 rounded-full mb-2">
+                      <div
+                        className={`h-full rounded-full transition-all ${stockBarBg(item.stock, item.stockIdeal)}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => openMovement(item, 'salida')}
-                      disabled={item.stock === 0}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Minus size={14} /> Salida
-                    </button>
-                    <button
-                      onClick={() => openMovement(item, 'entrada')}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-                    >
-                      <Plus size={14} /> Entrada
-                    </button>
+                    {/* Actions: −1/+1 rápido + Salida/Entrada (cantidad, bulto, notas) */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => quickMove(item, 'salida')}
+                        disabled={item.stock === 0}
+                        className="w-10 h-10 rounded-lg bg-red-100 text-red-700 flex items-center justify-center hover:bg-red-200 disabled:opacity-30 disabled:cursor-not-allowed active:scale-90 transition-all shrink-0"
+                        title="Sacar 1"
+                      >
+                        <Minus size={18} />
+                      </button>
+                      <button
+                        onClick={() => openMovement(item, 'salida')}
+                        disabled={item.stock === 0}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Salida: cantidad, bulto o notas"
+                      >
+                        Salida
+                      </button>
+                      <button
+                        onClick={() => openMovement(item, 'entrada')}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
+                        title="Entrada: cantidad, bulto o notas"
+                      >
+                        Entrada
+                      </button>
+                      <button
+                        onClick={() => quickMove(item, 'entrada')}
+                        className="w-10 h-10 rounded-lg bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 active:scale-90 transition-all shrink-0"
+                        title="Cargar 1"
+                      >
+                        <Plus size={18} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </div>
         </div>
       )}
@@ -1075,6 +1252,26 @@ export default function Stock() {
           onClose={() => setRecibirTarget(null)}
           onConfirm={handleConfirmRecibir}
         />
+      )}
+
+      {/* =================== TOAST DESHACER (movimiento rápido) =================== */}
+      {undo && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] sm:w-auto">
+          <div className="flex items-center justify-between gap-3 bg-navy-800 text-cream rounded-xl px-4 py-3 shadow-lg">
+            <span className="text-sm">
+              <span className={undo.type === 'salida' ? 'text-red-300 font-bold' : 'text-green-300 font-bold'}>
+                {undo.type === 'salida' ? '−' : '+'}{undo.qty}
+              </span>{' '}
+              <span className="font-medium">{undo.name}</span>
+            </span>
+            <button
+              onClick={handleUndo}
+              className="flex items-center gap-1.5 text-sm font-bold text-gold-400 hover:text-gold-300 active:scale-95 transition-all shrink-0"
+            >
+              <Undo2 size={16} /> Deshacer
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
