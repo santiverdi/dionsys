@@ -12,7 +12,7 @@
 //
 // Best-effort: ante cualquier problema devuelve la foto original para que igual se suba.
 
-const WORK_MAX = 1800 // px del lado más largo del resultado
+const WORK_MAX = 2400 // px del lado más largo del resultado (alto = texto chico legible)
 
 // Umbral adaptativo: un píxel es "tinta" si está al menos C por debajo del brillo
 // local. SOFT es el ancho de la rampa (anti-aliasing para que el texto no quede dentado).

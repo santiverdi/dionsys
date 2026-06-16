@@ -2,7 +2,7 @@
 // Si el archivo ya es PDF (o no es imagen), lo devuelve tal cual.
 // jsPDF se carga on-demand (import dinámico) para no pesar en el bundle inicial.
 
-const MAX_DIM = 2000 // px del lado más largo
+const MAX_DIM = 2400 // px del lado más largo (igual que el escaneo, para no perder texto chico)
 
 export async function fileToPdf(file: File): Promise<File> {
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return file
