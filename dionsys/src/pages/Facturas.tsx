@@ -173,7 +173,10 @@ export default function Facturas() {
       const pdf = await fileToPdf(scanned)
       const { url, nombre } = await uploadFactura(pdf)
       setFacturaProveedor(pedido.id, { ...factura, facturaUrl: url, facturaNombre: nombre })
-    } catch { /* ignore */ }
+    } catch (e) {
+      // No silenciar: si falla la subida hay que avisarle, si no parece que "no pasa nada".
+      alert(e instanceof Error ? e.message : 'No se pudo adjuntar el archivo. Probá de nuevo.')
+    }
     finally { setAttaching(null) }
   }
 

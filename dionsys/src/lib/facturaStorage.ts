@@ -24,10 +24,16 @@ export async function uploadFactura(file: File): Promise<UploadedFactura> {
   const year = new Date().getFullYear()
   const path = `${year}/${crypto.randomUUID()}.${ext}`
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  // Tope de tiempo: en conexiones móviles flojas la subida puede quedar colgada
+  // sin resolver nunca. Pasados 60s damos error en vez de dejar la pantalla cargando.
+  const upload = supabase.storage.from(BUCKET).upload(path, file, {
     contentType: file.type || undefined,
     upsert: false,
   })
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('La subida tardó demasiado. Revisá la conexión y probá de nuevo.')), 60000)
+  )
+  const { error } = await Promise.race([upload, timeout])
   if (error) {
     throw new Error(`No se pudo subir el archivo: ${error.message}`)
   }

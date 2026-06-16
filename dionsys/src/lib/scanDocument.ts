@@ -10,19 +10,35 @@
 
 const WORK_MAX = 1800 // px del lado más largo para procesar
 
+// Promesa que se rechaza sola pasados `ms`, para que ningún paso quede colgado.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} tardó demasiado`)), ms)
+    p.then(v => { clearTimeout(t); resolve(v) }, e => { clearTimeout(t); reject(e) })
+  })
+}
+
 let cvPromise: Promise<any> | null = null
 function loadCv(): Promise<any> {
   if (!cvPromise) {
     cvPromise = (async () => {
       const mod: any = await import('@techstark/opencv-js')
       const cv = mod.default ?? mod
-      if (cv && cv.Mat) return cv
+      // `calledRun` (flag de Emscripten) es true cuando el WASM ya inicializó.
+      // Que `cv.Mat` exista NO garantiza que el runtime esté listo, así que no
+      // alcanza con eso: hay que esperar a calledRun u onRuntimeInitialized.
+      if (cv && cv.calledRun) return cv
       await new Promise<void>((resolve, reject) => {
         const t = setTimeout(() => reject(new Error('OpenCV tardó demasiado en cargar')), 20000)
-        cv.onRuntimeInitialized = () => { clearTimeout(t); resolve() }
+        if (cv && cv.calledRun) { clearTimeout(t); resolve(); return }
+        const prev = cv.onRuntimeInitialized
+        cv.onRuntimeInitialized = () => { clearTimeout(t); if (typeof prev === 'function') prev(); resolve() }
       })
       return cv
     })()
+    // Si la carga falla, no dejamos la promesa rechazada cacheada para siempre:
+    // el próximo escaneo puede volver a intentar.
+    cvPromise.catch(() => { cvPromise = null })
   }
   return cvPromise
 }
@@ -57,9 +73,19 @@ async function bitmapToWorkCanvas(file: File): Promise<HTMLCanvasElement> {
   return canvas
 }
 
+// Best-effort con tope de tiempo: si el escaneo (carga de OpenCV, decodificado de
+// la foto, etc.) no termina en ~30s, devolvemos la foto original para que igual
+// se suba y la pantalla no quede "Escaneando…" para siempre.
 export async function scanImageFile(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) return file
+  try {
+    return await withTimeout(scanImageFileInner(file), 30000, 'El escaneo')
+  } catch {
+    return file
+  }
+}
 
+async function scanImageFileInner(file: File): Promise<File> {
   let cv: any
   try {
     cv = await loadCv()
