@@ -165,22 +165,53 @@ export default function Facturas() {
 
   // Adjuntar/escaneo del archivo a una factura que quedó sin archivo (misma automatización).
   const [attaching, setAttaching] = useState<string | null>(null)
+  // Vista previa de la imagen recién escaneada, ANTES de subir: así se ve al instante
+  // que es el último escaneo (no un PDF viejo cacheado) y se puede descartar y reescanear.
+  const [scanPreview, setScanPreview] = useState<{ pedido: PedidoSemanal; factura: FacturaProveedor; file: File; url: string } | null>(null)
+  const [uploadingPreview, setUploadingPreview] = useState(false)
+
   async function attachArchivo(pedido: PedidoSemanal, factura: FacturaProveedor, file: File) {
     const key = `${pedido.id}:${factura.supplierId}`
     setAttaching(key)
     try {
       let scanError: string | undefined
       const scanned = await scanImageFile(file, info => { if (!info.scanned) scanError = info.error })
-      const pdf = await fileToPdf(scanned)
-      const { url, nombre } = await uploadFactura(pdf)
-      setFacturaProveedor(pedido.id, { ...factura, facturaUrl: url, facturaNombre: nombre })
-      // Diagnóstico: si no se pudo procesar la imagen, avisamos el motivo (igual se subió la original).
-      if (scanError) alert('Se subió la foto original sin procesar.\n\nMotivo del escaneo fallido: ' + scanError)
+      if (scanned.type.startsWith('image/')) {
+        // Mostramos la imagen escaneada para confirmar antes de subir.
+        if (scanError) alert('No se pudo procesar la imagen; se muestra la foto original.\n\nMotivo: ' + scanError)
+        setScanPreview({ pedido, factura, file: scanned, url: URL.createObjectURL(scanned) })
+      } else {
+        // No es imagen (ej. eligió un PDF): subimos directo, sin preview.
+        await subirArchivo(pedido, factura, scanned)
+      }
     } catch (e) {
-      // No silenciar: si falla la subida hay que avisarle, si no parece que "no pasa nada".
       alert(e instanceof Error ? e.message : 'No se pudo adjuntar el archivo. Probá de nuevo.')
     }
     finally { setAttaching(null) }
+  }
+
+  async function subirArchivo(pedido: PedidoSemanal, factura: FacturaProveedor, archivo: File) {
+    const pdf = await fileToPdf(archivo)
+    const { url, nombre } = await uploadFactura(pdf)
+    setFacturaProveedor(pedido.id, { ...factura, facturaUrl: url, facturaNombre: nombre })
+  }
+
+  function cerrarPreview() {
+    if (scanPreview) URL.revokeObjectURL(scanPreview.url)
+    setScanPreview(null)
+  }
+
+  async function confirmarPreview() {
+    if (!scanPreview) return
+    setUploadingPreview(true)
+    try {
+      await subirArchivo(scanPreview.pedido, scanPreview.factura, scanPreview.file)
+      cerrarPreview()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo subir el archivo. Probá de nuevo.')
+    } finally {
+      setUploadingPreview(false)
+    }
   }
 
   const [copiedMes, setCopiedMes] = useState<string | null>(null)
@@ -562,6 +593,30 @@ export default function Facturas() {
           onClose={() => setTarget(null)}
           onSave={handleSaveFactura}
         />
+      )}
+
+      {scanPreview && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/80" onClick={uploadingPreview ? undefined : cerrarPreview}>
+          <div className="flex-1 overflow-auto p-4 flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            <img src={scanPreview.url} alt="Vista previa del escaneo" className="max-w-full h-auto rounded-lg shadow-lg bg-white" />
+          </div>
+          <div className="bg-white p-4 flex gap-3" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={cerrarPreview}
+              disabled={uploadingPreview}
+              className="flex-1 py-3 rounded-xl font-semibold text-navy-700 bg-navy-100 hover:bg-navy-200 disabled:opacity-50"
+            >
+              Descartar
+            </button>
+            <button
+              onClick={confirmarPreview}
+              disabled={uploadingPreview}
+              className="flex-1 py-3 rounded-xl font-semibold text-cream bg-navy-800 hover:bg-navy-700 disabled:opacity-50"
+            >
+              {uploadingPreview ? 'Subiendo…' : 'Usar y subir'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
