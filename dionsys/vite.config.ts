@@ -36,6 +36,11 @@ export default defineConfig({
       },
     }),
   ],
+  // El worker de escaneo (scanWorker.ts) importa OpenCV con import() dinámico
+  // (code-splitting), que requiere formato ES; el default 'iife' no lo soporta.
+  worker: {
+    format: 'es',
+  },
   server: {
     host: true,
   },
