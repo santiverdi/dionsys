@@ -20,25 +20,49 @@ export interface ScanInfo {
   error?: string     // motivo si scanned === false
 }
 
+// Carga OpenCV.js como <script> CLÁSICO desde /opencv.js (auto-alojado en public/).
+// NO usamos import() de '@techstark/opencv-js': Vite lo transforma (build estilo
+// Node con fs/path/crypto) y en Safari/iPhone el import ESM falla ("importing a
+// module script failed"). El UMD clásico define window.cv y avisa con
+// onRuntimeInitialized; el WASM viene embebido (sin fetch extra).
 let cvPromise: Promise<any> | null = null
 function loadCv(): Promise<any> {
-  if (!cvPromise) {
-    cvPromise = (async () => {
-      const mod: any = await import('@techstark/opencv-js')
-      const cv = mod.default ?? mod
-      // `calledRun` (flag de Emscripten) es true cuando el WASM ya inicializó.
-      if (cv && cv.calledRun) return cv
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('OpenCV tardó demasiado en cargar')), 25000)
-        if (cv && cv.calledRun) { clearTimeout(t); resolve(); return }
-        const prev = cv.onRuntimeInitialized
-        cv.onRuntimeInitialized = () => { clearTimeout(t); if (typeof prev === 'function') prev(); resolve() }
-      })
-      return cv
-    })()
-    // Si falla, no dejamos la promesa rechazada cacheada: el próximo intento reintenta.
-    cvPromise.catch(() => { cvPromise = null })
-  }
+  if (cvPromise) return cvPromise
+  cvPromise = new Promise<any>((resolve, reject) => {
+    const w = window as any
+    let settled = false
+    const timeout = setTimeout(() => fail('OpenCV tardó demasiado en cargar'), 30000)
+    const ok = (cv: any) => { if (settled) return; settled = true; clearTimeout(timeout); resolve(cv) }
+    const fail = (msg: string) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      document.getElementById('opencv-js')?.remove() // permitir reintento limpio
+      reject(new Error(msg))
+    }
+
+    // `calledRun` (flag de Emscripten) es true cuando el WASM ya inicializó.
+    const waitReady = (cv: any) => {
+      if (cv.calledRun) { ok(cv); return }
+      const prev = cv.onRuntimeInitialized
+      cv.onRuntimeInitialized = () => { if (typeof prev === 'function') prev(); ok(cv) }
+    }
+
+    if (w.cv) { waitReady(w.cv); return }
+
+    const script = document.createElement('script')
+    script.id = 'opencv-js'
+    script.src = `${import.meta.env.BASE_URL}opencv.js`
+    script.async = true
+    script.addEventListener('load', () => {
+      if (!w.cv) { fail('OpenCV no quedó definido al cargar el script'); return }
+      waitReady(w.cv)
+    })
+    script.addEventListener('error', () => fail('no se pudo cargar /opencv.js'))
+    document.head.appendChild(script)
+  })
+  // Si falla, no dejamos la promesa rechazada cacheada: el próximo intento reintenta.
+  cvPromise.catch(() => { cvPromise = null })
   return cvPromise
 }
 
