@@ -1,135 +1,110 @@
-// Escaneo de documento: detecta el papel, recorta, endereza y realza (fondo
-// blanco + texto oscuro) para que quede como escaneado. Devuelve un File JPEG.
+// Realce "tipo escáner" SIN OpenCV: solo Canvas 2D, así es liviano e instantáneo
+// y funciona en cualquier iPhone (Open.cv pesaba 10MB y no cargaba en el celular).
 //
-// Arquitectura pensada para iPhone/Safari (donde casi todo lo demás falla):
-//  - El hilo principal solo rasteriza la foto a píxeles (<canvas> normal) y dibuja
-//    el resultado. NO usa OffscreenCanvas (problemático en iOS).
-//  - OpenCV.js corre en un Web Worker CLÁSICO (ver scanWorker.ts) que lo carga con
-//    importScripts('/opencv.js') (NO import ESM, que falla en iOS). Así los ~10MB
-//    de OpenCV no congelan la UI, y un watchdog real puede matar el worker si tarda.
+// Qué hace: pasa la foto a gris, aplana la iluminación (divide por un fondo difuso
+// estimado con el reescalado nativo del canvas) y aplica una curva de contraste que
+// lleva el fondo a blanco puro y oscurece el texto. Resultado: fondo blanco + letras
+// negras nítidas, como un escaneo.
 //
-// Best-effort: ante cualquier problema (sin Worker, OpenCV no carga, timeout, etc.)
-// devuelve la foto original para que igual se suba.
+// Qué NO hace: recorte/enderezado automático (eso requería OpenCV). El encuadre lo
+// hace la persona al sacar la foto.
+//
+// Best-effort: ante cualquier problema devuelve la foto original para que igual se suba.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+const WORK_MAX = 1800 // px del lado más largo del resultado
 
-const WORK_MAX = 1800            // px del lado más largo para procesar
-const LOAD_TIMEOUT_MS = 90000    // tope para cargar OpenCV (incluye bajar ~10MB la 1ª vez)
-const PROCESS_TIMEOUT_MS = 30000 // tope para procesar una vez cargado OpenCV
-
-// Info opcional sobre cómo salió el escaneo (para diagnóstico/avisos en la UI).
 export interface ScanInfo {
-  scanned: boolean   // true = se procesó con OpenCV; false = se subió la foto original
-  error?: string     // motivo si scanned === false
+  scanned: boolean
+  error?: string
 }
 
-let worker: Worker | null = null
-function getWorker(): Worker {
-  if (!worker) {
-    // Worker CLÁSICO (sin { type: 'module' }): usa importScripts adentro.
-    worker = new Worker(new URL('./scanWorker.ts', import.meta.url))
+function makeCanvas(w: number, h: number): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  return c
+}
+
+// Curva (LUT 0..255): gamma para oscurecer los grises medios (texto) y recorte a
+// blanco puro para los casi-blancos (fondo limpio).
+function buildLut(): Uint8ClampedArray {
+  const gamma = 1.7
+  const whitePoint = 236
+  const lut = new Uint8ClampedArray(256)
+  for (let i = 0; i < 256; i++) {
+    let v = Math.pow(i / 255, gamma) * 255
+    if (i >= whitePoint) v = 255
+    lut[i] = Math.max(0, Math.min(255, Math.round(v)))
   }
-  return worker
-}
-function killWorker() {
-  if (worker) { try { worker.terminate() } catch { /* ignore */ } worker = null }
-}
-
-async function fileToImageData(file: File): Promise<ImageData> {
-  const bitmap = await createImageBitmap(file)
-  const scale = Math.min(1, WORK_MAX / Math.max(bitmap.width, bitmap.height))
-  const w = Math.max(1, Math.round(bitmap.width * scale))
-  const h = Math.max(1, Math.round(bitmap.height * scale))
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const cctx = canvas.getContext('2d')!
-  cctx.drawImage(bitmap, 0, 0, w, h)
-  try { bitmap.close() } catch { /* ignore */ }
-  return cctx.getImageData(0, 0, w, h)
-}
-
-function imageDataToJpeg(data: Uint8ClampedArray, w: number, h: number): Promise<Blob | null> {
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const img = new ImageData(w, h)
-  img.data.set(data)
-  canvas.getContext('2d')!.putImageData(img, 0, 0)
-  return new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.9))
+  return lut
 }
 
 export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void): Promise<File> {
   if (!file.type.startsWith('image/')) { onInfo?.({ scanned: false, error: 'no es imagen' }); return file }
-  if (typeof Worker === 'undefined') { onInfo?.({ scanned: false, error: 'sin Worker' }); return file }
 
-  let imageData: ImageData
   try {
-    imageData = await fileToImageData(file)
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, WORK_MAX / Math.max(bitmap.width, bitmap.height))
+    const w = Math.max(1, Math.round(bitmap.width * scale))
+    const h = Math.max(1, Math.round(bitmap.height * scale))
+
+    // 1) Imagen a tamaño de trabajo.
+    const full = makeCanvas(w, h)
+    const fctx = full.getContext('2d')!
+    fctx.drawImage(bitmap, 0, 0, w, h)
+    try { bitmap.close() } catch { /* ignore */ }
+    const src = fctx.getImageData(0, 0, w, h).data
+
+    // 2) Escala de grises (luminancia).
+    const n = w * h
+    const luma = new Uint8ClampedArray(n)
+    const grayImg = new ImageData(w, h)
+    const gd = grayImg.data
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      const y = (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114) | 0
+      luma[p] = y
+      gd[i] = gd[i + 1] = gd[i + 2] = y
+      gd[i + 3] = 255
+    }
+    const grayCanvas = makeCanvas(w, h)
+    grayCanvas.getContext('2d')!.putImageData(grayImg, 0, 0)
+
+    // 3) Fondo difuso = bajar el gris a ~1/8 y volver a subirlo (el reescalado del
+    //    canvas hace el promediado/suavizado por nosotros, rapidísimo).
+    const sw = Math.max(1, Math.round(w / 8))
+    const sh = Math.max(1, Math.round(h / 8))
+    const smallC = makeCanvas(sw, sh)
+    const sctx = smallC.getContext('2d')!
+    sctx.imageSmoothingEnabled = true
+    sctx.drawImage(grayCanvas, 0, 0, sw, sh)
+    const bgC = makeCanvas(w, h)
+    const bctx = bgC.getContext('2d')!
+    bctx.imageSmoothingEnabled = true
+    bctx.drawImage(smallC, 0, 0, w, h)
+    const bg = bctx.getImageData(0, 0, w, h).data
+
+    // 4) Aplanar iluminación (gris / fondo) + curva de contraste a blanco puro.
+    const lut = buildLut()
+    const outImg = new ImageData(w, h)
+    const od = outImg.data
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      const b = bg[i] // el fondo es gris: alcanza con un canal
+      let v = b > 0 ? (luma[p] / b) * 255 : luma[p]
+      if (v > 255) v = 255
+      const o = lut[v | 0]
+      od[i] = od[i + 1] = od[i + 2] = o
+      od[i + 3] = 255
+    }
+    const outCanvas = makeCanvas(w, h)
+    outCanvas.getContext('2d')!.putImageData(outImg, 0, 0)
+
+    const blob: Blob | null = await new Promise(res => outCanvas.toBlob(b => res(b), 'image/jpeg', 0.9))
+    if (!blob) { onInfo?.({ scanned: false, error: 'no se pudo exportar el JPEG' }); return file }
+
+    onInfo?.({ scanned: true })
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
   } catch (e) {
-    onInfo?.({ scanned: false, error: 'no se pudo preparar la imagen: ' + ((e as any)?.message || String(e)) })
+    onInfo?.({ scanned: false, error: (e instanceof Error ? e.message : String(e)) })
     return file
   }
-
-  const opencvUrl = new URL(`${import.meta.env.BASE_URL}opencv.js`, self.location.href).href
-
-  return await new Promise<File>(resolve => {
-    let done = false
-    let phase = 'cargar OpenCV'
-    let timer: ReturnType<typeof setTimeout>
-    const finish = (f: File, info: ScanInfo) => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      w.removeEventListener('message', onMsg)
-      w.removeEventListener('error', onErr)
-      onInfo?.(info)
-      resolve(f)
-    }
-    const onTimeout = () => { killWorker(); finish(file, { scanned: false, error: `tardó demasiado (en: ${phase})` }) }
-
-    let w: Worker
-    try {
-      w = getWorker()
-    } catch (e) {
-      onInfo?.({ scanned: false, error: 'no se pudo crear el worker: ' + String(e) })
-      resolve(file)
-      return
-    }
-
-    // Watchdog real (el hilo principal está libre porque OpenCV corre en el worker).
-    // Damos una ventana amplia para cargar OpenCV y, una vez cargado, otra para procesar.
-    timer = setTimeout(onTimeout, LOAD_TIMEOUT_MS)
-
-    const onMsg = async (e: MessageEvent) => {
-      const d = e.data
-      if (d && d.phase === 'loaded') {
-        // OpenCV ya cargó: reiniciamos el watchdog para la etapa de procesamiento.
-        phase = 'procesar'
-        clearTimeout(timer)
-        timer = setTimeout(onTimeout, PROCESS_TIMEOUT_MS)
-        return
-      }
-      if (d && d.ok && d.buffer) {
-        try {
-          const blob = await imageDataToJpeg(new Uint8ClampedArray(d.buffer), d.width, d.height)
-          if (blob) {
-            finish(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }), { scanned: true })
-            return
-          }
-          finish(file, { scanned: false, error: 'no se pudo exportar el JPEG' })
-        } catch (err) {
-          finish(file, { scanned: false, error: 'exportar: ' + ((err as any)?.message || String(err)) })
-        }
-      } else {
-        finish(file, { scanned: false, error: (d && d.error) || 'el worker no devolvió imagen' })
-      }
-    }
-    const onErr = (ev: ErrorEvent) => { killWorker(); finish(file, { scanned: false, error: 'error en el worker: ' + (ev?.message || 'desconocido') }) }
-
-    w.addEventListener('message', onMsg)
-    w.addEventListener('error', onErr)
-    // Transferimos el buffer de píxeles (no se copia).
-    w.postMessage({ opencvUrl, data: imageData.data, width: imageData.width, height: imageData.height }, [imageData.data.buffer])
-  })
 }

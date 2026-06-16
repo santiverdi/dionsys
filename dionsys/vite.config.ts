@@ -27,12 +27,6 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // OpenCV (~10MB, para escanear facturas) SÍ va al precache: si se baja
-        // "on-demand" desde la red, en iPhone (PWA) el pedido del chunk falla y la
-        // recarga de SPA devuelve index.html → el import revienta ("importing a
-        // module script failed"). Precacheándolo siempre está local y con el hash
-        // correcto del deploy. Por eso subimos el límite de tamaño por archivo.
-        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
