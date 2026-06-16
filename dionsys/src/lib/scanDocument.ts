@@ -25,15 +25,20 @@ function makeCanvas(w: number, h: number): HTMLCanvasElement {
   return c
 }
 
-// Curva (LUT 0..255): gamma para oscurecer los grises medios (texto) y recorte a
-// blanco puro para los casi-blancos (fondo limpio).
+// Curva (LUT 0..255): estiramiento de contraste fuerte ("niveles"). Sobre la
+// imagen ya aplanada, todo lo que esté por debajo de `black` se va a NEGRO puro
+// (tinta bien marcada) y todo lo que esté por encima de `white` a BLANCO puro
+// (fondo limpio); entre medio, una rampa lineal. Así el texto resalta como escaneo.
+const BLACK_POINT = 150 // ≤ esto → negro (subir = tinta más marcada / más agresivo)
+const WHITE_POINT = 216 // ≥ esto → blanco (bajar = fondo más limpio)
 function buildLut(): Uint8ClampedArray {
-  const gamma = 1.7
-  const whitePoint = 236
   const lut = new Uint8ClampedArray(256)
+  const range = Math.max(1, WHITE_POINT - BLACK_POINT)
   for (let i = 0; i < 256; i++) {
-    let v = Math.pow(i / 255, gamma) * 255
-    if (i >= whitePoint) v = 255
+    let v: number
+    if (i <= BLACK_POINT) v = 0
+    else if (i >= WHITE_POINT) v = 255
+    else v = ((i - BLACK_POINT) / range) * 255
     lut[i] = Math.max(0, Math.min(255, Math.round(v)))
   }
   return lut
