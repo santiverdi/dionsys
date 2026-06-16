@@ -23,46 +23,64 @@ function killWorker() {
   if (worker) { try { worker.terminate() } catch { /* ignore */ } worker = null }
 }
 
-export async function scanImageFile(file: File): Promise<File> {
-  if (!file.type.startsWith('image/')) return file
+// Info opcional sobre cómo salió el escaneo (para diagnóstico/avisos en la UI).
+export interface ScanInfo {
+  scanned: boolean   // true = se proceso con OpenCV; false = se subio la foto original
+  error?: string     // motivo si scanned === false
+}
+
+export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void): Promise<File> {
+  if (!file.type.startsWith('image/')) { onInfo?.({ scanned: false, error: 'no es imagen' }); return file }
 
   // Entornos sin Worker/OffscreenCanvas (muy viejos): subimos la foto tal cual.
-  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return file
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+    onInfo?.({ scanned: false, error: 'sin Worker/OffscreenCanvas' })
+    return file
+  }
 
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(file)
   } catch {
-    return file // no se pudo decodificar la foto: la subimos tal cual
+    onInfo?.({ scanned: false, error: 'no se pudo decodificar la foto' })
+    return file
   }
 
   return await new Promise<File>(resolve => {
     let done = false
-    const finish = (f: File) => {
+    const finish = (f: File, info: ScanInfo) => {
       if (done) return
       done = true
       clearTimeout(timer)
       w.removeEventListener('message', onMsg)
       w.removeEventListener('error', onErr)
+      onInfo?.(info)
       resolve(f)
     }
 
-    const w = getWorker()
+    let w: Worker
+    try {
+      w = getWorker()
+    } catch (e) {
+      onInfo?.({ scanned: false, error: 'no se pudo crear el worker: ' + String(e) })
+      resolve(file)
+      return
+    }
 
     // Watchdog REAL: corre en el hilo principal (libre, porque OpenCV está en el
     // worker), así que sí se dispara. Si vence, matamos el worker y subimos el original.
-    const timer = setTimeout(() => { killWorker(); finish(file) }, SCAN_TIMEOUT_MS)
+    const timer = setTimeout(() => { killWorker(); finish(file, { scanned: false, error: 'tardó demasiado (timeout)' }) }, SCAN_TIMEOUT_MS)
 
     const onMsg = (e: MessageEvent) => {
       const d = e.data
       if (d && d.ok && d.buffer) {
         const blob = new Blob([d.buffer], { type: d.type || 'image/jpeg' })
-        finish(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }))
+        finish(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }), { scanned: true })
       } else {
-        finish(file)
+        finish(file, { scanned: false, error: (d && d.error) || 'el worker no devolvió imagen' })
       }
     }
-    const onErr = () => { killWorker(); finish(file) }
+    const onErr = (ev: ErrorEvent) => { killWorker(); finish(file, { scanned: false, error: 'error en el worker: ' + (ev?.message || 'desconocido') }) }
 
     w.addEventListener('message', onMsg)
     w.addEventListener('error', onErr)

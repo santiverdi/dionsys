@@ -169,10 +169,13 @@ export default function Facturas() {
     const key = `${pedido.id}:${factura.supplierId}`
     setAttaching(key)
     try {
-      const scanned = await scanImageFile(file)
+      let scanError: string | undefined
+      const scanned = await scanImageFile(file, info => { if (!info.scanned) scanError = info.error })
       const pdf = await fileToPdf(scanned)
       const { url, nombre } = await uploadFactura(pdf)
       setFacturaProveedor(pedido.id, { ...factura, facturaUrl: url, facturaNombre: nombre })
+      // Diagnóstico: si no se pudo procesar la imagen, avisamos el motivo (igual se subió la original).
+      if (scanError) alert('Se subió la foto original sin procesar.\n\nMotivo del escaneo fallido: ' + scanError)
     } catch (e) {
       // No silenciar: si falla la subida hay que avisarle, si no parece que "no pasa nada".
       alert(e instanceof Error ? e.message : 'No se pudo adjuntar el archivo. Probá de nuevo.')

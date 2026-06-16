@@ -199,16 +199,27 @@ async function process(cv: any, bitmap: ImageBitmap): Promise<Blob> {
   }
 }
 
+function errMsg(e: any): string {
+  if (e == null) return 'desconocido'
+  if (typeof e === 'string') return e
+  if (typeof e === 'number') return 'OpenCV #' + e
+  if (e.message) return String(e.message)
+  try { return JSON.stringify(e) } catch { return String(e) }
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const bitmap: ImageBitmap = e.data?.bitmap
-  if (!bitmap) { ;(self as any).postMessage({ ok: false }); return }
+  if (!bitmap) { ;(self as any).postMessage({ ok: false, error: 'sin imagen' }); return }
+  let stage = 'cargar OpenCV'
   try {
     const cv = await loadCv()
+    stage = 'procesar'
     const blob = await process(cv, bitmap)
+    stage = 'exportar'
     const buffer = await blob.arrayBuffer()
     ;(self as any).postMessage({ ok: true, buffer, type: blob.type || 'image/jpeg' }, [buffer])
-  } catch {
-    ;(self as any).postMessage({ ok: false })
+  } catch (err) {
+    ;(self as any).postMessage({ ok: false, error: `${stage}: ${errMsg(err)}` })
   } finally {
     try { bitmap.close() } catch { /* ignore */ }
   }
