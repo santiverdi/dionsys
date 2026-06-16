@@ -12,7 +12,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const WORK_MAX = 1400 // px del lado más largo para procesar
+const WORK_MAX = 1800 // px del lado más largo para procesar
 
 let cvPromise: Promise<any> | null = null
 function loadCv(): Promise<any> {
@@ -48,6 +48,84 @@ function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
+// Detecta el papel y devuelve sus 4 esquinas (para recortar + enderezar).
+// Estrategia: tomar el contorno externo más grande que ocupe buena parte de la
+// foto y aproximarlo a un polígono. Si da 4 lados, perfecto (corrige
+// perspectiva). Si no (lo más común con tickets torcidos o con sombras), usamos
+// el rectángulo rotado que lo envuelve, que igual endereza la inclinación.
+function findDocQuad(cv: any, gray: any, imgArea: number): [Pt, Pt, Pt, Pt] | null {
+  const tmp: any[] = []
+  const t = <T>(m: T): T => { tmp.push(m); return m }
+  try {
+    const blurred = t(new cv.Mat())
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
+    const edges = t(new cv.Mat())
+    cv.Canny(blurred, edges, 60, 180)
+    // Cerrar huecos en los bordes para que el contorno del papel quede completo.
+    const kernel = t(cv.Mat.ones(7, 7, cv.CV_8U))
+    cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel)
+
+    const contours = t(new cv.MatVector())
+    const hierarchy = t(new cv.Mat())
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    // Contorno externo más grande (que ocupe al menos ~15% de la foto).
+    let best: any = null
+    let bestArea = 0
+    for (let i = 0; i < contours.size(); i++) {
+      const c = contours.get(i)
+      const area = cv.contourArea(c)
+      if (area > 0.15 * imgArea && area > bestArea) {
+        if (best) best.delete()
+        best = c
+        bestArea = area
+      } else {
+        c.delete()
+      }
+    }
+    if (!best) return null
+
+    let quad: [Pt, Pt, Pt, Pt] | null = null
+    try {
+      const peri = cv.arcLength(best, true)
+      const approx = t(new cv.Mat())
+      cv.approxPolyDP(best, approx, 0.02 * peri, true)
+      if (approx.rows === 4 && cv.isContourConvex(approx)) {
+        const pts: Pt[] = []
+        for (let r = 0; r < 4; r++) pts.push({ x: approx.intAt(r, 0), y: approx.intAt(r, 1) })
+        quad = orderPoints(pts)
+      } else {
+        // Fallback: rectángulo rotado que envuelve el papel (endereza la inclinación).
+        const rect = cv.minAreaRect(best)
+        const v = cv.RotatedRect.points(rect) as Pt[]
+        if (v && v.length === 4) quad = orderPoints(v.map(p => ({ x: p.x, y: p.y })))
+      }
+    } finally {
+      best.delete()
+    }
+    return quad
+  } catch {
+    return null
+  } finally {
+    for (const m of tmp) { try { m.delete() } catch { /* ignore */ } }
+  }
+}
+
+// Curva (LUT) que convierte un gris ya "aplanado" en un look escaneado:
+// oscurece los grises medios (texto más negro y nítido) y lleva los casi-blancos
+// a blanco puro (fondo limpio), como CamScanner.
+function scannerLut(cv: any): any {
+  const gamma = 1.7      // >1 = más contraste / texto más oscuro
+  const whitePoint = 238 // de acá para arriba → blanco puro
+  const arr = new Array<number>(256)
+  for (let i = 0; i < 256; i++) {
+    let v = Math.pow(i / 255, gamma) * 255
+    if (i >= whitePoint) v = 255
+    arr[i] = Math.max(0, Math.min(255, Math.round(v)))
+  }
+  return cv.matFromArray(1, 256, cv.CV_8U, arr)
+}
+
 function bitmapToImageData(bitmap: ImageBitmap): ImageData {
   const scale = Math.min(1, WORK_MAX / Math.max(bitmap.width, bitmap.height))
   const w = Math.max(1, Math.round(bitmap.width * scale))
@@ -70,37 +148,8 @@ async function process(cv: any, bitmap: ImageBitmap): Promise<Blob> {
     const gray = track(new cv.Mat())
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
 
-    // --- Detección de bordes del documento ---
-    const blurred = track(new cv.Mat())
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0)
-    const edges = track(new cv.Mat())
-    cv.Canny(blurred, edges, 75, 200)
-    const kernel = track(cv.Mat.ones(5, 5, cv.CV_8U))
-    cv.dilate(edges, edges, kernel)
-
-    const contours = track(new cv.MatVector())
-    const hierarchy = track(new cv.Mat())
-    cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-
-    let quad: [Pt, Pt, Pt, Pt] | null = null
-    let bestArea = 0
-    for (let i = 0; i < contours.size(); i++) {
-      const c = contours.get(i)
-      const area = cv.contourArea(c)
-      if (area > 0.18 * imgArea && area > bestArea) {
-        const peri = cv.arcLength(c, true)
-        const approx = new cv.Mat()
-        cv.approxPolyDP(c, approx, 0.02 * peri, true)
-        if (approx.rows === 4) {
-          const pts: Pt[] = []
-          for (let r = 0; r < 4; r++) pts.push({ x: approx.intAt(r, 0), y: approx.intAt(r, 1) })
-          quad = orderPoints(pts)
-          bestArea = area
-        }
-        approx.delete()
-      }
-      c.delete()
-    }
+    // --- Detección del documento (recorte + enderezado) ---
+    const quad = findDocQuad(cv, gray, imgArea)
 
     // Imagen sobre la que aplicar el realce: recortada+enderezada o la completa.
     const work = track(new cv.Mat())
@@ -133,9 +182,14 @@ async function process(cv: any, bitmap: ImageBitmap): Promise<Blob> {
     const norm = track(new cv.Mat())
     cv.divide(wgray, bg, norm, 255)
 
+    // Look escaneado: curva de contraste + recorte a blanco puro.
+    const lut = track(scannerLut(cv))
+    const enhanced = track(new cv.Mat())
+    cv.LUT(norm, lut, enhanced)
+
     // Mat (gris) → ImageData (RGBA) → JPEG, sin depender de cv.imshow.
     const rgba = track(new cv.Mat())
-    cv.cvtColor(norm, rgba, cv.COLOR_GRAY2RGBA)
+    cv.cvtColor(enhanced, rgba, cv.COLOR_GRAY2RGBA)
     const out = new ImageData(new Uint8ClampedArray(rgba.data), rgba.cols, rgba.rows)
     const outCanvas = new OffscreenCanvas(rgba.cols, rgba.rows)
     ;(outCanvas.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(out, 0, 0)
