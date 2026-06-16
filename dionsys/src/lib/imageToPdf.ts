@@ -22,7 +22,10 @@ export async function fileToPdf(file: File): Promise<File> {
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, w, h)
     ctx.drawImage(bitmap, 0, 0, w, h)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    // El escaneo viene en PNG (texto B/N nítido): lo mantenemos PNG para no
+    // re-comprimir y que no aparezcan artefactos. Las fotos normales van en JPEG.
+    const isPng = file.type === 'image/png'
+    const dataUrl = isPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85)
 
     const { jsPDF } = await import('jspdf')
     const pdf = new jsPDF({
@@ -30,7 +33,7 @@ export async function fileToPdf(file: File): Promise<File> {
       unit: 'px',
       format: [w, h],
     })
-    pdf.addImage(dataUrl, 'JPEG', 0, 0, w, h)
+    pdf.addImage(dataUrl, isPng ? 'PNG' : 'JPEG', 0, 0, w, h)
     const blob = pdf.output('blob')
     const name = file.name.replace(/\.[^.]+$/, '') + '.pdf'
     return new File([blob], name, { type: 'application/pdf' })

@@ -150,11 +150,12 @@ export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void):
     const grayCanvas = makeCanvas(w, h)
     grayCanvas.getContext('2d')!.putImageData(grayImg, 0, 0)
 
-    // 3) Brillo local (fondo) = bajar el gris a ~1/k y volver a subirlo. Ventana ~30px
-    //    para que el promedio refleje el fondo y no el interior de las letras.
-    const k = Math.max(1, Math.round(Math.max(w, h) / 55))
-    const sw = Math.max(1, Math.round(w / k))
-    const sh = Math.max(1, Math.round(h / k))
+    // 3) Brillo local (fondo) = bajar el gris a ~1/f y volver a subirlo. La ventana
+    //    (f px) tiene que ser MÁS GRANDE que el grosor de los trazos, si no el centro
+    //    de las letras gruesas queda blanco y el negro sale "agrietado"/hueco.
+    const f = Math.max(40, Math.round(Math.max(w, h) / 26))
+    const sw = Math.max(1, Math.round(w / f))
+    const sh = Math.max(1, Math.round(h / f))
     const smallC = makeCanvas(sw, sh)
     const sctx = smallC.getContext('2d')!
     sctx.imageSmoothingEnabled = true
@@ -181,11 +182,13 @@ export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void):
     const outCanvas = makeCanvas(w, h)
     outCanvas.getContext('2d')!.putImageData(outImg, 0, 0)
 
-    const blob: Blob | null = await new Promise(res => outCanvas.toBlob(b => res(b), 'image/jpeg', 0.92))
-    if (!blob) { onInfo?.({ scanned: false, error: 'no se pudo exportar el JPEG' }); return file }
+    // PNG (sin pérdida): el texto B/N de alto contraste como JPEG queda "agrietado"
+    // por los artefactos de compresión. En PNG las letras quedan limpias.
+    const blob: Blob | null = await new Promise(res => outCanvas.toBlob(b => res(b), 'image/png'))
+    if (!blob) { onInfo?.({ scanned: false, error: 'no se pudo exportar la imagen' }); return file }
 
     onInfo?.({ scanned: true })
-    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' })
   } catch (e) {
     onInfo?.({ scanned: false, error: (e instanceof Error ? e.message : String(e)) })
     return file
