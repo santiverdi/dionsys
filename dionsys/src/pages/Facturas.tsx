@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
@@ -514,18 +514,23 @@ export default function Facturas() {
                             {f.items?.length ? `Neto ${formatMontoCurrency(d.neto)} · IVA ${formatMontoCurrency(d.iva)} · ` : ''}Total {formatMontoCurrency(f.monto)}
                           </span>
                         </div>
-                        {f.facturaUrl ? (
-                          <a
-                            href={downloadUrl(f.facturaUrl, f.facturaNombre || 'factura')}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 shrink-0"
-                          >
-                            <FileText size={13} /> archivo
-                          </a>
-                        ) : (
-                          <label className={`flex items-center gap-1 text-xs font-semibold shrink-0 cursor-pointer ${attaching === key ? 'text-navy-400' : 'text-amber-600 hover:text-amber-700'}`}>
-                            <Camera size={13} /> {attaching === key ? 'Escaneando…' : 'Escanear'}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {f.facturaUrl && (
+                            <a
+                              href={downloadUrl(f.facturaUrl, f.facturaNombre || 'factura')}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                            >
+                              <FileText size={13} /> archivo
+                            </a>
+                          )}
+                          <label className={`flex items-center gap-1 text-xs font-semibold cursor-pointer ${attaching === key ? 'text-navy-400' : f.facturaUrl ? 'text-navy-400 hover:text-navy-600' : 'text-amber-600 hover:text-amber-700'}`}>
+                            {attaching === key
+                              ? <><Camera size={13} /> Escaneando…</>
+                              : f.facturaUrl
+                                ? <><RotateCcw size={13} /> reescanear</>
+                                : <><Camera size={13} /> Escanear</>}
                             <input
                               type="file"
                               accept="image/*,application/pdf"
@@ -535,7 +540,7 @@ export default function Facturas() {
                               className="hidden"
                             />
                           </label>
-                        )}
+                        </div>
                       </div>
                     )
                   })}
