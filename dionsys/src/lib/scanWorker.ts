@@ -163,6 +163,7 @@ function process(cv: any, imageData: { data: Uint8ClampedArray; width: number; h
 ctx.onmessage = (e: MessageEvent) => {
   const d = e.data || {}
   ensureCv(d.opencvUrl).then(cv => {
+    ctx.postMessage({ phase: 'loaded' }) // avisar que OpenCV ya cargó (para el watchdog)
     try {
       const out = process(cv, { data: d.data, width: d.width, height: d.height })
       ctx.postMessage({ ok: true, buffer: out.buffer, width: out.width, height: out.height }, [out.buffer])

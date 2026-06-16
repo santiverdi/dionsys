@@ -14,7 +14,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const WORK_MAX = 1800            // px del lado más largo para procesar
-const SCAN_TIMEOUT_MS = 45000    // tope total (incluye bajar OpenCV la 1ª vez)
+const LOAD_TIMEOUT_MS = 90000    // tope para cargar OpenCV (incluye bajar ~10MB la 1ª vez)
+const PROCESS_TIMEOUT_MS = 30000 // tope para procesar una vez cargado OpenCV
 
 // Info opcional sobre cómo salió el escaneo (para diagnóstico/avisos en la UI).
 export interface ScanInfo {
@@ -74,6 +75,8 @@ export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void):
 
   return await new Promise<File>(resolve => {
     let done = false
+    let phase = 'cargar OpenCV'
+    let timer: ReturnType<typeof setTimeout>
     const finish = (f: File, info: ScanInfo) => {
       if (done) return
       done = true
@@ -83,6 +86,7 @@ export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void):
       onInfo?.(info)
       resolve(f)
     }
+    const onTimeout = () => { killWorker(); finish(file, { scanned: false, error: `tardó demasiado (en: ${phase})` }) }
 
     let w: Worker
     try {
@@ -94,10 +98,18 @@ export async function scanImageFile(file: File, onInfo?: (i: ScanInfo) => void):
     }
 
     // Watchdog real (el hilo principal está libre porque OpenCV corre en el worker).
-    const timer = setTimeout(() => { killWorker(); finish(file, { scanned: false, error: 'tardó demasiado (timeout)' }) }, SCAN_TIMEOUT_MS)
+    // Damos una ventana amplia para cargar OpenCV y, una vez cargado, otra para procesar.
+    timer = setTimeout(onTimeout, LOAD_TIMEOUT_MS)
 
     const onMsg = async (e: MessageEvent) => {
       const d = e.data
+      if (d && d.phase === 'loaded') {
+        // OpenCV ya cargó: reiniciamos el watchdog para la etapa de procesamiento.
+        phase = 'procesar'
+        clearTimeout(timer)
+        timer = setTimeout(onTimeout, PROCESS_TIMEOUT_MS)
+        return
+      }
       if (d && d.ok && d.buffer) {
         try {
           const blob = await imageDataToJpeg(new Uint8ClampedArray(d.buffer), d.width, d.height)
