@@ -113,9 +113,17 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
   const rows = toRows(items)
 
   // --- Encabezado ---
+  // Mensajes claros según qué PDF subieron (el PMS exporta varios parecidos).
+  const allText = items.map(i => norm(i.str)).join(' ')
+  if (allText.includes('informe de caja')) {
+    throw new Error('Ese PDF es el "Informe de caja", no el "Parte Diario" de habitaciones. Subí el PDF del Parte Diario.')
+  }
+  if (!allText.includes('parte diario')) {
+    throw new Error('No parece el "Parte Diario" de habitaciones. Revisá que sea el PDF correcto.')
+  }
   const nroCaja = numberRightOf(rows, 'Caja') ?? 0
   if (!nroCaja) {
-    throw new Error('No parece un Parte Diario (no se encontró el Nro. de Caja). Revisá el PDF.')
+    throw new Error('No se pudo leer el Nro. de Caja del Parte Diario. Revisá el PDF.')
   }
   const fechaCajaLabelX = xOfLabel(rows, 'Fecha caja:') ?? xOfLabel(rows, 'Fecha caja') ?? Infinity
   const usuario = textRightOf(rows, 'Usuario:', fechaCajaLabelX) || textRightOf(rows, 'Usuario', fechaCajaLabelX)
