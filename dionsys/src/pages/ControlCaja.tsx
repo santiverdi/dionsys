@@ -20,8 +20,16 @@ function fmtFecha(iso: string, withTime = true): string {
   if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('es-AR', {
     day: '2-digit', month: '2-digit', year: 'numeric',
-    ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+    ...(withTime ? { hour: '2-digit', minute: '2-digit', hour12: false } : {}),
   })
+}
+
+// Solo la hora en 24hs (HH:mm). Evita el problema de partir "10:21 p. m." y perder el a.m./p.m.
+function fmtHora(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 // Medio de pago "principal" de un movimiento (la columna con monto).
@@ -175,7 +183,7 @@ export default function ControlCaja() {
               <tbody>
                 {selected.ingresos.map((m, i) => (
                   <tr key={i} className="border-b border-navy-50 last:border-0">
-                    <td className="py-1.5 pr-2 text-navy-500 whitespace-nowrap">{fmtFecha(m.fechaHora).split(' ')[1] ?? ''}</td>
+                    <td className="py-1.5 pr-2 text-navy-500 whitespace-nowrap">{fmtHora(m.fechaHora)}</td>
                     <td className="px-2 text-navy-700">{m.habitacion || '—'}</td>
                     <td className="px-2 text-navy-700">{m.pasajero ?? (m.reserva ? `Reserva ${m.reserva}` : '—')}</td>
                     <td className="px-2 text-navy-600">{medioDe(m)}</td>
