@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCajaRows, type Aoa } from '../../src/lib/parseCaja'
+import { parseCajaRows, turnoDeApertura, type Aoa } from '../../src/lib/parseCaja'
 import { getCajaResumen, getCajaFlags } from '../../src/lib/cajaControl'
 
 // Fixture tomado de un Excel real exportado por el PMS ("Caja 80", cerrada).
@@ -85,5 +85,19 @@ describe('parseCajaRows', () => {
     const anterior = { ...caja, nroCaja: 79, saldoFinal: 999999 }
     const flags = getCajaFlags(caja, anterior)
     expect(flags.some(f => f.tipo === 'continuidad')).toBe(true)
+  })
+})
+
+describe('turnoDeApertura (el turno lo dice la caja)', () => {
+  // 17/06/2026 13:51 (hora → mañana por el corte 5-15)
+  const apertura1351 = '2026-06-17T13:51:00'
+  it('usa el turno del conserje titular aunque la hora diga otra cosa', () => {
+    expect(turnoDeApertura('Santiago Diez Queral', apertura1351)).toBe('tarde')
+    expect(turnoDeApertura('Touriño Leandro', '2026-06-17T06:58:00')).toBe('manana')
+    expect(turnoDeApertura('Gaston X', '2026-06-17T22:54:00')).toBe('noche')
+  })
+  it('cae a la hora para cubridores (Valentin/Franquero) o desconocidos', () => {
+    expect(turnoDeApertura('Valentin', apertura1351)).toBe('manana') // por hora
+    expect(turnoDeApertura('Nadie Conocido', '2026-06-17T18:00:00')).toBe('tarde')
   })
 })

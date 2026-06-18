@@ -88,6 +88,18 @@ export function conserjeFrom(usuario: string): string | undefined {
   return CONSERJE_NAMES.find(n => u.includes(norm(n)))
 }
 
+// Turno fijo de cada conserje titular (inverso de DEFAULT_SHIFTS de TurnosContext).
+// Los cubridores (Valentin/Franquero) no tienen turno fijo → se cae a la hora.
+const TURNO_FIJO: Record<string, Turno> = { Leandro: 'manana', Santiago: 'tarde', Gaston: 'noche' }
+
+// El turno "lo dice la caja": primero por quién la abrió (conserje titular);
+// si es un cubridor o no se reconoce, se deduce de la hora de apertura.
+export function turnoDeApertura(usuario: string, iso: string): Turno | undefined {
+  const c = conserjeFrom(usuario)
+  if (c && TURNO_FIJO[c]) return TURNO_FIJO[c]
+  return turnoFromHour(iso)
+}
+
 function parseMovimiento(row: Cell[]): CajaMovimiento {
   const observacion = str(row[COL.obs])
   const comp = str(row[COL.comp])
@@ -191,7 +203,7 @@ export function parseCajaRows(aoa: Aoa, importedBy: string, fileName?: string): 
     ...(usuarioCierre ? { usuarioCierre } : {}),
     aperturaAt,
     ...(cierreAt ? { cierreAt } : {}),
-    ...(turnoFromHour(aperturaAt) ? { turno: turnoFromHour(aperturaAt) } : {}),
+    ...(turnoDeApertura(usuarioApertura, aperturaAt) ? { turno: turnoDeApertura(usuarioApertura, aperturaAt) } : {}),
     ...(conserjeFrom(usuarioApertura) ? { conserje: conserjeFrom(usuarioApertura) } : {}),
     aperturaMonto,
     saldoFinal,

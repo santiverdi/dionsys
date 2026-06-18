@@ -17,7 +17,7 @@
 // Best-effort: si falta algo, devuelve lo que pudo y no rompe.
 
 import { generateId } from '../utils/imageCompressor'
-import { turnoFromHour, conserjeFrom } from './parseCaja'
+import { turnoDeApertura, conserjeFrom } from './parseCaja'
 import type { ExtractedParte } from './invoiceExtract'
 import type { ParteHabitaciones, HabitacionOcupada, HabitacionLibre, EstadoHabitacion } from '../types'
 
@@ -240,7 +240,7 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
     nroCaja,
     usuario,
     fechaCaja,
-    ...(turnoFromHour(fechaCaja) ? { turno: turnoFromHour(fechaCaja) } : {}),
+    ...(turnoDeApertura(usuario, fechaCaja) ? { turno: turnoDeApertura(usuario, fechaCaja) } : {}),
     ...(conserjeFrom(usuario) ? { conserje: conserjeFrom(usuario) } : {}),
     ocupadas,
     libres,
@@ -292,7 +292,7 @@ export function parteFromExtracted(ex: ExtractedParte, importedBy: string, fileN
     nroCaja,
     usuario: (ex.usuario ?? '').trim(),
     fechaCaja,
-    ...(turnoFromHour(fechaCaja) ? { turno: turnoFromHour(fechaCaja) } : {}),
+    ...(turnoDeApertura(ex.usuario ?? '', fechaCaja) ? { turno: turnoDeApertura(ex.usuario ?? '', fechaCaja) } : {}),
     ...(conserjeFrom(ex.usuario ?? '') ? { conserje: conserjeFrom(ex.usuario ?? '') } : {}),
     ocupadas,
     libres,
