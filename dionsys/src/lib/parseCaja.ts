@@ -73,11 +73,14 @@ function findLabel(aoa: Aoa, label: string): { r: number; c: number } | null {
   return null
 }
 
+// Cortes de hora según cuándo abre cada turno en el hotel (apertura real:
+// mañana ~07, tarde ~14, noche ~23). Se usa solo como respaldo cuando no se
+// puede identificar al conserje titular (ver turnoDeApertura).
 export function turnoFromHour(iso: string): Turno | undefined {
   if (!iso) return undefined
   const h = new Date(iso).getHours()
-  if (h >= 5 && h < 15) return 'manana'
-  if (h >= 15 && h < 23) return 'tarde'
+  if (h >= 5 && h < 13) return 'manana'
+  if (h >= 13 && h < 22) return 'tarde'
   return 'noche'
 }
 

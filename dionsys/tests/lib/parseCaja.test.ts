@@ -97,7 +97,9 @@ describe('turnoDeApertura (el turno lo dice la caja)', () => {
     expect(turnoDeApertura('Gaston X', '2026-06-17T22:54:00')).toBe('noche')
   })
   it('cae a la hora para cubridores (Valentin/Franquero) o desconocidos', () => {
-    expect(turnoDeApertura('Valentin', apertura1351)).toBe('manana') // por hora
+    expect(turnoDeApertura('Valentin', apertura1351)).toBe('tarde')           // 13:51 → tarde
+    expect(turnoDeApertura('Valentin Gomez', '2026-06-17T22:54:00')).toBe('noche') // 22:54 → noche
+    expect(turnoDeApertura('Franquero', '2026-06-17T07:00:00')).toBe('manana')     // 07:00 → mañana
     expect(turnoDeApertura('Nadie Conocido', '2026-06-17T18:00:00')).toBe('tarde')
   })
 })
