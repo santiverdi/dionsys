@@ -131,12 +131,18 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
   const rows = toRows(items)
 
   // --- Encabezado ---
-  // Mensajes claros según qué PDF subieron (el PMS exporta varios parecidos).
-  const allText = items.map(i => norm(i.str)).join(' ')
-  if (allText.includes('informe de caja')) {
+  // PDF sin capa de texto (foto/escaneo): no hay nada que leer determinísticamente.
+  if (items.length < 10) {
+    throw new Error('Este PDF no tiene texto (parece una foto o escaneo). Descargá el "Parte Diario" desde el PMS como PDF, no como imagen.')
+  }
+  // Texto en ORDEN VISUAL (no el orden interno del PDF, que mezcla) para reconocer
+  // el documento sin depender de que los títulos queden adyacentes en el stream.
+  const visualText = rows.map(r => norm(r.items.map(i => i.str).join(' '))).join('  ')
+  if (visualText.includes('informe de caja')) {
     throw new Error('Ese PDF es el "Informe de caja", no el "Parte Diario" de habitaciones. Subí el PDF del Parte Diario.')
   }
-  if (!allText.includes('parte diario')) {
+  const MARCADORES = ['parte diario', 'habitaciones libres', 'total habitaciones ocupadas', 'check-in actual']
+  if (!MARCADORES.some(k => visualText.includes(k))) {
     throw new Error('No parece el "Parte Diario" de habitaciones. Revisá que sea el PDF correcto.')
   }
   const nroCaja = findNroCaja(items, rows)
