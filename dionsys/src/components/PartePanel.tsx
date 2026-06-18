@@ -1,15 +1,52 @@
 import { useState, useRef } from 'react'
 import {
-  Upload, AlertTriangle, CheckCircle2, Trash2, BedDouble, Save, X, Sparkles, Wrench,
+  Upload, AlertTriangle, CheckCircle2, Trash2, BedDouble, Save, X, Sparkles, Wrench, LogOut,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { usePartes } from '../context/ParteContext'
 import { useCajas } from '../context/CajaContext'
 import { parsePartePdf } from '../lib/parsePartePdf'
-import { getParteFlags, getParteResumen, type ParteFlag } from '../lib/parteControl'
+import { getParteFlags, getParteResumen, getCheckouts, type ParteFlag, type CheckoutRecord } from '../lib/parteControl'
+import { formatMontoCurrency } from '../utils/validators'
 import type { ParteHabitaciones, HabitacionOcupada, EstadoHabitacion } from '../types'
 
 const SIN_CANAL = 'Sin canal'
+
+function fmtFechaCorta(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function CheckoutRow({ co }: { co: CheckoutRecord }) {
+  const habs = co.habitaciones.join(', ')
+  if (co.cobro) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-2.5 text-xs">
+        <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-green-600" />
+        <div className="min-w-0">
+          <p className="text-navy-700">
+            <span className="font-semibold">Hab. {habs}</span> · reserva {co.reserva}
+            {co.cobro.pasajero ? ` · ${co.cobro.pasajero}` : ''}
+          </p>
+          <p className="text-green-700">
+            Cobrado en Caja {co.cobro.nroCaja} · {formatMontoCurrency(co.cobro.monto)}
+            {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
+          </p>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs">
+      <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-600" />
+      <p className="text-red-700">
+        <span className="font-semibold">Hab. {habs}</span> · reserva {co.reserva} — <span className="font-bold">SIN COBRO registrado en caja</span>
+      </p>
+    </div>
+  )
+}
 
 function FlagPill({ flag }: { flag: ParteFlag }) {
   const color = flag.level === 'error'
@@ -102,8 +139,11 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
   }
 
   // ===== Parte ya importado =====
+  const parteAnterior = getParteAnterior(parte)
   const resumen = getParteResumen(parte)
-  const flags = getParteFlags(parte, getParteAnterior(parte), cajas)
+  const flags = getParteFlags(parte, parteAnterior, cajas)
+  const checkouts = getCheckouts(parte, parteAnterior, cajas)
+  const checkoutsSinCobro = checkouts.filter(c => !c.cobro).length
 
   // Ocupadas agrupadas por canal de reserva.
   const porCanal = parte.ocupadas.reduce<Record<string, HabitacionOcupada[]>>((acc, h) => {
@@ -150,12 +190,30 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
         </div>
       </div>
 
-      {/* Flags */}
-      {flags.length > 0 ? (
+      {/* Check-outs del turno conciliados contra la caja */}
+      {checkouts.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mb-1.5 flex items-center gap-1.5">
+            <LogOut size={12} /> Check-outs del turno ({checkouts.length})
+            {checkoutsSinCobro > 0 && (
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold normal-case">
+                {checkoutsSinCobro} sin cobro
+              </span>
+            )}
+          </p>
+          <div className="space-y-1.5">
+            {checkouts.map((co, i) => <CheckoutRow key={i} co={co} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Otras observaciones */}
+      {flags.length > 0 && (
         <div className="space-y-1.5 mb-3">
           {flags.map((f, i) => <FlagPill key={i} flag={f} />)}
         </div>
-      ) : (
+      )}
+      {flags.length === 0 && checkouts.length === 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-2.5 text-xs text-green-700 mb-3">
           <CheckCircle2 size={14} /> Sin imperfecciones detectadas.
         </div>

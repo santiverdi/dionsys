@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseParteItems, type PdfTextItem } from '../../src/lib/parsePartePdf'
-import { getParteResumen, getParteFlags } from '../../src/lib/parteControl'
+import { getParteResumen, getParteFlags, getCheckouts } from '../../src/lib/parteControl'
 import type { CajaParte } from '../../src/types'
 import fixture from '../fixtures/parte_caja80.json'
 
@@ -57,47 +57,49 @@ describe('getParteResumen', () => {
   })
 })
 
-describe('getParteFlags (cruce con caja)', () => {
+describe('getParteFlags / getCheckouts (cruce con caja)', () => {
   const parte = parseParteItems(ITEMS, 'Test')
+
+  // Parte "anterior" con una habitación extra (reserva 9999) que ya no figura
+  // ocupada en el parte actual → es un check-out.
+  const anterior = {
+    ...parte,
+    id: 'prev',
+    ocupadas: [...parte.ocupadas, { habitacion: '999', reserva: '9999', plazas: 2, canal: 'Walk In' }],
+  }
+  const cajaBase: CajaParte = {
+    id: 'c1', nroCaja: 79, puntoVenta: 'Recepcion', moneda: 'AR$', usuarioApertura: 'x', turno: 'manana',
+    aperturaAt: '2026-02-10T00:00:00.000Z', aperturaMonto: 0, saldoFinal: 0,
+    ingresos: [], egresos: [], retiros: [], importedBy: 't', importedAt: '',
+  }
 
   it('sin parte anterior, pide importarlo', () => {
     const flags = getParteFlags(parte)
     expect(flags.some(f => f.tipo === 'sin_parte_anterior')).toBe(true)
+    expect(getCheckouts(parte)).toHaveLength(0)
   })
 
-  it('marca el check-out cuya reserva no tiene cobro en caja', () => {
-    // Parte "anterior" con una habitación extra (reserva 9999) que ya no figura
-    // ocupada en el parte actual → es un check-out.
-    const anterior = {
-      ...parte,
-      id: 'prev',
-      ocupadas: [...parte.ocupadas, { habitacion: '999', reserva: '9999', plazas: 2, canal: 'Walk In' }],
-    }
-    const cajaSinEsaReserva: CajaParte = {
-      id: 'c1', nroCaja: 79, puntoVenta: 'Recepcion', moneda: 'AR$', usuarioApertura: 'x',
-      aperturaAt: '2026-02-10T00:00:00.000Z', aperturaMonto: 0, saldoFinal: 0,
-      ingresos: [], egresos: [], retiros: [], importedBy: 't', importedAt: '',
-    }
-    const flags = getParteFlags(parte, anterior, [cajaSinEsaReserva])
-    expect(flags.some(f => f.tipo === 'checkout_sin_cobro' && f.mensaje.includes('9999'))).toBe(true)
+  it('detecta el check-out y lo marca sin cobro si la reserva no aparece en caja', () => {
+    const outs = getCheckouts(parte, anterior, [cajaBase])
+    const co = outs.find(c => c.reserva === '9999')
+    expect(co).toBeDefined()
+    expect(co!.habitaciones).toContain('999')
+    expect(co!.cobro).toBeUndefined()
   })
 
-  it('no marca el check-out si la reserva tiene cobro', () => {
-    const anterior = {
-      ...parte,
-      id: 'prev',
-      ocupadas: [...parte.ocupadas, { habitacion: '999', reserva: '9999', plazas: 2, canal: 'Walk In' }],
-    }
+  it('marca el check-out como cobrado e indica en qué caja', () => {
     const cajaConCobro: CajaParte = {
-      id: 'c1', nroCaja: 79, puntoVenta: 'Recepcion', moneda: 'AR$', usuarioApertura: 'x',
-      aperturaAt: '2026-02-10T00:00:00.000Z', aperturaMonto: 0, saldoFinal: 0,
+      ...cajaBase,
       ingresos: [{
-        fechaHora: '', usuario: 'x', comp: 'FB 1-1', habitacion: '999', observacion: 'Reserva 9999',
-        efectivo: 1000, tarjetas: 0, cheques: 0, transferencia: 0, otros: 0, total: 1000, reserva: '9999',
+        fechaHora: '2026-02-09T12:00:00.000Z', usuario: 'x', comp: 'FB 1-1', habitacion: '999',
+        observacion: 'Reserva 9999 - Juan Perez', efectivo: 1000, tarjetas: 0, cheques: 0,
+        transferencia: 0, otros: 0, total: 1000, reserva: '9999', pasajero: 'Juan Perez',
       }],
-      egresos: [], retiros: [], importedBy: 't', importedAt: '',
     }
-    const flags = getParteFlags(parte, anterior, [cajaConCobro])
-    expect(flags.some(f => f.tipo === 'checkout_sin_cobro')).toBe(false)
+    const co = getCheckouts(parte, anterior, [cajaConCobro]).find(c => c.reserva === '9999')
+    expect(co!.cobro).toBeDefined()
+    expect(co!.cobro!.nroCaja).toBe(79)
+    expect(co!.cobro!.monto).toBe(1000)
+    expect(co!.cobro!.pasajero).toBe('Juan Perez')
   })
 })

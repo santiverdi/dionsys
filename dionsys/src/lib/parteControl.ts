@@ -1,12 +1,14 @@
 // Cruces automáticos del parte de habitaciones (Fase 4). A partir de un
-// ParteHabitaciones (y opcionalmente el parte anterior + las cajas importadas)
-// devuelve un resumen de ocupación y las "imperfecciones" a revisar.
+// ParteHabitaciones (y el parte anterior + las cajas importadas) devuelve un
+// resumen de ocupación y la conciliación de check-outs contra la caja.
 //
-// Cruce clave con caja: el parte no tiene plata, pero sí la reserva de cada
-// habitación. Un check-out (habitación que estaba ocupada y ahora figura libre)
-// debería tener un cobro asociado en alguna caja. Si no, se marca.
+// Regla del hotel: al hacer check-in se cobra la habitación en la caja de ese
+// turno. El parte no tiene plata, pero sí la reserva de cada habitación. Un
+// check-out (habitación que estaba ocupada y ahora figura libre) debería tener
+// un cobro de su reserva en alguna caja (la del turno en que entró). Si no, se fue
+// sin pagar y hay que revisarlo.
 
-import type { ParteHabitaciones, CajaParte } from '../types'
+import type { ParteHabitaciones, CajaParte, Turno } from '../types'
 
 export type FlagLevel = 'error' | 'warn' | 'info'
 
@@ -26,6 +28,22 @@ export interface ParteResumen {
   ocupacionPct: number   // ocupadas / (ocupadas + libres)
 }
 
+// El cobro encontrado para una reserva (en qué caja/turno, cuándo y cuánto).
+export interface CheckoutCobro {
+  nroCaja: number
+  turno?: Turno
+  fechaHora: string
+  monto: number
+  pasajero?: string
+}
+
+// Un check-out detectado por diferencia entre partes, con su cobro (o sin él).
+export interface CheckoutRecord {
+  reserva: string
+  habitaciones: string[]
+  cobro?: CheckoutCobro   // ausente = sin cobro registrado en ninguna caja
+}
+
 export function getParteResumen(parte: ParteHabitaciones): ParteResumen {
   const total = parte.totalOcupadas + parte.totalLibres
   return {
@@ -39,9 +57,42 @@ export function getParteResumen(parte: ParteHabitaciones): ParteResumen {
   }
 }
 
-// ¿Existe algún cobro para esta reserva en las cajas importadas?
-function reservaTieneCobro(reserva: string, cajas: CajaParte[]): boolean {
-  return cajas.some(c => c.ingresos.some(m => m.reserva === reserva))
+// Primer cobro de una reserva en las cajas importadas (con la caja donde cayó).
+function buscarCobro(reserva: string, cajas: CajaParte[]): CheckoutCobro | undefined {
+  for (const c of cajas) {
+    const m = c.ingresos.find(i => i.reserva === reserva)
+    if (m) {
+      return {
+        nroCaja: c.nroCaja,
+        ...(c.turno ? { turno: c.turno } : {}),
+        fechaHora: m.fechaHora,
+        monto: m.total,
+        ...(m.pasajero ? { pasajero: m.pasajero } : {}),
+      }
+    }
+  }
+  return undefined
+}
+
+// Check-outs del turno = habitaciones ocupadas en el parte anterior que ya no
+// figuran ocupadas en este. Se agrupan por reserva (una reserva puede ocupar
+// varias habitaciones) y se busca su cobro en las cajas.
+export function getCheckouts(
+  parte: ParteHabitaciones,
+  parteAnterior?: ParteHabitaciones,
+  cajas: CajaParte[] = [],
+): CheckoutRecord[] {
+  if (!parteAnterior) return []
+  const sigueOcupada = (hab: string, reserva: string) =>
+    parte.ocupadas.some(o => o.habitacion === hab && o.reserva === reserva)
+  const salidas = parteAnterior.ocupadas.filter(o => !sigueOcupada(o.habitacion, o.reserva))
+
+  const reservas = [...new Set(salidas.map(s => s.reserva))]
+  return reservas.map(reserva => {
+    const habitaciones = salidas.filter(s => s.reserva === reserva).map(s => s.habitacion)
+    const cobro = buscarCobro(reserva, cajas)
+    return { reserva, habitaciones, ...(cobro ? { cobro } : {}) }
+  })
 }
 
 export function getParteFlags(
@@ -51,47 +102,24 @@ export function getParteFlags(
 ): ParteFlag[] {
   const flags: ParteFlag[] = []
 
-  // 1) Check-outs por diferencia: habitaciones que estaban ocupadas en el parte
-  //    anterior y ya no figuran ocupadas en este → se fueron en el turno.
-  if (parteAnterior) {
-    const sigueOcupada = (hab: string, reserva: string) =>
-      parte.ocupadas.some(o => o.habitacion === hab && o.reserva === reserva)
-    const checkouts = parteAnterior.ocupadas.filter(o => !sigueOcupada(o.habitacion, o.reserva))
-
-    // Agrupo por reserva (una reserva puede ocupar varias habitaciones).
-    const reservas = [...new Set(checkouts.map(c => c.reserva))]
-    const sinCobro = cajas.length
-      ? reservas.filter(r => !reservaTieneCobro(r, cajas))
-      : []
-
-    if (sinCobro.length) {
-      for (const r of sinCobro) {
-        const habs = checkouts.filter(c => c.reserva === r).map(c => c.habitacion).join(', ')
-        flags.push({
-          level: 'warn',
-          tipo: 'checkout_sin_cobro',
-          mensaje: `Check-out de la reserva ${r} (hab. ${habs}) sin cobro registrado en caja.`,
-        })
-      }
-    }
-  } else {
+  if (!parteAnterior) {
     flags.push({
       level: 'info',
       tipo: 'sin_parte_anterior',
-      mensaje: 'Importá el parte del turno anterior para detectar los check-outs por diferencia.',
+      mensaje: 'Importá el parte del turno anterior para conciliar los check-outs contra la caja.',
     })
   }
 
-  // 2) Reservas ocupadas todavía sin ningún cobro en caja (huésped sin facturar).
-  //    Solo si hay cajas importadas; es informativo (pudo pagar en otro turno aún no cargado).
+  // Reservas ocupadas todavía sin ningún cobro en las cajas importadas (informativo:
+  // pudo pagar en un turno cuya caja aún no se cargó).
   if (cajas.length) {
     const reservasOcupadas = [...new Set(parte.ocupadas.map(o => o.reserva))]
-    const sinCobro = reservasOcupadas.filter(r => !reservaTieneCobro(r, cajas))
+    const sinCobro = reservasOcupadas.filter(r => !buscarCobro(r, cajas))
     if (sinCobro.length) {
       flags.push({
         level: 'info',
         tipo: 'ocupada_sin_cobro',
-        mensaje: `${sinCobro.length} reserva(s) ocupada(s) sin cobro registrado en las cajas importadas: ${sinCobro.join(', ')}.`,
+        mensaje: `${sinCobro.length} reserva(s) ocupada(s) sin cobro registrado en las cajas importadas.`,
       })
     }
   }
