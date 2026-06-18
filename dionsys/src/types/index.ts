@@ -227,6 +227,47 @@ export interface CajaParte {
   sourceFileName?: string
 }
 
+// --- Parte de Habitaciones (parte diario) ---
+
+export type EstadoHabitacion = 'sucia' | 'limpia' | 'mantenimiento'
+
+// Una habitación ocupada en el parte. Una reserva puede ocupar varias (grupo).
+export interface HabitacionOcupada {
+  habitacion: string        // "201", "1002"
+  reserva: string           // "2946"
+  plazas: number
+  canal: string             // origen de la reserva: "Booking.com", "WhatsApp", "Walk In", agencia…
+  checkIn?: string          // ISO (fecha de check-in de la reserva)
+  checkInActual?: string    // ISO (fecha/hora real de ingreso)
+}
+
+export interface HabitacionLibre {
+  habitacion: string
+  estado: EstadoHabitacion
+}
+
+// El "Parte Diario" del PMS (Todoalojamiento), un PDF por caja/turno. Liga con
+// CajaParte por nroCaja. No tiene plata: es el movimiento de habitaciones.
+export interface ParteHabitaciones {
+  id: string
+  nroCaja: number           // "Parte Diario Caja 80" → liga con CajaParte
+  usuario: string
+  fechaCaja: string         // ISO; "Fecha caja: 10/02/2026 06:52" — deriva turno
+  turno?: Turno
+  conserje?: string
+  ocupadas: HabitacionOcupada[]
+  libres: HabitacionLibre[]
+  totalOcupadas: number     // del PDF ("Total habitaciones ocupadas")
+  totalPlazas: number
+  totalLibres: number
+  sucias: number
+  limpias: number
+  mantenimiento: number
+  importedBy: string
+  importedAt: string
+  sourceFileName?: string
+}
+
 // --- Impuestos y Servicios ---
 
 export type FrecuenciaVto = 'mensual' | 'anual'

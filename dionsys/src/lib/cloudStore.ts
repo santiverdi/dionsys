@@ -35,6 +35,7 @@ export const SYNCED_KEYS = [
   'dionsys_occupancy',
   'dionsys_lacteos_consumption',
   'dionsys_cajas',
+  'dionsys_partes',
 ] as const
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number]

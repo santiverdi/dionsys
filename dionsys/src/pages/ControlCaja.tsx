@@ -9,6 +9,7 @@ import { parseCajaExcel } from '../lib/parseCaja'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS, type Turno } from '../context/OccupancyContext'
+import PartePanel from '../components/PartePanel'
 import type { CajaParte, CajaMovimiento } from '../types'
 
 const TURNO_ICON: Record<Turno, typeof Sun> = { manana: Sun, tarde: Sunset, noche: Moon }
@@ -205,6 +206,11 @@ export default function ControlCaja() {
             </ul>
           </div>
         )}
+
+        {/* Parte de habitaciones del mismo turno (PDF de Todoalojamiento) */}
+        <div className="mt-4">
+          <PartePanel nroCaja={selected.nroCaja} />
+        </div>
       </div>
     )
   }

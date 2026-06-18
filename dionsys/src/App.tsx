@@ -5,6 +5,7 @@ import { pullAll, subscribeRealtime } from './lib/cloudStore'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
 import { CajaProvider } from './context/CajaContext'
+import { ParteProvider } from './context/ParteContext'
 import { StockProvider } from './context/StockContext'
 import { MaintenanceProvider } from './context/MaintenanceContext'
 import { OccupancyProvider } from './context/OccupancyContext'
@@ -116,6 +117,7 @@ export default function App() {
       <AuthProvider>
         <OrdersProvider>
           <CajaProvider>
+          <ParteProvider>
           <StockProvider>
             <MaintenanceProvider>
               <OccupancyProvider>
@@ -127,6 +129,7 @@ export default function App() {
               </OccupancyProvider>
             </MaintenanceProvider>
           </StockProvider>
+          </ParteProvider>
           </CajaProvider>
         </OrdersProvider>
       </AuthProvider>

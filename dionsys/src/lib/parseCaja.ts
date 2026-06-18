@@ -73,7 +73,7 @@ function findLabel(aoa: Aoa, label: string): { r: number; c: number } | null {
   return null
 }
 
-function turnoFromHour(iso: string): Turno | undefined {
+export function turnoFromHour(iso: string): Turno | undefined {
   if (!iso) return undefined
   const h = new Date(iso).getHours()
   if (h >= 5 && h < 15) return 'manana'
@@ -82,7 +82,7 @@ function turnoFromHour(iso: string): Turno | undefined {
 }
 
 const CONSERJE_NAMES = ['Leandro', 'Santiago', 'Gaston', 'Valentin', 'Franquero']
-function conserjeFrom(usuario: string): string | undefined {
+export function conserjeFrom(usuario: string): string | undefined {
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   const u = norm(usuario)
   return CONSERJE_NAMES.find(n => u.includes(norm(n)))
