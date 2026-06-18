@@ -271,6 +271,16 @@ export interface ParteHabitaciones {
   sourceFileName?: string
 }
 
+// La "hoja de checkout" (sobre) escaneada que se adjunta a una salida del parte.
+// Indica dónde se cobró y con qué medio; se guarda solo la URL (en Supabase Storage).
+export interface CheckoutDoc {
+  reserva: string
+  url: string
+  nombre: string
+  scannedBy: string
+  scannedAt: string   // ISO
+}
+
 // --- Impuestos y Servicios ---
 
 export type FrecuenciaVto = 'mensual' | 'anual'

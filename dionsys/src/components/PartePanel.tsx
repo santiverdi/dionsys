@@ -1,13 +1,18 @@
 import { useState, useRef } from 'react'
 import {
   Upload, AlertTriangle, CheckCircle2, Trash2, BedDouble, Save, X, Sparkles, Wrench, LogOut,
+  Camera, FileText,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { usePartes } from '../context/ParteContext'
 import { useCajas } from '../context/CajaContext'
+import { useCheckoutDocs } from '../context/CheckoutDocsContext'
 import { parsePartePdf, parteFromExtracted } from '../lib/parsePartePdf'
 import { extractParte } from '../lib/invoiceExtract'
 import { getParteFlags, getParteResumen, getCheckouts, type ParteFlag, type CheckoutRecord } from '../lib/parteControl'
+import { scanImageFile } from '../lib/scanDocument'
+import { fileToPdf } from '../lib/imageToPdf'
+import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
 import { formatMontoCurrency } from '../utils/validators'
 import type { ParteHabitaciones, HabitacionOcupada, EstadoHabitacion } from '../types'
 
@@ -20,31 +25,76 @@ function fmtFechaCorta(iso: string): string {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+// Adjunto de la hoja de checkout (sobre): escanear/subir y ver. Una por reserva.
+function HojaCheckout({ reserva }: { reserva: string }) {
+  const { employee } = useAuth()
+  const { getDoc, setDoc } = useCheckoutDocs()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const ref = useRef<HTMLInputElement>(null)
+  const doc = getDoc(reserva)
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(true)
+    setErr('')
+    try {
+      const scanned = await scanImageFile(file)
+      const pdf = await fileToPdf(scanned)
+      const { url, nombre } = await uploadFactura(pdf)
+      setDoc({ reserva, url, nombre, scannedBy: employee?.name ?? '', scannedAt: new Date().toISOString() })
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : 'No se pudo subir la hoja.')
+    } finally {
+      setBusy(false)
+      if (ref.current) ref.current.value = ''
+    }
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+      {doc && (
+        <a href={downloadUrl(doc.url, doc.nombre)} target="_blank" rel="noreferrer"
+          className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline">
+          <FileText size={12} /> Ver hoja de checkout
+        </a>
+      )}
+      <label className={`inline-flex items-center gap-1 text-[11px] font-medium cursor-pointer ${busy ? 'text-navy-400' : 'text-navy-600 hover:text-navy-800'}`}>
+        <Camera size={12} className={busy ? 'animate-pulse' : ''} />
+        {busy ? 'Subiendo…' : doc ? 'Reemplazar hoja' : 'Escanear hoja de checkout'}
+        <input ref={ref} type="file" accept="image/*,application/pdf" capture="environment" onChange={handleFile} disabled={busy} className="hidden" />
+      </label>
+      {err && <span className="text-[11px] text-red-600">{err}</span>}
+    </div>
+  )
+}
+
 function CheckoutRow({ co }: { co: CheckoutRecord }) {
   const habs = co.habitaciones.join(', ')
-  if (co.cobro) {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-2.5 text-xs">
-        <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-green-600" />
+  const wrap = co.cobro ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
+  return (
+    <div className={`rounded-lg border p-2.5 text-xs ${wrap}`}>
+      <div className="flex items-start gap-2">
+        {co.cobro
+          ? <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-green-600" />
+          : <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-600" />}
         <div className="min-w-0">
           <p className="text-navy-700">
             <span className="font-semibold">Hab. {habs}</span> · reserva {co.reserva}
-            {co.cobro.pasajero ? ` · ${co.cobro.pasajero}` : ''}
+            {co.cobro?.pasajero ? ` · ${co.cobro.pasajero}` : ''}
           </p>
-          <p className="text-green-700">
-            Cobrado en Caja {co.cobro.nroCaja} · {co.cobro.medioPago} · {formatMontoCurrency(co.cobro.monto)}
-            {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
-          </p>
+          {co.cobro ? (
+            <p className="text-green-700">
+              Cobrado en Caja {co.cobro.nroCaja} · {co.cobro.medioPago} · {formatMontoCurrency(co.cobro.monto)}
+              {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
+            </p>
+          ) : (
+            <p className="text-red-700 font-bold">SIN COBRO registrado en caja</p>
+          )}
+          <HojaCheckout reserva={co.reserva} />
         </div>
       </div>
-    )
-  }
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs">
-      <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-600" />
-      <p className="text-red-700">
-        <span className="font-semibold">Hab. {habs}</span> · reserva {co.reserva} — <span className="font-bold">SIN COBRO registrado en caja</span>
-      </p>
     </div>
   )
 }

@@ -36,6 +36,7 @@ export const SYNCED_KEYS = [
   'dionsys_lacteos_consumption',
   'dionsys_cajas',
   'dionsys_partes',
+  'dionsys_checkout_docs',
 ] as const
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number]

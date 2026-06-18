@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
 import { CajaProvider } from './context/CajaContext'
 import { ParteProvider } from './context/ParteContext'
+import { CheckoutDocsProvider } from './context/CheckoutDocsContext'
 import { StockProvider } from './context/StockContext'
 import { MaintenanceProvider } from './context/MaintenanceContext'
 import { OccupancyProvider } from './context/OccupancyContext'
@@ -120,6 +121,7 @@ export default function App() {
         <OrdersProvider>
           <CajaProvider>
           <ParteProvider>
+          <CheckoutDocsProvider>
           <StockProvider>
             <MaintenanceProvider>
               <OccupancyProvider>
@@ -131,6 +133,7 @@ export default function App() {
               </OccupancyProvider>
             </MaintenanceProvider>
           </StockProvider>
+          </CheckoutDocsProvider>
           </ParteProvider>
           </CajaProvider>
         </OrdersProvider>
