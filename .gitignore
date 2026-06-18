@@ -1,0 +1,4 @@
+# Tooling de Claude Code / claude-flow (no es parte del proyecto, no commitear)
+/.claude/
+/.claude-flow/
+/.mcp.json
