@@ -4,6 +4,7 @@ import { cloudEnabled } from './lib/supabase'
 import { pullAll, subscribeRealtime } from './lib/cloudStore'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
+import { CajaProvider } from './context/CajaContext'
 import { StockProvider } from './context/StockContext'
 import { MaintenanceProvider } from './context/MaintenanceContext'
 import { OccupancyProvider } from './context/OccupancyContext'
@@ -21,6 +22,7 @@ import PedidosAdmin from './pages/PedidosAdmin'
 import Impuestos from './pages/Impuestos'
 import Administracion from './pages/Administracion'
 import Facturas from './pages/Facturas'
+import ControlCaja from './pages/ControlCaja'
 import SyncPanel from './pages/SyncPanel'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -65,6 +67,7 @@ function AppRoutes() {
         <Route path="mantenimiento" element={<RoleRoute path="/mantenimiento"><Mantenimiento /></RoleRoute>} />
         <Route path="pedidos-admin" element={<RoleRoute path="/pedidos-admin"><PedidosAdmin /></RoleRoute>} />
         <Route path="facturas-proveedores" element={<RoleRoute path="/facturas-proveedores"><Facturas /></RoleRoute>} />
+        <Route path="control-caja" element={<RoleRoute path="/control-caja"><ControlCaja /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Cualquier usuario logueado. */}
         <Route path="sync" element={<SyncPanel />} />
@@ -112,6 +115,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <OrdersProvider>
+          <CajaProvider>
           <StockProvider>
             <MaintenanceProvider>
               <OccupancyProvider>
@@ -123,6 +127,7 @@ export default function App() {
               </OccupancyProvider>
             </MaintenanceProvider>
           </StockProvider>
+          </CajaProvider>
         </OrdersProvider>
       </AuthProvider>
     </BrowserRouter>

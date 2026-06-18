@@ -1,3 +1,6 @@
+import type { Turno } from '../context/OccupancyContext'
+export type { Turno } from '../context/OccupancyContext'
+
 export type Role = 'concierge' | 'mucama' | 'admin' | 'mantenimiento' | 'encargada'
 
 export interface Employee {
@@ -177,6 +180,51 @@ export interface MaintenanceMaterial {
   source: MaterialSource
   cost?: number
   receiptPhoto?: string
+}
+
+// --- Control de Caja (parte diario) ---
+
+export type MedioPago = 'efectivo' | 'tarjetas' | 'cheques' | 'transferencia' | 'otros'
+
+// Una fila de movimiento dentro de una caja (ingreso/egreso/apertura/retiro).
+export interface CajaMovimiento {
+  fechaHora: string         // ISO
+  usuario: string
+  comp: string              // comprobante; en tarjetas suele traer "FB 3-527"
+  habitacion: string        // "1001" o "205/202" (puede ser doble)
+  observacion: string       // "Reserva 389 - Yamila..." / "Pago Reserva 492 /" / "RETIRO EFECTIVO"
+  efectivo: number
+  tarjetas: number
+  cheques: number
+  transferencia: number
+  otros: number
+  total: number
+  // Derivados (parseados de observacion/comp):
+  reserva?: string
+  pasajero?: string
+  facturaB?: string
+}
+
+// Una caja del PMS (Todoalojamiento) importada desde su Excel. Un turno ≈ una caja.
+export interface CajaParte {
+  id: string
+  nroCaja: number
+  puntoVenta: string        // "Recepcion"
+  moneda: string            // "AR$"
+  usuarioApertura: string
+  usuarioCierre?: string
+  aperturaAt: string        // ISO; deriva el turno
+  cierreAt?: string         // ISO; ausente si la caja sigue abierta
+  turno?: Turno             // derivado de la hora de apertura
+  conserje?: string         // derivado de usuarioApertura (match con CONSERJES)
+  aperturaMonto: number     // monto de apertura (efectivo)
+  saldoFinal: number        // "Saldo total en caja"
+  ingresos: CajaMovimiento[]
+  egresos: CajaMovimiento[]
+  retiros: CajaMovimiento[] // "Egreso al cerrar Caja" (tarjetas/transf. que no quedan en efectivo)
+  importedBy: string
+  importedAt: string
+  sourceFileName?: string
 }
 
 // --- Impuestos y Servicios ---

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Receipt, FileText } from 'lucide-react'
+import { ClipboardList, Receipt, FileText, Wallet } from 'lucide-react'
 
 export default function Administracion() {
   const navigate = useNavigate()
@@ -30,6 +30,17 @@ export default function Administracion() {
           </div>
           <h3 className="font-bold text-navy-800 text-lg">Facturas de Proveedores</h3>
           <p className="text-sm text-navy-500 mt-1">Cargá la factura (A/C) de cada distribuidora al recibir y mirá el gasto por mes.</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/control-caja')}
+          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
+            <Wallet size={24} />
+          </div>
+          <h3 className="font-bold text-navy-800 text-lg">Control de Caja</h3>
+          <p className="text-sm text-navy-500 mt-1">Importá el Excel de caja de cada turno y revisá los descuadres y cobros sin Factura B.</p>
         </button>
 
         <button
