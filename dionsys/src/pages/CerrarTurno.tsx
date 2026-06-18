@@ -1,9 +1,10 @@
 import { useState, useRef, useMemo } from 'react'
 import {
-  Upload, FileSpreadsheet, Save, X, AlertTriangle, CheckCircle2, Wallet, Clock,
+  Upload, FileSpreadsheet, Save, X, AlertTriangle, CheckCircle2, Wallet, Clock, Circle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCajas } from '../context/CajaContext'
+import { usePartes } from '../context/ParteContext'
 import { parseCajaExcel } from '../lib/parseCaja'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { formatMontoCurrency } from '../utils/validators'
@@ -34,6 +35,7 @@ function FlagPill({ flag }: { flag: CajaFlag }) {
 export default function CerrarTurno() {
   const { employee } = useAuth()
   const { cajas, addCaja, getCajaAnterior } = useCajas()
+  const { getParteByCaja } = usePartes()
   const [preview, setPreview] = useState<CajaParte | null>(null)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
@@ -72,7 +74,33 @@ export default function CerrarTurno() {
   return (
     <div className="max-w-2xl mx-auto">
       <h2 className="text-xl font-bold text-navy-800 mb-1">Cerrar turno</h2>
-      <p className="text-sm text-navy-500 mb-4">Al terminar tu turno, subí <strong>tu caja</strong> y <strong>tu parte de habitaciones</strong>. El sistema te marca si hay algo para corregir.</p>
+      <p className="text-sm text-navy-500 mb-4">Al terminar tu turno, subí <strong>tu caja</strong> y <strong>tu parte de habitaciones</strong>. Los dos son obligatorios.</p>
+
+      {/* Checklist: qué falta para no saltearse nada */}
+      {(() => {
+        const cajaOk = !!caja
+        const parteOk = !!(caja && getParteByCaja(caja.nroCaja))
+        const Item = ({ ok, label }: { ok: boolean; label: string }) => (
+          <div className={`flex items-center gap-2 text-sm ${ok ? 'text-green-700' : 'text-navy-500'}`}>
+            {ok ? <CheckCircle2 size={16} className="text-green-600" /> : <Circle size={16} className="text-navy-300" />}
+            <span className={ok ? 'font-semibold' : ''}>{label}</span>
+            {!ok && <span className="text-[11px] text-amber-600 font-medium">pendiente</span>}
+          </div>
+        )
+        return (
+          <div className={`rounded-xl border p-3 mb-4 ${cajaOk && parteOk ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50'}`}>
+            <div className="space-y-1.5">
+              <Item ok={cajaOk} label="1 · Caja del turno (Excel)" />
+              <Item ok={parteOk} label="2 · Parte de habitaciones (PDF o foto)" />
+            </div>
+            <p className={`text-xs mt-2 ${cajaOk && parteOk ? 'text-green-700 font-semibold' : 'text-amber-700'}`}>
+              {cajaOk && parteOk
+                ? '✓ Listo, cargaste todo. Podés cerrar el turno.'
+                : 'Te falta cargar lo marcado como pendiente antes de irte.'}
+            </p>
+          </div>
+        )
+      })()}
 
       {/* Paso 1 — Caja */}
       <div className="bg-white rounded-xl border border-navy-100 p-3 mb-3">
