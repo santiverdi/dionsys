@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parseParteItems, type PdfTextItem } from '../../src/lib/parsePartePdf'
+import { parseParteItems, parteFromExtracted, type PdfTextItem } from '../../src/lib/parsePartePdf'
+import type { ExtractedParte } from '../../src/lib/invoiceExtract'
 import { getParteResumen, getParteFlags, getCheckouts } from '../../src/lib/parteControl'
 import type { CajaParte } from '../../src/types'
 import fixture from '../fixtures/parte_caja80.json'
@@ -54,6 +55,39 @@ describe('getParteResumen', () => {
     // 32 ocupadas / (32 + 22) = 59%
     expect(r.ocupacionPct).toBe(59)
     expect(r.plazas).toBe(68)
+  })
+})
+
+describe('parteFromExtracted (lectura por IA)', () => {
+  const ex: ExtractedParte = {
+    nroCaja: '80', usuario: 'Touriño Leandro', fechaCaja: '10/02/2026 06:52',
+    ocupadas: [
+      { habitacion: '201', reserva: '2946', plazas: '2', canal: 'Booking.com' },
+      { habitacion: '704', reserva: '3041', plazas: '2', canal: 'Booking.com' },
+    ],
+    libres: [
+      { habitacion: '302', estado: 'Limpia' },
+      { habitacion: '204', estado: 'sucia' },
+      { habitacion: '1102', estado: 'Mantenimiento' },
+    ],
+    totalOcupadas: '2', totalPlazas: '4', totalLibres: '3',
+  }
+
+  it('mapea los campos y deriva turno/conserje', () => {
+    const p = parteFromExtracted(ex, 'Test', 'foto.jpg')
+    expect(p.nroCaja).toBe(80)
+    expect(p.turno).toBe('manana')
+    expect(p.conserje).toBe('Leandro')
+    expect(p.ocupadas).toHaveLength(2)
+    expect(p.ocupadas[0].plazas).toBe(2)
+    expect(p.sucias).toBe(1)
+    expect(p.limpias).toBe(1)
+    expect(p.mantenimiento).toBe(1)
+    expect(p.sourceFileName).toBe('foto.jpg')
+  })
+
+  it('tira error si la IA no leyó el Nro. de Caja', () => {
+    expect(() => parteFromExtracted({ ...ex, nroCaja: '' }, 'Test')).toThrow(/Nro\. de Caja/)
   })
 })
 

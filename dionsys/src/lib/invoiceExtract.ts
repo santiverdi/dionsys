@@ -29,6 +29,27 @@ export interface ExtractedProviderInvoice {
   items: ExtractedInvoiceItem[]
 }
 
+export interface ExtractedParteOcupada {
+  habitacion: string
+  reserva: string
+  plazas: string  // número como texto
+  canal: string
+}
+export interface ExtractedParteLibre {
+  habitacion: string
+  estado: string  // "sucia" | "limpia" | "mantenimiento"
+}
+export interface ExtractedParte {
+  nroCaja: string
+  usuario: string
+  fechaCaja: string // "dd/mm/yyyy hh:mm" o ''
+  ocupadas: ExtractedParteOcupada[]
+  libres: ExtractedParteLibre[]
+  totalOcupadas: string
+  totalPlazas: string
+  totalLibres: string
+}
+
 const MAX_IMAGE_DIM = 2000 // px del lado más largo tras comprimir
 const IMAGE_QUALITY = 0.8
 
@@ -73,7 +94,7 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
 }
 
 // Comprime/codifica el archivo y llama al endpoint con el modo indicado.
-async function callExtract(file: File, mode: 'servicio' | 'proveedor'): Promise<unknown> {
+async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -87,11 +108,11 @@ async function callExtract(file: File, mode: 'servicio' | 'proveedor'): Promise<
       body: JSON.stringify({ mimeType, data, mode }),
     })
   } catch {
-    throw new Error('No se pudo conectar con el lector de facturas. ¿Estás en el sitio publicado?')
+    throw new Error('No se pudo conectar con el lector. ¿Estás en el sitio publicado?')
   }
 
   if (!res.ok) {
-    let msg = 'No se pudo leer la factura.'
+    let msg = 'No se pudo leer el documento.'
     try {
       const j = await res.json()
       if (j?.error) msg = j.error
@@ -109,4 +130,9 @@ export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
 /** Lee una factura comercial de proveedor (detecta tipo A/B/C, monto y fecha). */
 export async function extractProviderInvoice(file: File): Promise<ExtractedProviderInvoice> {
   return (await callExtract(file, 'proveedor')) as ExtractedProviderInvoice
+}
+
+/** Lee el Parte Diario de habitaciones desde una foto/escaneo (PDF o imagen). */
+export async function extractParte(file: File): Promise<ExtractedParte> {
+  return (await callExtract(file, 'parte')) as ExtractedParte
 }

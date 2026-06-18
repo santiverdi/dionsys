@@ -86,6 +86,59 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
   required: ['tipoFactura', 'proveedor', 'monto', 'fecha', 'condicionVenta', 'vencimiento', 'items'],
 }
 
+// --- Modo "parte": Parte Diario de habitaciones (foto/escaneo del reporte impreso) ---
+const PROMPT_PARTE = `Sos un asistente que lee el "Parte Diario" de habitaciones de un hotel (sistema Todoalojamiento). Te paso una foto o escaneo del reporte impreso. Extraé EXACTAMENTE estos campos:
+- nroCaja: el número que figura junto a "Caja" en el título "Parte Diario Caja N". Solo el número.
+- usuario: el nombre que figura en "Usuario:".
+- fechaCaja: la fecha/hora de "Fecha caja:" en formato "dd/mm/yyyy hh:mm". Si no hay hora, solo "dd/mm/yyyy".
+- ocupadas: lista de TODAS las habitaciones OCUPADAS. Vienen agrupadas por canal de reserva (encabezados como "Booking.com", "WhatsApp", "Walk In", "Contacto Telefónico", "Motor de reservas propio" o nombres de agencias). Por cada habitación ocupada:
+    * habitacion: número de habitación (ej "101", "1002").
+    * reserva: número de reserva de esa fila.
+    * plazas: cantidad de plazas (número).
+    * canal: el nombre del grupo/canal bajo el que está listada.
+- libres: lista de las habitaciones LIBRES con su estado de limpieza. Por cada una:
+    * habitacion: número.
+    * estado: "sucia", "limpia" o "mantenimiento".
+- totalOcupadas, totalPlazas, totalLibres: los totales impresos (números). Si no figuran, "".
+Los números van como texto, sin puntos de miles. Listá SOLO las filas que ves; no inventes. NO incluyas los subtotales por canal como si fueran habitaciones.`
+
+const RESPONSE_SCHEMA_PARTE = {
+  type: 'OBJECT',
+  properties: {
+    nroCaja: { type: 'STRING' },
+    usuario: { type: 'STRING' },
+    fechaCaja: { type: 'STRING' },
+    ocupadas: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          habitacion: { type: 'STRING' },
+          reserva: { type: 'STRING' },
+          plazas: { type: 'STRING' },
+          canal: { type: 'STRING' },
+        },
+        required: ['habitacion', 'reserva', 'plazas', 'canal'],
+      },
+    },
+    libres: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          habitacion: { type: 'STRING' },
+          estado: { type: 'STRING' },
+        },
+        required: ['habitacion', 'estado'],
+      },
+    },
+    totalOcupadas: { type: 'STRING' },
+    totalPlazas: { type: 'STRING' },
+    totalLibres: { type: 'STRING' },
+  },
+  required: ['nroCaja', 'usuario', 'fechaCaja', 'ocupadas', 'libres', 'totalOcupadas', 'totalPlazas', 'totalLibres'],
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método no permitido' })
@@ -104,7 +157,7 @@ module.exports = async (req, res) => {
   }
   const mimeType = body && body.mimeType
   const data = body && body.data
-  const mode = body && body.mode === 'proveedor' ? 'proveedor' : 'servicio'
+  const mode = ['proveedor', 'parte'].includes(body && body.mode) ? body.mode : 'servicio'
   if (!mimeType || !data) {
     res.status(400).json({ error: 'Faltan datos del archivo (mimeType / data).' })
     return
@@ -115,8 +168,8 @@ module.exports = async (req, res) => {
     return
   }
 
-  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : PROMPT
-  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : RESPONSE_SCHEMA
+  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : PROMPT
+  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : RESPONSE_SCHEMA
 
   const payload = {
     contents: [
@@ -189,6 +242,34 @@ module.exports = async (req, res) => {
             condicionVenta,
             vencimiento: String(parsed.vencimiento ?? '').trim(),
             items,
+          })
+          return
+        }
+        if (mode === 'parte') {
+          const str = v => String(v ?? '').trim()
+          const ocupadas = Array.isArray(parsed.ocupadas)
+            ? parsed.ocupadas.map(o => ({
+                habitacion: str(o?.habitacion),
+                reserva: str(o?.reserva),
+                plazas: str(o?.plazas),
+                canal: str(o?.canal),
+              })).filter(o => o.habitacion)
+            : []
+          const libres = Array.isArray(parsed.libres)
+            ? parsed.libres.map(l => ({
+                habitacion: str(l?.habitacion),
+                estado: str(l?.estado).toLowerCase(),
+              })).filter(l => l.habitacion)
+            : []
+          res.status(200).json({
+            nroCaja: str(parsed.nroCaja),
+            usuario: str(parsed.usuario),
+            fechaCaja: str(parsed.fechaCaja),
+            ocupadas,
+            libres,
+            totalOcupadas: str(parsed.totalOcupadas),
+            totalPlazas: str(parsed.totalPlazas),
+            totalLibres: str(parsed.totalLibres),
           })
           return
         }

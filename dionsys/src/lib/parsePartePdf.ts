@@ -18,6 +18,7 @@
 
 import { generateId } from '../utils/imageCompressor'
 import { turnoFromHour, conserjeFrom } from './parseCaja'
+import type { ExtractedParte } from './invoiceExtract'
 import type { ParteHabitaciones, HabitacionOcupada, HabitacionLibre, EstadoHabitacion } from '../types'
 
 // Un ítem de texto ya posicionado en coordenadas visuales (x crece a la derecha,
@@ -249,6 +250,58 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
     sucias,
     limpias,
     mantenimiento,
+    importedBy,
+    importedAt: new Date().toISOString(),
+    ...(fileName ? { sourceFileName: fileName } : {}),
+  }
+}
+
+// Estado de limpieza tolerante (para lo que devuelve la IA: "Sucia", "limpia", etc.).
+function estadoFromText(s: string): EstadoHabitacion {
+  const n = norm(s)
+  if (n.includes('limpia')) return 'limpia'
+  if (n.includes('mant')) return 'mantenimiento'
+  return 'sucia'
+}
+
+// Convierte lo que devuelve la IA (modo "parte") en un ParteHabitaciones, igual
+// que el parser determinístico. Para fotos/escaneos de partes que ya no se pueden
+// bajar como PDF con texto.
+export function parteFromExtracted(ex: ExtractedParte, importedBy: string, fileName?: string): ParteHabitaciones {
+  const nroCaja = parseInt(ex.nroCaja, 10) || 0
+  if (!nroCaja) {
+    throw new Error('La IA no pudo leer el Nro. de Caja del parte. Probá con una foto más nítida.')
+  }
+  const fechaCaja = toISO(ex.fechaCaja)
+  const num = (s: string) => parseInt(s, 10) || 0
+
+  const ocupadas: HabitacionOcupada[] = (ex.ocupadas ?? [])
+    .filter(o => o.habitacion?.trim())
+    .map(o => ({
+      habitacion: o.habitacion.trim(),
+      reserva: (o.reserva ?? '').trim(),
+      plazas: num(o.plazas),
+      canal: (o.canal ?? '').trim(),
+    }))
+  const libres: HabitacionLibre[] = (ex.libres ?? [])
+    .filter(l => l.habitacion?.trim())
+    .map(l => ({ habitacion: l.habitacion.trim(), estado: estadoFromText(l.estado) }))
+
+  return {
+    id: generateId(),
+    nroCaja,
+    usuario: (ex.usuario ?? '').trim(),
+    fechaCaja,
+    ...(turnoFromHour(fechaCaja) ? { turno: turnoFromHour(fechaCaja) } : {}),
+    ...(conserjeFrom(ex.usuario ?? '') ? { conserje: conserjeFrom(ex.usuario ?? '') } : {}),
+    ocupadas,
+    libres,
+    totalOcupadas: num(ex.totalOcupadas) || ocupadas.length,
+    totalPlazas: num(ex.totalPlazas) || ocupadas.reduce((a, h) => a + h.plazas, 0),
+    totalLibres: num(ex.totalLibres) || libres.length,
+    sucias: libres.filter(l => l.estado === 'sucia').length,
+    limpias: libres.filter(l => l.estado === 'limpia').length,
+    mantenimiento: libres.filter(l => l.estado === 'mantenimiento').length,
     importedBy,
     importedAt: new Date().toISOString(),
     ...(fileName ? { sourceFileName: fileName } : {}),

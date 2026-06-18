@@ -5,7 +5,8 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { usePartes } from '../context/ParteContext'
 import { useCajas } from '../context/CajaContext'
-import { parsePartePdf } from '../lib/parsePartePdf'
+import { parsePartePdf, parteFromExtracted } from '../lib/parsePartePdf'
+import { extractParte } from '../lib/invoiceExtract'
 import { getParteFlags, getParteResumen, getCheckouts, type ParteFlag, type CheckoutRecord } from '../lib/parteControl'
 import { formatMontoCurrency } from '../utils/validators'
 import type { ParteHabitaciones, HabitacionOcupada, EstadoHabitacion } from '../types'
@@ -73,31 +74,46 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
   const { addParte, deleteParte, getParteByCaja, getParteAnterior } = usePartes()
   const { cajas } = useCajas()
   const [preview, setPreview] = useState<ParteHabitaciones | null>(null)
-  const [importing, setImporting] = useState(false)
+  const [importing, setImporting] = useState<'' | 'pdf' | 'ia'>('')
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const fileIaRef = useRef<HTMLInputElement>(null)
 
   const parte = getParteByCaja(nroCaja)
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImporting(true)
+  // Procesa un archivo con el lector dado (PDF con texto o IA sobre foto/escaneo).
+  async function procesar(
+    file: File,
+    fase: 'pdf' | 'ia',
+    leer: (f: File) => Promise<ParteHabitaciones>,
+    ref: React.RefObject<HTMLInputElement | null>,
+  ) {
+    setImporting(fase)
     setError('')
     setPreview(null)
     try {
-      const p = await parsePartePdf(file, employee?.name ?? '')
+      const p = await leer(file)
       if (p.nroCaja !== nroCaja) {
-        setError(`El parte importado es de la Caja ${p.nroCaja}, no de la Caja ${nroCaja}.`)
+        setError(`El parte leído es de la Caja ${p.nroCaja}, no de la Caja ${nroCaja}.`)
       } else {
         setPreview(p)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo leer el PDF del parte.')
+      setError(err instanceof Error ? err.message : 'No se pudo leer el parte.')
     } finally {
-      setImporting(false)
-      if (fileRef.current) fileRef.current.value = ''
+      setImporting('')
+      if (ref.current) ref.current.value = ''
     }
+  }
+
+  function handlePdf(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) procesar(file, 'pdf', f => parsePartePdf(f, employee?.name ?? ''), fileRef)
+  }
+
+  function handleIA(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) procesar(file, 'ia', async f => parteFromExtracted(await extractParte(f), employee?.name ?? '', f.name), fileIaRef)
   }
 
   function confirmImport() {
@@ -111,13 +127,23 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
     return (
       <div className="bg-white rounded-xl border border-navy-100 p-3">
         <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2">Parte de habitaciones</p>
-        <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
-          importing ? 'border-gold-400 bg-gold-50 text-navy-600' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'
-        }`}>
-          <Upload size={18} className={importing ? 'animate-pulse' : ''} />
-          <span className="text-sm font-semibold">{importing ? 'Leyendo PDF…' : 'Importar parte (PDF)'}</span>
-          <input ref={fileRef} type="file" accept="application/pdf,.pdf" onChange={handleFile} disabled={importing} className="hidden" />
-        </label>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+            importing === 'pdf' ? 'border-gold-400 bg-gold-50 text-navy-600' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'
+          } ${importing ? 'pointer-events-none opacity-60' : ''}`}>
+            <Upload size={18} className={importing === 'pdf' ? 'animate-pulse' : ''} />
+            <span className="text-sm font-semibold">{importing === 'pdf' ? 'Leyendo PDF…' : 'Parte (PDF con texto)'}</span>
+            <input ref={fileRef} type="file" accept="application/pdf,.pdf" onChange={handlePdf} disabled={!!importing} className="hidden" />
+          </label>
+          <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+            importing === 'ia' ? 'border-gold-400 bg-gold-50 text-navy-600' : 'border-emerald-300 text-emerald-600 hover:bg-emerald-50'
+          } ${importing ? 'pointer-events-none opacity-60' : ''}`}>
+            <Sparkles size={18} className={importing === 'ia' ? 'animate-pulse' : ''} />
+            <span className="text-sm font-semibold">{importing === 'ia' ? 'Leyendo con IA…' : 'Foto / escaneo (IA)'}</span>
+            <input ref={fileIaRef} type="file" accept="image/*,application/pdf,.pdf" onChange={handleIA} disabled={!!importing} className="hidden" />
+          </label>
+        </div>
+        <p className="text-[11px] text-navy-400 mt-1.5">Si podés bajar el PDF del turno, usá "PDF con texto" (exacto). Para partes viejos que solo tenés en foto/escaneo, usá "IA".</p>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
 
         {preview && (
