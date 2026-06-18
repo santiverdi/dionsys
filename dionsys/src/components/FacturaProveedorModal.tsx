@@ -12,6 +12,9 @@ interface Props {
   supplierName: string
   subtitle?: string
   initial?: FacturaProveedor
+  // Etiqueta del documento: "Factura" (default) o "Boleta" para recepción diaria
+  // (muchas veces no hay factura formal). Solo cambia los textos visibles.
+  docLabel?: string
   onClose: () => void
   // Devuelve los campos de la factura (el padre completa supplierId/cargadoBy/cargadoAt + el seguimiento de pago).
   onSave: (data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'vencimiento' | 'facturaUrl' | 'facturaNombre'>) => void
@@ -41,7 +44,8 @@ function rowImporte(s: string): number {
   return v.ok ? v.value! : 0
 }
 
-export default function FacturaProveedorModal({ supplierName, subtitle, initial, onClose, onSave }: Props) {
+export default function FacturaProveedorModal({ supplierName, subtitle, initial, docLabel = 'Factura', onClose, onSave }: Props) {
+  const docLower = docLabel.toLowerCase()
   const [tipo, setTipo] = useState<TipoFactura>(initial?.tipoFactura ?? '')
   const [pago, setPago] = useState<FormaPago>(initial?.pago ?? 'contado')
   const [vencimiento, setVencimiento] = useState(initial?.vencimiento ?? '')
@@ -125,7 +129,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
   }
 
   function handleSave() {
-    if (!fecha) { setError('Poné la fecha de la factura'); return }
+    if (!fecha) { setError(`Poné la fecha de la ${docLower}`); return }
 
     let monto: number
     let items: FacturaItemLinea[] | undefined
@@ -167,7 +171,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
       >
         <div className="flex items-start justify-between mb-3">
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg font-bold text-navy-800">Factura — {supplierName}</h3>
+            <h3 className="text-lg font-bold text-navy-800">{docLabel} — {supplierName}</h3>
             {subtitle && <p className="text-xs text-navy-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-navy-100 transition-colors shrink-0">
@@ -181,7 +185,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
         }`}>
           <Sparkles size={18} className={extracting ? 'animate-pulse' : ''} />
           <span className="text-sm font-semibold">
-            {extracting ? 'Leyendo factura…' : 'Sacar foto / subir factura (la lee la IA)'}
+            {extracting ? `Leyendo ${docLower}…` : `Sacar foto / subir ${docLower} (la lee la IA)`}
           </span>
           <input
             type="file"
@@ -206,8 +210,8 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
         )}
         <p className="text-[11px] text-navy-400 mb-4 mt-1">Revisá y corregí los datos antes de guardar.</p>
 
-        {/* Tipo de factura */}
-        <label className="block text-xs font-semibold text-navy-500 mb-1">Tipo de factura</label>
+        {/* Tipo de factura (opcional: en boletas/remitos suele no haber letra) */}
+        <label className="block text-xs font-semibold text-navy-500 mb-1">Tipo de factura (si tiene)</label>
         <div className="flex gap-2 mb-4">
           {TIPOS.map(t => (
             <button
@@ -254,7 +258,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
         )}
 
         {/* Fecha */}
-        <label className="block text-xs font-semibold text-navy-500 mb-1">Fecha de la factura *</label>
+        <label className="block text-xs font-semibold text-navy-500 mb-1">Fecha de la {docLower} *</label>
         <DateField
           value={fecha}
           onChange={v => { setFecha(v); setError('') }}
@@ -331,7 +335,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
           </div>
         ) : (
           <div className="mb-3">
-            <p className="text-[11px] text-navy-400 mb-2">Sin renglones. Cargá la factura con IA, agregá renglones, o poné el monto total a mano:</p>
+            <p className="text-[11px] text-navy-400 mb-2">Sin renglones. Cargá la {docLower} con IA, agregá renglones, o poné el monto total a mano:</p>
             <label className="block text-xs font-semibold text-navy-500 mb-1">Monto total *</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-navy-400">$</span>
@@ -354,7 +358,7 @@ export default function FacturaProveedorModal({ supplierName, subtitle, initial,
           disabled={extracting}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-navy-800 text-cream font-bold text-sm hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          <Save size={16} /> Guardar factura
+          <Save size={16} /> Guardar {docLower}
         </button>
       </div>
     </div>

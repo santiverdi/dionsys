@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Croissant, Milk, Trash2, Users, AlertTriangle, CalendarDays, Apple } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Croissant, Milk, Trash2, Users, AlertTriangle, CalendarDays, Apple, ClipboardList, ChevronLeft, Clock, CheckCircle2 } from 'lucide-react'
 import PanaderiaCalc from '../components/PanaderiaCalc'
 import LacteosOrder from '../components/LacteosOrder'
 import BasuraTracker from '../components/BasuraTracker'
@@ -7,12 +7,21 @@ import OccupancyPanel from '../components/OccupancyPanel'
 import TurnosGrid from '../components/TurnosGrid'
 import VerduleriaOrder from '../components/VerduleriaOrder'
 import { useOccupancy, TURNO_LABELS } from '../context/OccupancyContext'
+import { useOrders } from '../context/OrdersContext'
 
-type Section = 'menu' | 'panaderia' | 'lacteos' | 'basura' | 'ocupacion' | 'turnos' | 'verduleria'
+type Section = 'menu' | 'panaderia' | 'lacteos' | 'basura' | 'ocupacion' | 'turnos' | 'verduleria' | 'historial'
 
 export default function PedidosRecepcion() {
   const [section, setSection] = useState<Section>('menu')
   const { currentTurno, getToday } = useOccupancy()
+  const { orders } = useOrders()
+
+  const recepcionOrders = useMemo(
+    () => orders
+      .filter(o => o.type === 'recepcion' && o.status !== 'borrado')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [orders]
+  )
 
   const today = getToday()
   const isNoche = currentTurno === 'noche'
@@ -42,9 +51,65 @@ export default function PedidosRecepcion() {
     return <VerduleriaOrder onBack={() => setSection('menu')} />
   }
 
+  if (section === 'historial') {
+    return (
+      <div>
+        <button
+          onClick={() => setSection('menu')}
+          className="flex items-center gap-2 text-navy-600 hover:text-navy-800 mb-4 text-sm font-medium"
+        >
+          <ChevronLeft size={18} /> Pedidos Recepcion
+        </button>
+        <h2 className="text-xl font-bold text-navy-800 mb-1">Pedidos enviados</h2>
+        <p className="text-sm text-navy-500 mb-4">Verduleria, Piazza y Lacteos enviados por recepcion.</p>
+        {recepcionOrders.length === 0 ? (
+          <p className="text-navy-400 text-center py-12">No hay pedidos enviados aun</p>
+        ) : (
+          <div className="space-y-3">
+            {recepcionOrders.map(order => {
+              const cargada = order.monto != null
+              return (
+                <div key={order.id} className="rounded-xl border border-navy-100 bg-white p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-navy-800 truncate">{order.distributorName}</p>
+                      <p className="text-xs text-navy-400 flex items-center gap-1">
+                        <Clock size={11} />
+                        {new Date(order.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {order.createdBy ? ` · ${order.createdBy}` : ''}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 flex items-center gap-1 ${
+                      cargada ? 'bg-green-100 text-green-700' : 'bg-navy-100 text-navy-500'
+                    }`}>
+                      {cargada ? <><CheckCircle2 size={12} /> boleta cargada</> : 'boleta pendiente'}
+                    </span>
+                  </div>
+                  <ul className="text-sm text-navy-600 space-y-0.5">
+                    {order.items.map((item, i) => (
+                      <li key={i}>- {item.quantity} x {item.productName} ({item.unit})</li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div>
-      <h2 className="text-xl font-bold text-navy-800 mb-2">Pedidos Recepcion</h2>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h2 className="text-xl font-bold text-navy-800">Pedidos Recepcion</h2>
+        <button
+          onClick={() => setSection('historial')}
+          className="flex items-center gap-1.5 text-sm text-navy-500 hover:text-navy-700 font-medium shrink-0"
+        >
+          <ClipboardList size={16} /> Enviados
+        </button>
+      </div>
       <p className="text-sm text-navy-500 mb-6">Pedidos calculados por huespedes. Van directo al desayunador.</p>
 
       {/* Night shift block banner */}
@@ -106,7 +171,7 @@ export default function PedidosRecepcion() {
           </div>
           <h3 className="font-bold text-navy-800 text-lg">Piazza - Panaderia</h3>
           <p className="text-sm text-navy-500 mt-1">Calculo automatico por huespedes. Medialunas + facturas surtidas.</p>
-          <p className="text-xs text-gold-600 mt-2 font-medium">Todos los dias (excepto domingos)</p>
+          <p className="text-xs text-gold-600 mt-2 font-medium">Todos los dias</p>
         </button>
 
         <button

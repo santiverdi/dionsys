@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import type { Order, OrderItem } from '../types'
+import type { Order, OrderItem, FacturaProveedor } from '../types'
 import { generateId } from '../utils/imageCompressor'
 import { persist, useCloudSync } from '../lib/cloudStore'
 
@@ -10,6 +10,7 @@ interface OrdersContextType {
   addOrder: (order: Omit<Order, 'id' | 'createdAt'>) => Order
   deleteOrder: (id: string, deletedBy: string) => void
   setOrderMonto: (orderId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
+  setOrderFactura: (orderId: string, factura: FacturaProveedor, cargadoBy: string) => void
 }
 
 const OrdersContext = createContext<OrdersContextType | null>(null)
@@ -67,8 +68,27 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setOrderFactura = useCallback((orderId: string, factura: FacturaProveedor, cargadoBy: string) => {
+    setOrders(prev => {
+      const updated = prev.map(o =>
+        o.id === orderId
+          ? {
+              ...o,
+              factura,
+              monto: factura.monto,
+              montoCargadoBy: cargadoBy,
+              montoCargadoAt: new Date().toISOString(),
+              status: 'recibido' as const,
+            }
+          : o
+      )
+      persist(LS_ORDERS, updated)
+      return updated
+    })
+  }, [])
+
   return (
-    <OrdersContext.Provider value={{ orders, addOrder, deleteOrder, setOrderMonto }}>
+    <OrdersContext.Provider value={{ orders, addOrder, deleteOrder, setOrderMonto, setOrderFactura }}>
       {children}
     </OrdersContext.Provider>
   )

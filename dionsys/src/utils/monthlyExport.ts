@@ -46,7 +46,7 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
     ['Impuestos pagados', expenses.impuestosPagado, expensesPrev.impuestosPagado],
     ['Impuestos pendientes', expenses.impuestosPendiente, expensesPrev.impuestosPendiente],
     ['Pedidos semanales', expenses.pedidosSemanales, expensesPrev.pedidosSemanales],
-    ['Pedidos distribuidor', expenses.pedidosDistribuidor, expensesPrev.pedidosDistribuidor],
+    ['Recepción diaria', expenses.pedidosDistribuidor, expensesPrev.pedidosDistribuidor],
     ['Mantenimiento', expenses.mantenimiento, expensesPrev.mantenimiento],
     ['TOTAL', expenses.total, expensesPrev.total],
     [],
@@ -81,7 +81,7 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
   }
   for (const o of data.orders) {
     if (o.status === 'borrado' || o.monto == null || !isInMonth(o.createdAt, year, month)) continue
-    gastosRows.push(['Pedido distribuidor', o.createdAt, o.distributorName, o.monto, o.montoCargadoBy ?? '', o.status])
+    gastosRows.push(['Recepción diaria', o.createdAt, o.distributorName, o.monto, o.montoCargadoBy ?? '', o.status])
   }
   for (const p of data.pedidos) {
     if (p.status === 'borrado' || p.monto == null || !isInMonth(p.date, year, month)) continue
@@ -125,7 +125,7 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(mantRows), 'Mantenimiento')
 
   // Hoja 5: Actividad por usuario
-  const actRows: Row[] = [['Empleado', 'Rol', 'Última actividad', 'Días inactivo', 'Pedidos distribuidor', 'Pedidos semanales', 'Mov. entradas', 'Mov. salidas', 'Tareas creadas', 'Tareas completadas', 'Montos cargados']]
+  const actRows: Row[] = [['Empleado', 'Rol', 'Última actividad', 'Días inactivo', 'Pedidos recepción', 'Pedidos semanales', 'Mov. entradas', 'Mov. salidas', 'Tareas creadas', 'Tareas completadas', 'Montos cargados']]
   for (const a of activity) {
     actRows.push([
       a.name, a.role, a.lastActivityAt ?? '', a.daysInactive,

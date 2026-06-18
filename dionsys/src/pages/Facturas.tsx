@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw, ConciergeBell } from 'lucide-react'
 import { useStock } from '../context/StockContext'
+import { useOrders } from '../context/OrdersContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
@@ -8,9 +9,9 @@ import { downloadUrl, uploadFactura } from '../lib/facturaStorage'
 import { scanImageFile } from '../lib/scanDocument'
 import { fileToPdf } from '../lib/imageToPdf'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
-import type { PedidoSemanal, FacturaProveedor, DepositoSupplier } from '../types'
+import type { PedidoSemanal, FacturaProveedor, DepositoSupplier, Order } from '../types'
 
-type Tab = 'recibidas' | 'gasto' | 'cuentacorriente' | 'contadora'
+type Tab = 'recibidas' | 'gasto' | 'cuentacorriente' | 'contadora' | 'recepcion'
 
 // Neto / IVA / percepciones de una factura, a partir de sus renglones.
 function desglosar(f: FacturaProveedor) {
@@ -43,9 +44,12 @@ function shortDate(iso: string) {
 
 export default function Facturas() {
   const { pedidos, items, suppliers, setFacturaProveedor } = useStock()
+  const { orders, setOrderFactura } = useOrders()
   const { employee } = useAuth()
   const [tab, setTab] = useState<Tab>('recibidas')
   const [target, setTarget] = useState<{ pedido: PedidoSemanal; supplier: DepositoSupplier; initial?: FacturaProveedor } | null>(null)
+  // Pedido de recepción diaria al que se le está cargando la boleta.
+  const [recepcionTarget, setRecepcionTarget] = useState<Order | null>(null)
 
   const recibidos = useMemo(
     () => pedidos
@@ -84,6 +88,30 @@ export default function Facturas() {
       cargadoAt: new Date().toISOString(),
     })
     setTarget(null)
+  }
+
+  // ---- Recepción diaria: pedidos de Verdulería / Piazza / Lácteos ----
+  const recepcionOrders = useMemo(
+    () => orders
+      .filter(o => o.type === 'recepcion' && o.status !== 'borrado')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [orders]
+  )
+
+  function handleSaveBoleta(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'vencimiento' | 'facturaUrl' | 'facturaNombre'>) {
+    if (!recepcionTarget || !employee) return
+    const esCC = data.pago === 'cuenta_corriente'
+    const factura: FacturaProveedor = {
+      supplierId: recepcionTarget.distributorId,
+      supplierName: recepcionTarget.distributorName,
+      ...data,
+      pagado: esCC ? (recepcionTarget.factura?.pagado ?? false) : undefined,
+      fechaPago: esCC ? recepcionTarget.factura?.fechaPago : undefined,
+      cargadoBy: employee.name,
+      cargadoAt: new Date().toISOString(),
+    }
+    setOrderFactura(recepcionTarget.id, factura, employee.name)
+    setRecepcionTarget(null)
   }
 
   // Marca una factura de cuenta corriente como pagada (hoy).
@@ -279,6 +307,7 @@ export default function Facturas() {
       <div className="flex gap-1 mb-5 bg-navy-100 rounded-xl p-1">
         {([
           { key: 'recibidas' as const, label: 'Recibidas', icon: FileText },
+          { key: 'recepcion' as const, label: 'Recepción', icon: ConciergeBell },
           { key: 'gasto' as const, label: 'Gasto', icon: CalendarDays },
           { key: 'cuentacorriente' as const, label: 'Cta cte', icon: CreditCard },
           { key: 'contadora' as const, label: 'Contadora', icon: Calculator },
@@ -367,6 +396,83 @@ export default function Facturas() {
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      )}
+
+      {/* ============ RECEPCIÓN DIARIA ============ */}
+      {tab === 'recepcion' && (
+        recepcionOrders.length === 0 ? (
+          <div className="text-center py-16">
+            <ConciergeBell size={48} className="mx-auto text-navy-200 mb-3" />
+            <p className="text-navy-400 font-medium">No hay pedidos de recepción</p>
+            <p className="text-sm text-navy-300 mt-1">Aparecen acá los pedidos diarios (Verdulería, Piazza, Lácteos) enviados desde Recepción.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {recepcionOrders.map(order => {
+              const f = order.factura
+              return (
+                <div key={order.id} className="rounded-xl border border-navy-100 bg-white p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-navy-800 truncate">{order.distributorName}</p>
+                      <p className="text-xs text-navy-400 flex items-center gap-1">
+                        <Clock size={11} />
+                        {new Date(order.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {order.createdBy ? ` · ${order.createdBy}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setRecepcionTarget(order)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-colors ${
+                        f
+                          ? 'bg-white text-navy-700 border border-navy-200 hover:bg-navy-50'
+                          : 'bg-gold-400 text-navy-900 hover:bg-gold-500'
+                      }`}
+                    >
+                      {f ? <><CheckCircle2 size={13} /> Editar boleta</> : <><PlusCircle size={13} /> Cargar boleta</>}
+                    </button>
+                  </div>
+
+                  <ul className="text-sm text-navy-600 space-y-0.5 mb-2">
+                    {order.items.map((item, i) => (
+                      <li key={i}>- {item.quantity} x {item.productName} ({item.unit})</li>
+                    ))}
+                  </ul>
+
+                  <div className={`rounded-lg p-2.5 border ${f ? 'bg-green-50 border-green-200' : 'bg-navy-50 border-navy-100'}`}>
+                    {f ? (
+                      <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                        {f.tipoFactura && (
+                          <span className="px-1.5 py-0.5 rounded bg-navy-800 text-cream font-bold">{f.tipoFactura}</span>
+                        )}
+                        <span className="font-bold text-navy-800">{formatMontoCurrency(f.monto)}</span>
+                        {f.fecha && <span className="text-navy-400">· {shortDate(f.fecha)}</span>}
+                        {f.items?.length ? <span className="text-navy-400">· {f.items.length} reng.</span> : null}
+                        {f.pago === 'cuenta_corriente' && (
+                          f.pagado
+                            ? <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold">cta cte · pagada</span>
+                            : <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">cta cte · debe</span>
+                        )}
+                        {f.facturaUrl && (
+                          <a
+                            href={downloadUrl(f.facturaUrl, f.facturaNombre || 'boleta')}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
+                          >
+                            <FileText size={11} /> archivo
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600">Sin boleta cargada</p>
+                    )}
                   </div>
                 </div>
               )
@@ -592,6 +698,17 @@ export default function Facturas() {
           initial={target.initial}
           onClose={() => setTarget(null)}
           onSave={handleSaveFactura}
+        />
+      )}
+
+      {recepcionTarget && (
+        <FacturaProveedorModal
+          supplierName={recepcionTarget.distributorName}
+          docLabel="Boleta"
+          subtitle={`Pedido enviado ${new Date(recepcionTarget.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`}
+          initial={recepcionTarget.factura}
+          onClose={() => setRecepcionTarget(null)}
+          onSave={handleSaveBoleta}
         />
       )}
 

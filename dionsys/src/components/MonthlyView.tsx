@@ -164,7 +164,7 @@ export default function MonthlyView() {
           <ExpenseTile label="Impuestos pagados" current={expenses.impuestosPagado} previous={expensesPrev.impuestosPagado} />
           <ExpenseTile label="Imp. pendiente" current={expenses.impuestosPendiente} previous={expensesPrev.impuestosPendiente} />
           <ExpenseTile label="Pedido semanal" current={expenses.pedidosSemanales} previous={expensesPrev.pedidosSemanales} />
-          <ExpenseTile label="Pedidos distrib." current={expenses.pedidosDistribuidor} previous={expensesPrev.pedidosDistribuidor} />
+          <ExpenseTile label="Recepción diaria" current={expenses.pedidosDistribuidor} previous={expensesPrev.pedidosDistribuidor} />
           <ExpenseTile label="Mantenimiento" current={expenses.mantenimiento} previous={expensesPrev.mantenimiento} />
         </div>
       </section>

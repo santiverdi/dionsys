@@ -186,7 +186,7 @@ export const receptionSuppliers = {
   panaderia: {
     name: 'Piazza',
     phone: '5492235496418',
-    notes: 'No abre domingos. Sabados = pedido doble.',
+    notes: 'Abre todos los dias.',
   },
   lacteos: {
     name: 'El Amanecer',

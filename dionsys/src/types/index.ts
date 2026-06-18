@@ -51,6 +51,9 @@ export interface Order {
   montoCargadoBy?: string
   montoCargadoAt?: string
   receiptPhoto?: string
+  // Boleta/factura de recepción cargada por el admin (la lee la IA). El total
+  // queda también en `monto` para el gasto mensual; acá va el detalle completo.
+  factura?: FacturaProveedor
 }
 
 export interface ReceptionProduct {

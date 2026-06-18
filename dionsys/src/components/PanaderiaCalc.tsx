@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, Copy, Check, Send, Users, Calendar, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, Copy, Check, Send, Users } from 'lucide-react'
 import { receptionSuppliers } from '../data/mock'
 import { useAuth } from '../context/AuthContext'
 import { useOrders, generateWhatsAppMessage } from '../context/OrdersContext'
@@ -34,16 +34,12 @@ export default function PanaderiaCalc({ onBack }: Props) {
   const [pendingSend, setPendingSend] = useState(false)
 
   const today = new Date()
-  const dayOfWeek = today.getDay()
-  const isSaturday = dayOfWeek === 6
-  const isSunday = dayOfWeek === 0
   const dayName = today.toLocaleDateString('es-AR', { weekday: 'long' })
 
   const calc = useMemo(() => {
     if (guests <= 0) return null
 
-    let rawTotal = Math.ceil(guests * RATIO_PER_GUEST)
-    if (isSaturday) rawTotal *= 2
+    const rawTotal = Math.ceil(guests * RATIO_PER_GUEST)
 
     const total = roundToHalfDozen(rawTotal)
 
@@ -56,8 +52,8 @@ export default function PanaderiaCalc({ onBack }: Props) {
     const facturas = Math.max(minFacturas, calculatedFacturas)
     const medialunas = total - facturas
 
-    return { total, medialunas, facturas, isDouble: isSaturday }
-  }, [guests, isSaturday])
+    return { total, medialunas, facturas }
+  }, [guests])
 
   const supplier = receptionSuppliers.panaderia
 
@@ -81,8 +77,7 @@ export default function PanaderiaCalc({ onBack }: Props) {
       notes: '',
     })
     // Sin cantidad de huespedes en el mensaje
-    const dayNote = calc.isDouble ? 'PEDIDO DOBLE (sabado + domingo)' : ''
-    return generateWhatsAppMessage(supplier.name, supplier.phone, items, dayNote)
+    return generateWhatsAppMessage(supplier.name, supplier.phone, items, '')
   }
 
   async function handleCopy() {
@@ -111,7 +106,7 @@ export default function PanaderiaCalc({ onBack }: Props) {
         { productId: 'pan-fac', productName: 'Facturas surtidas', quantity: calc.facturas, unit: 'unidades', notes: '' },
       ],
       status: 'enviado',
-      notes: `${guests} huespedes${calc.isDouble ? ' - DOBLE (sab+dom)' : ''}`,
+      notes: `${guests} huespedes`,
       type: 'recepcion',
     })
     setPendingSend(false)
@@ -133,20 +128,6 @@ export default function PanaderiaCalc({ onBack }: Props) {
 
       <h2 className="text-xl font-bold text-navy-800 mb-1">Piazza - Panaderia</h2>
       <p className="text-sm text-navy-500 mb-6">{supplier.notes}</p>
-
-      {isSunday && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 flex items-start gap-3">
-          <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">Hoy es domingo, la panaderia no abre. El pedido se hace los sabados (doble).</p>
-        </div>
-      )}
-
-      {isSaturday && (
-        <div className="bg-gold-50 border border-gold-300 rounded-xl p-4 mb-4 flex items-start gap-3">
-          <Calendar size={20} className="text-gold-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-gold-800">Sabado: pedido doble automatico (cubre sabado + domingo).</p>
-        </div>
-      )}
 
       {/* Guest input */}
       <div className="bg-white rounded-xl p-5 shadow-sm border border-navy-100 mb-4">
@@ -195,15 +176,10 @@ export default function PanaderiaCalc({ onBack }: Props) {
                 <span className="text-2xl font-bold text-navy-800">{calc.total}</span>
               </div>
 
-              {calc.isDouble && (
-                <p className="text-xs text-gold-700 font-medium text-center">
-                  Pedido doble aplicado (sabado)
-                </p>
-              )}
             </div>
 
             <div className="mt-4 text-xs text-navy-400 bg-navy-50 rounded-lg p-3">
-              <p>{guests} huespedes x {RATIO_PER_GUEST} = {Math.ceil(guests * RATIO_PER_GUEST)} → redondeado a {calc.total}{calc.isDouble ? ' (x2 sabado)' : ''}</p>
+              <p>{guests} huespedes x {RATIO_PER_GUEST} = {Math.ceil(guests * RATIO_PER_GUEST)} → redondeado a {calc.total}</p>
               <p>Surtidas: {calc.medialunas < 24 ? '1/2 doc. (menos de 2 doc. medialunas)' : '1 doc. (2+ doc. medialunas)'} | Cada 50: 38 med. + 12 surt.</p>
             </div>
           </div>
