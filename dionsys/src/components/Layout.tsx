@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
-import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase } from 'lucide-react'
+import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase, ClipboardCheck } from 'lucide-react'
 import type { Role } from '../types'
 import OccupancyReminder from './OccupancyReminder'
 import PedidosPorRecibir from './PedidosPorRecibir'
@@ -12,6 +12,7 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
   { to: '/administracion', label: 'Administracion', icon: Briefcase },
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/recepcion', label: 'Recepcion', icon: ConciergeBell },
+  { to: '/cerrar-turno', label: 'Cerrar turno', icon: ClipboardCheck },
   { to: '/deposito', label: 'Pedido Semanal', icon: Warehouse },
   { to: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },
 ]
