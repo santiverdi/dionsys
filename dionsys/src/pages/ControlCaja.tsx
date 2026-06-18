@@ -10,7 +10,6 @@ import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS, type Turno } from '../context/OccupancyContext'
 import PartePanel from '../components/PartePanel'
-import ControlResumenPanel from '../components/ControlResumenPanel'
 import type { CajaParte, CajaMovimiento } from '../types'
 
 const TURNO_ICON: Record<Turno, typeof Sun> = { manana: Sun, tarde: Sunset, noche: Moon }
@@ -229,9 +228,6 @@ export default function ControlCaja() {
     <div>
       <h2 className="text-xl font-bold text-navy-800 mb-1">Control de Caja</h2>
       <p className="text-sm text-navy-500 mb-4">Importá el Excel de caja que baja cada conserje del PMS. El sistema marca solo las imperfecciones.</p>
-
-      {/* Resumen de control: dinero, habitaciones y compras (por día + total del mes) */}
-      <ControlResumenPanel />
 
       {/* Importar */}
       <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed mb-2 cursor-pointer transition-colors ${
