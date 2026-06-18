@@ -100,6 +100,24 @@ function textRightOf(rows: Row[], label: string, beforeX = Infinity): string {
   return ''
 }
 
+// El nº de caja del encabezado "Parte Diario  Caja 93", tolerante al layout:
+// token combinado "Caja 93", "Caja" + número a la derecha, o en cualquier parte
+// del texto. Evita "Fecha caja:" (no tiene un número pegado con espacio).
+function findNroCaja(items: PdfTextItem[], rows: Row[]): number {
+  for (const it of items) {
+    const m = norm(it.str).match(/^caja\s+(\d{1,5})$/)
+    if (m) return Number(m[1])
+  }
+  const byLabel = numberRightOf(rows, 'Caja')
+  if (byLabel) return byLabel
+  // Texto en orden visual (filas por y, ítems por x). "Fecha caja: 17/06" no
+  // matchea porque entre "caja" y el número hay ":" (no un espacio).
+  const visual = rows.map(r => r.items.map(i => i.str).join(' ')).join('  ')
+  const m = visual.match(/\bcaja\s+(\d{1,5})\b/i)
+  if (m) return Number(m[1])
+  return 0
+}
+
 function xOfLabel(rows: Row[], label: string): number | undefined {
   for (const r of rows) {
     const li = r.items.find(i => norm(i.str) === norm(label))
@@ -121,7 +139,7 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
   if (!allText.includes('parte diario')) {
     throw new Error('No parece el "Parte Diario" de habitaciones. Revisá que sea el PDF correcto.')
   }
-  const nroCaja = numberRightOf(rows, 'Caja') ?? 0
+  const nroCaja = findNroCaja(items, rows)
   if (!nroCaja) {
     throw new Error('No se pudo leer el Nro. de Caja del Parte Diario. Revisá el PDF.')
   }
