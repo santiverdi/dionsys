@@ -121,12 +121,12 @@ describe('getParteFlags / getCheckouts (cruce con caja)', () => {
     expect(co!.cobro).toBeUndefined()
   })
 
-  it('marca el check-out como cobrado e indica en qué caja', () => {
+  it('marca el check-out como cobrado e indica caja, medio de pago y monto', () => {
     const cajaConCobro: CajaParte = {
       ...cajaBase,
       ingresos: [{
         fechaHora: '2026-02-09T12:00:00.000Z', usuario: 'x', comp: 'FB 1-1', habitacion: '999',
-        observacion: 'Reserva 9999 - Juan Perez', efectivo: 1000, tarjetas: 0, cheques: 0,
+        observacion: 'Reserva 9999 - Juan Perez', efectivo: 0, tarjetas: 1000, cheques: 0,
         transferencia: 0, otros: 0, total: 1000, reserva: '9999', pasajero: 'Juan Perez',
       }],
     }
@@ -134,6 +134,24 @@ describe('getParteFlags / getCheckouts (cruce con caja)', () => {
     expect(co!.cobro).toBeDefined()
     expect(co!.cobro!.nroCaja).toBe(79)
     expect(co!.cobro!.monto).toBe(1000)
+    expect(co!.cobro!.medioPago).toBe('Tarjeta')
     expect(co!.cobro!.pasajero).toBe('Juan Perez')
+  })
+
+  it('un cambio de habitación (misma reserva, otra hab) NO es check-out', () => {
+    const ocup = (hab: string, reserva: string) => ({ habitacion: hab, reserva, plazas: 2, canal: 'Walk In' })
+    const prev = { ...parte, id: 'prev', ocupadas: [ocup('101', '500')] }
+    const actual = { ...parte, ocupadas: [ocup('205', '500')] } // misma reserva, otra hab
+    expect(getCheckouts(actual, prev, [])).toHaveLength(0)
+  })
+
+  it('una habitación que se desocupó y entró otra reserva SÍ marca la salida de la anterior', () => {
+    const ocup = (hab: string, reserva: string) => ({ habitacion: hab, reserva, plazas: 2, canal: 'Walk In' })
+    const prev = { ...parte, id: 'prev', ocupadas: [ocup('101', '500')] }
+    const actual = { ...parte, ocupadas: [ocup('101', '600')] } // misma hab, reserva nueva
+    const outs = getCheckouts(actual, prev, [])
+    expect(outs).toHaveLength(1)
+    expect(outs[0].reserva).toBe('500')
+    expect(outs[0].habitaciones).toContain('101')
   })
 })

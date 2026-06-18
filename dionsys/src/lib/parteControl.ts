@@ -28,13 +28,24 @@ export interface ParteResumen {
   ocupacionPct: number   // ocupadas / (ocupadas + libres)
 }
 
-// El cobro encontrado para una reserva (en qué caja/turno, cuándo y cuánto).
+// El cobro encontrado para una reserva (en qué caja/turno, cuándo, cuánto y cómo).
 export interface CheckoutCobro {
   nroCaja: number
   turno?: Turno
   fechaHora: string
   monto: number
+  medioPago: string   // "Efectivo" / "Tarjeta" / "Transf." / "Cheque" / "Otros"
   pasajero?: string
+}
+
+// Medio de pago "principal" de un movimiento (la columna con monto).
+function medioDe(m: CajaParte['ingresos'][number]): string {
+  if (m.tarjetas) return 'Tarjeta'
+  if (m.transferencia) return 'Transf.'
+  if (m.cheques) return 'Cheque'
+  if (m.otros) return 'Otros'
+  if (m.efectivo) return 'Efectivo'
+  return '—'
 }
 
 // Un check-out detectado por diferencia entre partes, con su cobro (o sin él).
@@ -59,6 +70,7 @@ export function getParteResumen(parte: ParteHabitaciones): ParteResumen {
 
 // Primer cobro de una reserva en las cajas importadas (con la caja donde cayó).
 function buscarCobro(reserva: string, cajas: CajaParte[]): CheckoutCobro | undefined {
+  if (!reserva) return undefined
   for (const c of cajas) {
     const m = c.ingresos.find(i => i.reserva === reserva)
     if (m) {
@@ -67,6 +79,7 @@ function buscarCobro(reserva: string, cajas: CajaParte[]): CheckoutCobro | undef
         ...(c.turno ? { turno: c.turno } : {}),
         fechaHora: m.fechaHora,
         monto: m.total,
+        medioPago: medioDe(m),
         ...(m.pasajero ? { pasajero: m.pasajero } : {}),
       }
     }
@@ -74,22 +87,26 @@ function buscarCobro(reserva: string, cajas: CajaParte[]): CheckoutCobro | undef
   return undefined
 }
 
-// Check-outs del turno = habitaciones ocupadas en el parte anterior que ya no
-// figuran ocupadas en este. Se agrupan por reserva (una reserva puede ocupar
-// varias habitaciones) y se busca su cobro en las cajas.
+// Check-outs del turno = RESERVAS que estaban ocupadas en el parte anterior y ya
+// no figuran en este. Se compara por NÚMERO DE RESERVA (no por habitación): así
+// un cambio de habitación (misma reserva, otra hab) NO cuenta como salida, y una
+// habitación que se desocupó y volvió a entrar otro pasajero (misma hab, otra
+// reserva) SÍ cuenta como salida de la reserva anterior. Por cada reserva que
+// salió se busca su cobro en las cajas.
 export function getCheckouts(
   parte: ParteHabitaciones,
   parteAnterior?: ParteHabitaciones,
   cajas: CajaParte[] = [],
 ): CheckoutRecord[] {
   if (!parteAnterior) return []
-  const sigueOcupada = (hab: string, reserva: string) =>
-    parte.ocupadas.some(o => o.habitacion === hab && o.reserva === reserva)
-  const salidas = parteAnterior.ocupadas.filter(o => !sigueOcupada(o.habitacion, o.reserva))
+  const reservasActuales = new Set(parte.ocupadas.map(o => o.reserva))
+  const reservasAnteriores = [...new Set(parteAnterior.ocupadas.map(o => o.reserva))]
+  const salieron = reservasAnteriores.filter(r => r && !reservasActuales.has(r))
 
-  const reservas = [...new Set(salidas.map(s => s.reserva))]
-  return reservas.map(reserva => {
-    const habitaciones = salidas.filter(s => s.reserva === reserva).map(s => s.habitacion)
+  return salieron.map(reserva => {
+    const habitaciones = [...new Set(
+      parteAnterior.ocupadas.filter(o => o.reserva === reserva).map(o => o.habitacion),
+    )]
     const cobro = buscarCobro(reserva, cajas)
     return { reserva, habitaciones, ...(cobro ? { cobro } : {}) }
   })

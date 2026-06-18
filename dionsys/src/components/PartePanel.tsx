@@ -32,7 +32,7 @@ function CheckoutRow({ co }: { co: CheckoutRecord }) {
             {co.cobro.pasajero ? ` · ${co.cobro.pasajero}` : ''}
           </p>
           <p className="text-green-700">
-            Cobrado en Caja {co.cobro.nroCaja} · {formatMontoCurrency(co.cobro.monto)}
+            Cobrado en Caja {co.cobro.nroCaja} · {co.cobro.medioPago} · {formatMontoCurrency(co.cobro.monto)}
             {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
           </p>
         </div>
