@@ -14,6 +14,15 @@ function fmtFecha(iso: string): string {
   return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+// Ventana del "turno actual": un turno dura ≤8h y se sube al cerrar, así que lo
+// propio está a pocas horas; lo de ayer queda a ≥24h. 18h separa con margen.
+const RECIENTE_MS = 18 * 60 * 60 * 1000
+function esReciente(iso: string): boolean {
+  if (!iso) return false
+  const t = new Date(iso).getTime()
+  return !isNaN(t) && Date.now() - t < RECIENTE_MS
+}
+
 function ChecklistItem({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div className={`flex items-center gap-2 text-sm ${ok ? 'text-green-700' : 'text-navy-500'}`}>
@@ -41,29 +50,35 @@ function FlagPill({ flag }: { flag: CajaFlag }) {
 export default function CerrarTurno() {
   const { employee } = useAuth()
   const { cajas, getCajaAnterior } = useCajas()
-  const { getParteByCaja } = usePartes()
+  const { partes, getParteByCaja } = usePartes()
   // Lo que subió ESTE conserje en esta sesión (sobrevive a la lógica de fallback).
   const [savedCajaNro, setSavedCajaNro] = useState<number | null>(null)
   const [savedParteNro, setSavedParteNro] = useState<number | null>(null)
 
   // La caja del turno: la recién guardada en esta sesión, o —tras recargar— la
-  // última que subió ESTE conserje. No caemos a cajas[0] (la global más reciente)
-  // para no mostrar la caja de otro turno/conserje (cajas está ordenado por
-  // apertura desc, así que find() devuelve la más reciente de este empleado).
+  // última que subió ESTE conserje DENTRO del turno actual (reciente). No caemos
+  // a cajas[0] (global) ni a la última histórica del conserje, para no mostrar la
+  // caja de OTRO turno (ej. la de ayer si todavía no subió la de hoy).
   const caja = useMemo(() => {
     if (savedCajaNro != null) return cajas.find(c => c.nroCaja === savedCajaNro) ?? null
     if (!employee) return null
-    return cajas.find(c => c.importedBy === employee.name) ?? null
+    return cajas.find(c => c.importedBy === employee.name && esReciente(c.aperturaAt)) ?? null
   }, [cajas, savedCajaNro, employee])
 
   // El parte y la caja se cargan por separado (el Excel de caja puede no estar
-  // disponible cuando se carga el parte). Cada uno trae su Nº de Caja del PMS y
-  // se enlazan por ese número. nroTurno = el de la caja si está; si no, el del
-  // parte que el conserje acaba de subir.
-  const nroTurno = caja?.nroCaja ?? savedParteNro ?? undefined
+  // disponible cuando se carga el parte). Cada uno trae su Nº de Caja del PMS y se
+  // enlazan por ese número. Mismo criterio que la caja: lo guardado esta sesión o
+  // —tras recargar— el parte propio del turno actual (reciente).
+  const parteReciente = useMemo(() => {
+    if (savedParteNro != null) return partes.find(p => p.nroCaja === savedParteNro) ?? null
+    if (!employee) return null
+    return partes.find(p => p.importedBy === employee.name && esReciente(p.fechaCaja)) ?? null
+  }, [partes, savedParteNro, employee])
+
+  const nroTurno = caja?.nroCaja ?? parteReciente?.nroCaja ?? undefined
   const parte = nroTurno != null ? getParteByCaja(nroTurno) : undefined
   // Aviso si caja y parte no son del mismo turno (números distintos).
-  const mismatch = caja != null && savedParteNro != null && caja.nroCaja !== savedParteNro
+  const mismatch = caja != null && parteReciente != null && caja.nroCaja !== parteReciente.nroCaja
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -125,7 +140,7 @@ export default function CerrarTurno() {
         {mismatch && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-700 mb-2">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span>Ojo: tu parte es de la Caja {savedParteNro} pero tu caja es la {caja?.nroCaja}. Fijate que sean del mismo turno.</span>
+            <span>Ojo: tu parte es de la Caja {parteReciente?.nroCaja} pero tu caja es la {caja?.nroCaja}. Fijate que sean del mismo turno.</span>
           </div>
         )}
         <PartePanel nroCaja={nroTurno} onSaved={p => setSavedParteNro(p.nroCaja)} />
