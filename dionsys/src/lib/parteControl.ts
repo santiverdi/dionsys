@@ -125,12 +125,43 @@ export function getCheckouts(
   })
 }
 
+// Estadías "ocultas": habitaciones que pasaron a SUCIA sin haber estado ocupadas
+// en el parte anterior. El parte es una foto al cerrar el turno; si un huésped
+// entró y se fue dentro del mismo turno (estadía corta), nunca figura como
+// "ocupada" y el cruce por reserva no la ve. La única huella es el cambio de
+// limpieza: una habitación que se ensució = se usó y se desocupó. Sirve para
+// revisar que esa estadía se haya cobrado. Regla: pasa a 'sucia' viniendo de
+// cualquier otro estado (limpia/mantenimiento) y NO estaba ocupada antes (si lo
+// estaba, es un check-out normal que ya se concilia por reserva).
+export function getEstadiasOcultas(
+  parte: ParteHabitaciones,
+  parteAnterior?: ParteHabitaciones,
+): string[] {
+  if (!parteAnterior) return []
+  const ocupadasAntes = new Set(parteAnterior.ocupadas.map(o => o.habitacion))
+  const estadoAntes = new Map(parteAnterior.libres.map(l => [l.habitacion, l.estado]))
+  return parte.libres
+    .filter(l => l.estado === 'sucia')
+    .map(l => l.habitacion)
+    .filter(hab => !ocupadasAntes.has(hab) && estadoAntes.get(hab) !== 'sucia')
+}
+
 export function getParteFlags(
   parte: ParteHabitaciones,
   parteAnterior?: ParteHabitaciones,
   cajas: CajaParte[] = [],
 ): ParteFlag[] {
   const flags: ParteFlag[] = []
+
+  // Estadías cortas que el parte no registró como ocupadas (huella de limpieza).
+  const ocultas = getEstadiasOcultas(parte, parteAnterior)
+  if (ocultas.length) {
+    flags.push({
+      level: 'warn',
+      tipo: 'estadia_oculta',
+      mensaje: `Hab. ${ocultas.join(', ')} pasó a sucia sin figurar ocupada — posible estadía sin registrar. Revisá que se haya cobrado.`,
+    })
+  }
 
   if (!parteAnterior) {
     flags.push({

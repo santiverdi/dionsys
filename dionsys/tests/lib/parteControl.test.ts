@@ -1,22 +1,27 @@
 import { describe, it, expect } from 'vitest'
-import { parteAnteriorDe, getCheckouts } from '../../src/lib/parteControl'
-import type { ParteHabitaciones, CajaParte, CajaMovimiento } from '../../src/types'
+import { parteAnteriorDe, getCheckouts, getEstadiasOcultas, getParteFlags } from '../../src/lib/parteControl'
+import type { ParteHabitaciones, CajaParte, CajaMovimiento, EstadoHabitacion } from '../../src/types'
 
 // Helpers mínimos para armar partes/cajas de prueba.
-function mkParte(nroCaja: number, fechaCaja: string, reservas: Array<[string, string]>): ParteHabitaciones {
+function mkParte(
+  nroCaja: number,
+  fechaCaja: string,
+  reservas: Array<[string, string]>,
+  libres: Array<[string, EstadoHabitacion]> = [],
+): ParteHabitaciones {
   return {
     id: `p${nroCaja}`,
     nroCaja,
     usuario: 'X',
     fechaCaja,
     ocupadas: reservas.map(([habitacion, reserva]) => ({ habitacion, reserva, plazas: 2, canal: 'Walk In' })),
-    libres: [],
+    libres: libres.map(([habitacion, estado]) => ({ habitacion, estado })),
     totalOcupadas: reservas.length,
     totalPlazas: reservas.length * 2,
-    totalLibres: 0,
-    sucias: 0,
-    limpias: 0,
-    mantenimiento: 0,
+    totalLibres: libres.length,
+    sucias: libres.filter(l => l[1] === 'sucia').length,
+    limpias: libres.filter(l => l[1] === 'limpia').length,
+    mantenimiento: libres.filter(l => l[1] === 'mantenimiento').length,
     importedBy: 'X',
     importedAt: '2026-06-19T12:00:00.000Z',
   }
@@ -51,5 +56,32 @@ describe('parteAnteriorDe (ordena por nroCaja, robusto a fechaCaja vacía)', () 
     expect(co?.habitaciones).toEqual(['905'])
     expect(co?.cobro?.nroCaja).toBe(95)
     expect(co?.cobro?.monto).toBe(227500)
+  })
+})
+
+describe('getEstadiasOcultas (estadía corta delatada por el cambio de limpieza)', () => {
+  // Caso real: la 1001 figura LIBRE siempre, pero pasa de limpia (96) a sucia
+  // (97) → alguien la usó y se fue dentro del turno de Gastón.
+  const prev = mkParte(96, '', [['102', '298']], [['1001', 'limpia'], ['1002', 'sucia']])
+  const actual = mkParte(97, '', [['102', '298']], [['1001', 'sucia'], ['1002', 'sucia']])
+
+  it('marca la habitación que pasó a sucia sin haber estado ocupada', () => {
+    expect(getEstadiasOcultas(actual, prev)).toEqual(['1001'])
+  })
+
+  it('no marca una que ya venía sucia (sin uso nuevo)', () => {
+    expect(getEstadiasOcultas(actual, prev)).not.toContain('1002')
+  })
+
+  it('no marca un check-out normal (estaba ocupada y ahora sucia → ya se concilia por reserva)', () => {
+    const ocupadaAntes = mkParte(96, '', [['305', '528']], [['1001', 'limpia']])
+    const ahoraSucia = mkParte(97, '', [], [['305', 'sucia'], ['1001', 'limpia']])
+    expect(getEstadiasOcultas(ahoraSucia, ocupadaAntes)).toEqual([])
+  })
+
+  it('genera un flag de nivel warn con la habitación', () => {
+    const flag = getParteFlags(actual, prev).find(f => f.tipo === 'estadia_oculta')
+    expect(flag?.level).toBe('warn')
+    expect(flag?.mensaje).toContain('1001')
   })
 })
