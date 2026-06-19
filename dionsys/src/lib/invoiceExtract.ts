@@ -50,6 +50,37 @@ export interface ExtractedParte {
   totalLibres: string
 }
 
+// Un movimiento de caja leído por IA (todos los importes como texto).
+export interface ExtractedCajaMov {
+  fechaHora: string // "dd/mm/yyyy hh:mm" o ''
+  usuario: string
+  comp: string
+  habitacion: string
+  observacion: string
+  efectivo: string
+  tarjetas: string
+  cheques: string
+  transferencia: string
+  otros: string
+  total: string
+}
+// El "Informe de caja" leído por IA desde una foto/escaneo. Espejo del Excel
+// (parseCaja.ts) pero con todos los valores como texto, listo para cajaFromExtracted.
+export interface ExtractedCaja {
+  nroCaja: string
+  puntoVenta: string
+  moneda: string
+  usuarioApertura: string
+  usuarioCierre: string
+  aperturaAt: string // "dd/mm/yyyy hh:mm" o ''
+  cierreAt: string
+  aperturaMonto: string
+  saldoFinal: string
+  ingresos: ExtractedCajaMov[]
+  egresos: ExtractedCajaMov[]
+  retiros: ExtractedCajaMov[]
+}
+
 const MAX_IMAGE_DIM = 2000 // px del lado más largo tras comprimir
 const IMAGE_QUALITY = 0.8
 
@@ -94,7 +125,7 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
 }
 
 // Comprime/codifica el archivo y llama al endpoint con el modo indicado.
-async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte'): Promise<unknown> {
+async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -135,4 +166,14 @@ export async function extractProviderInvoice(file: File): Promise<ExtractedProvi
 /** Lee el Parte Diario de habitaciones desde una foto/escaneo (PDF o imagen). */
 export async function extractParte(file: File): Promise<ExtractedParte> {
   return (await callExtract(file, 'parte')) as ExtractedParte
+}
+
+/**
+ * Lee el "Informe de caja" desde una foto/escaneo (PDF o imagen).
+ * OJO: el modo 'caja' debe existir en /api/extract-invoice (endpoint fuera del
+ * repo). Hasta agregarlo, esta llamada devuelve error y el botón IA queda
+ * apagado por flag (ver CajaImporter). La caja por Excel es la fuente exacta.
+ */
+export async function extractCaja(file: File): Promise<ExtractedCaja> {
+  return (await callExtract(file, 'caja')) as ExtractedCaja
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { parseCajaRows, turnoDeApertura, type Aoa } from '../../src/lib/parseCaja'
+import { parseCajaRows, cajaFromExtracted, turnoDeApertura, type Aoa } from '../../src/lib/parseCaja'
 import { getCajaResumen, getCajaFlags } from '../../src/lib/cajaControl'
+import type { ExtractedCaja } from '../../src/lib/invoiceExtract'
 
 // Fixture tomado de un Excel real exportado por el PMS ("Caja 80", cerrada).
 const H = ['Fecha/Hora', 'Usuario', 'Comp', 'Habitación', 'Observación', 'Efectivo', 'Tarjetas', 'Cheques', 'Transf.', 'Otros', 'TOTAL MOV.']
@@ -85,6 +86,50 @@ describe('parseCajaRows', () => {
     const anterior = { ...caja, nroCaja: 79, saldoFinal: 999999 }
     const flags = getCajaFlags(caja, anterior)
     expect(flags.some(f => f.tipo === 'continuidad')).toBe(true)
+  })
+})
+
+describe('cajaFromExtracted (lectura por IA del Informe de caja)', () => {
+  // Lo que devolvería /api/extract-invoice en modo 'caja': todo como texto,
+  // importes con formato AR ("1.234,56"), fechas "dd/mm/yyyy hh:mm".
+  const ex: ExtractedCaja = {
+    nroCaja: '80',
+    puntoVenta: 'Recepcion',
+    moneda: 'AR$',
+    usuarioApertura: 'Leandro Touriño',
+    usuarioCierre: 'Leandro Touriño',
+    aperturaAt: '13/06/2026 06:58',
+    cierreAt: '13/06/2026 14:59',
+    aperturaMonto: '2.419.075,55',
+    saldoFinal: '482.825,56',
+    ingresos: [
+      { fechaHora: '13/06/2026 07:14', usuario: 'Touriño Leandro', comp: 'FB 3-527', habitacion: '1001', observacion: 'Reserva 389 - Yamila Inzaurraldez', efectivo: '', tarjetas: '63.135,14', cheques: '', transferencia: '', otros: '', total: '63.135,14' },
+    ],
+    egresos: [],
+    retiros: [],
+  }
+  const caja = cajaFromExtracted(ex, 'Charo', 'caja80.jpg')
+
+  it('arma la caja con metadatos y números parseados desde texto', () => {
+    expect(caja.nroCaja).toBe(80)
+    expect(caja.turno).toBe('manana')
+    expect(caja.conserje).toBe('Leandro')
+    expect(caja.aperturaMonto).toBeCloseTo(2419075.55, 2)
+    expect(caja.saldoFinal).toBeCloseTo(482825.56, 2)
+    expect(caja.cierreAt).toBeTruthy()
+    expect(caja.sourceFileName).toBe('caja80.jpg')
+  })
+
+  it('deriva reserva, pasajero y Factura B igual que el Excel', () => {
+    const m = caja.ingresos[0]
+    expect(m.total).toBeCloseTo(63135.14, 2)
+    expect(m.reserva).toBe('389')
+    expect(m.pasajero).toBe('Yamila Inzaurraldez')
+    expect(m.facturaB).toBe('3-527')
+  })
+
+  it('tira error claro si no se pudo leer el Nro. de Caja', () => {
+    expect(() => cajaFromExtracted({ ...ex, nroCaja: '' }, 'Charo')).toThrow(/Nro\. de Caja/)
   })
 })
 

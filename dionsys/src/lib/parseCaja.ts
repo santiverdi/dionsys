@@ -13,6 +13,7 @@
 import * as XLSX from 'xlsx'
 import { generateId } from '../utils/imageCompressor'
 import type { CajaParte, CajaMovimiento, Turno } from '../types'
+import type { ExtractedCaja, ExtractedCajaMov } from './invoiceExtract'
 
 // Columnas fijas del informe (0-indexadas).
 const COL = { fecha: 0, usuario: 1, comp: 2, habitacion: 3, obs: 4, efectivo: 5, tarjetas: 6, cheques: 7, transf: 8, otros: 9, total: 10 } as const
@@ -103,13 +104,23 @@ export function turnoDeApertura(usuario: string, iso: string): Turno | undefined
   return turnoFromHour(iso)
 }
 
-function parseMovimiento(row: Cell[]): CajaMovimiento {
-  const observacion = str(row[COL.obs])
-  const comp = str(row[COL.comp])
+// Campos derivados de observacion/comp (reserva, pasajero, nro de factura B).
+// Compartido por el parseo del Excel y el de la lectura por IA.
+function derivarMovimiento(observacion: string, comp: string): Pick<CajaMovimiento, 'reserva' | 'pasajero' | 'facturaB'> {
   const reserva = observacion.match(/reserva\s+(\d+)/i)?.[1]
   // "Reserva 389 - Yamila Inzaurraldez" → "Yamila Inzaurraldez"
   const pasajero = observacion.includes(' - ') ? observacion.split(' - ').slice(1).join(' - ').trim() : undefined
   const facturaB = comp.match(/FB\s*([\d-]+)/i)?.[1]
+  return {
+    ...(reserva ? { reserva } : {}),
+    ...(pasajero ? { pasajero } : {}),
+    ...(facturaB ? { facturaB } : {}),
+  }
+}
+
+function parseMovimiento(row: Cell[]): CajaMovimiento {
+  const observacion = str(row[COL.obs])
+  const comp = str(row[COL.comp])
   return {
     fechaHora: toISO(row[COL.fecha]),
     usuario: str(row[COL.usuario]),
@@ -122,9 +133,7 @@ function parseMovimiento(row: Cell[]): CajaMovimiento {
     transferencia: num(row[COL.transf]),
     otros: num(row[COL.otros]),
     total: num(row[COL.total]),
-    ...(reserva ? { reserva } : {}),
-    ...(pasajero ? { pasajero } : {}),
-    ...(facturaB ? { facturaB } : {}),
+    ...derivarMovimiento(observacion, comp),
   }
 }
 
@@ -213,6 +222,64 @@ export function parseCajaRows(aoa: Aoa, importedBy: string, fileName?: string): 
     ingresos,
     egresos,
     retiros,
+    importedBy,
+    importedAt: new Date().toISOString(),
+    ...(fileName ? { sourceFileName: fileName } : {}),
+  }
+}
+
+// ============================================================================
+// Lectura por IA (foto/escaneo del Informe de caja). Construye un CajaParte a
+// partir de lo que devuelve /api/extract-invoice en modo 'caja' (ExtractedCaja).
+// Best-effort: la IA es aproximada; la caja exacta sigue siendo el Excel.
+// ============================================================================
+
+function movFromExtracted(m: ExtractedCajaMov): CajaMovimiento {
+  const observacion = str(m.observacion)
+  const comp = str(m.comp)
+  return {
+    fechaHora: toISO(m.fechaHora),
+    usuario: str(m.usuario),
+    comp,
+    habitacion: str(m.habitacion),
+    observacion,
+    efectivo: num(m.efectivo),
+    tarjetas: num(m.tarjetas),
+    cheques: num(m.cheques),
+    transferencia: num(m.transferencia),
+    otros: num(m.otros),
+    total: num(m.total),
+    ...derivarMovimiento(observacion, comp),
+  }
+}
+
+export function cajaFromExtracted(ex: ExtractedCaja, importedBy: string, fileName?: string): CajaParte {
+  const nroCaja = num(ex.nroCaja)
+  if (!nroCaja) {
+    throw new Error('No se pudo leer el Nro. de Caja de la foto. Probá con el Excel del PMS.')
+  }
+  const usuarioApertura = str(ex.usuarioApertura)
+  const usuarioCierre = str(ex.usuarioCierre)
+  const aperturaAt = toISO(ex.aperturaAt)
+  const cierreAt = toISO(ex.cierreAt)
+  const turno = turnoDeApertura(usuarioApertura, aperturaAt)
+  const conserje = conserjeFrom(usuarioApertura)
+  return {
+    id: generateId(),
+    nroCaja,
+    puntoVenta: str(ex.puntoVenta),
+    moneda: str(ex.moneda) || 'AR$',
+    usuarioApertura,
+    ...(usuarioCierre ? { usuarioCierre } : {}),
+    aperturaAt,
+    ...(cierreAt ? { cierreAt } : {}),
+    ...(turno ? { turno } : {}),
+    ...(conserje ? { conserje } : {}),
+    aperturaMonto: num(ex.aperturaMonto),
+    saldoFinal: num(ex.saldoFinal),
+    ingresos: (ex.ingresos ?? []).map(movFromExtracted),
+    egresos: (ex.egresos ?? []).map(movFromExtracted),
+    retiros: (ex.retiros ?? []).map(movFromExtracted),
     importedBy,
     importedAt: new Date().toISOString(),
     ...(fileName ? { sourceFileName: fileName } : {}),

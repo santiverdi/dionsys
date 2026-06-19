@@ -119,7 +119,7 @@ const ESTADO_STYLE: Record<EstadoHabitacion, { label: string; cls: string; Icon:
   mantenimiento: { label: 'Mantenimiento', cls: 'bg-red-50 text-red-700 border-red-200', Icon: Wrench },
 }
 
-export default function PartePanel({ nroCaja }: { nroCaja: number }) {
+export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onSaved?: (parte: ParteHabitaciones) => void }) {
   const { employee } = useAuth()
   const { addParte, deleteParte, getParteByCaja, getParteAnterior } = usePartes()
   const { cajas } = useCajas()
@@ -129,7 +129,10 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const fileIaRef = useRef<HTMLInputElement>(null)
 
-  const parte = getParteByCaja(nroCaja)
+  // Si nos dan un nroCaja, mostramos/validamos el parte de ESA caja. Si no
+  // (carga suelta al cerrar turno, antes de tener la caja), el parte se
+  // autoidentifica por su propio Nº de Caja del PDF y se enlaza solo.
+  const parte = nroCaja != null ? getParteByCaja(nroCaja) : undefined
 
   // Procesa un archivo con el lector dado (PDF con texto o IA sobre foto/escaneo).
   async function procesar(
@@ -143,7 +146,7 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
     setPreview(null)
     try {
       const p = await leer(file)
-      if (p.nroCaja !== nroCaja) {
+      if (nroCaja != null && p.nroCaja !== nroCaja) {
         setError(`El parte leído es de la Caja ${p.nroCaja}, no de la Caja ${nroCaja}.`)
       } else {
         setPreview(p)
@@ -169,6 +172,7 @@ export default function PartePanel({ nroCaja }: { nroCaja: number }) {
   function confirmImport() {
     if (!preview) return
     addParte(preview)
+    onSaved?.(preview)
     setPreview(null)
   }
 

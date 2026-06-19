@@ -1,16 +1,16 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
-  Wallet, Upload, ChevronLeft, Clock, AlertTriangle, CheckCircle2,
-  Trash2, FileSpreadsheet, Save, X, Sun, Sunset, Moon,
+  Wallet, ChevronLeft, Clock, AlertTriangle, CheckCircle2,
+  Trash2, Sun, Sunset, Moon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCajas } from '../context/CajaContext'
-import { parseCajaExcel } from '../lib/parseCaja'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS, type Turno } from '../context/OccupancyContext'
 import PartePanel from '../components/PartePanel'
-import type { CajaParte, CajaMovimiento } from '../types'
+import CajaImporter from '../components/CajaImporter'
+import type { CajaMovimiento } from '../types'
 
 const TURNO_ICON: Record<Turno, typeof Sun> = { manana: Sun, tarde: Sunset, noche: Moon }
 
@@ -58,37 +58,10 @@ function FlagPill({ flag }: { flag: CajaFlag }) {
 
 export default function ControlCaja() {
   const { employee } = useAuth()
-  const { cajas, addCaja, deleteCaja, getCajaAnterior } = useCajas()
+  const { cajas, deleteCaja, getCajaAnterior } = useCajas()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [preview, setPreview] = useState<CajaParte | null>(null)
-  const [importing, setImporting] = useState(false)
-  const [error, setError] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const selected = useMemo(() => cajas.find(c => c.id === selectedId) ?? null, [cajas, selectedId])
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImporting(true)
-    setError('')
-    setPreview(null)
-    try {
-      const caja = await parseCajaExcel(file, employee?.name ?? '')
-      setPreview(caja)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo leer el Excel de caja.')
-    } finally {
-      setImporting(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
-  function confirmImport() {
-    if (!preview) return
-    addCaja(preview)
-    setPreview(null)
-  }
 
   // ============ DETALLE ============
   if (selected) {
@@ -229,39 +202,10 @@ export default function ControlCaja() {
       <h2 className="text-xl font-bold text-navy-800 mb-1">Control de Caja</h2>
       <p className="text-sm text-navy-500 mb-4">Importá el Excel de caja que baja cada conserje del PMS. El sistema marca solo las imperfecciones.</p>
 
-      {/* Importar */}
-      <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed mb-2 cursor-pointer transition-colors ${
-        importing ? 'border-gold-400 bg-gold-50 text-navy-600' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'
-      }`}>
-        <Upload size={18} className={importing ? 'animate-pulse' : ''} />
-        <span className="text-sm font-semibold">{importing ? 'Leyendo Excel…' : 'Importar Excel de caja'}</span>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFile} disabled={importing} className="hidden" />
-      </label>
-      {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
-
-      {/* Preview antes de guardar */}
-      {preview && (
-        <div className="bg-white rounded-xl border-2 border-gold-300 p-4 mb-4">
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet size={18} className="text-gold-600" />
-              <div>
-                <p className="font-bold text-navy-800">Caja {preview.nroCaja} · {preview.turno ? TURNO_LABELS[preview.turno] : 'Turno —'}</p>
-                <p className="text-xs text-navy-500">{preview.conserje ?? preview.usuarioApertura} · apertura {fmtFecha(preview.aperturaAt)}</p>
-              </div>
-            </div>
-            <button onClick={() => setPreview(null)} className="p-1 rounded-lg hover:bg-navy-100"><X size={18} /></button>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-sm mb-3">
-            <div className="bg-navy-50 rounded-lg p-2"><p className="text-[10px] text-navy-500 uppercase">Cobrado</p><p className="font-bold text-navy-800">{formatMontoCurrency(getCajaResumen(preview).totalCobrado)}</p></div>
-            <div className="bg-navy-50 rounded-lg p-2"><p className="text-[10px] text-navy-500 uppercase">Cobros</p><p className="font-bold text-navy-800">{preview.ingresos.length}</p></div>
-            <div className="bg-green-50 rounded-lg p-2"><p className="text-[10px] text-green-700 uppercase">Saldo</p><p className="font-bold text-navy-800">{formatMontoCurrency(preview.saldoFinal)}</p></div>
-          </div>
-          <button onClick={confirmImport} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-navy-800 text-cream font-bold text-sm hover:bg-navy-700 transition-colors">
-            <Save size={16} /> Guardar caja {preview.nroCaja}
-          </button>
-        </div>
-      )}
+      {/* Importar (Excel del PMS; foto/IA si se habilita) */}
+      <div className="mb-4">
+        <CajaImporter />
+      </div>
 
       {/* Listado */}
       {cajas.length === 0 ? (
