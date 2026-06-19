@@ -172,6 +172,35 @@ export function subscribeRealtime(): () => void {
   }
 }
 
+// Re-baja todos los almacenes de la nube y AVISA a los Context para que
+// refresquen su estado de React (a diferencia de pullAll(), que corre antes de
+// montar React y por eso no avisa). Se usa al volver a la app (foco/visibilidad)
+// para no depender solo del Realtime en vivo, que puede no llegar (Realtime no
+// habilitado en la tabla, o el dispositivo estuvo en segundo plano).
+let lastRefresh = 0
+export async function refreshFromCloud(timeoutMs = 5000): Promise<void> {
+  if (!supabase || CONSOLIDATION_MODE) return
+  const now = Date.now()
+  if (now - lastRefresh < 3000) return // throttle: foco puede dispararse seguido
+  lastRefresh = now
+  try {
+    const query = supabase.from(TABLE).select('key, value').in('key', SYNCED_KEYS as unknown as string[])
+    const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), timeoutMs))
+    const result = await Promise.race([query, timeout])
+    if (!result || result.error || !result.data) return
+    for (const row of result.data as { key: string; value: unknown }[]) {
+      if (!isSyncedKey(row.key)) continue
+      const json = JSON.stringify(row.value)
+      if (lastSeen.get(row.key) === json) continue // sin cambios respecto a lo último visto
+      lastSeen.set(row.key, json)
+      localStorage.setItem(row.key, json)
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key, value: row.value } }))
+    }
+  } catch (err) {
+    console.warn('[cloud] refreshFromCloud falló:', err)
+  }
+}
+
 // ============================================================================
 // Herramientas de UNIFICACIÓN (consolidación one-time entre dispositivos).
 // Usadas por la pantalla /sync. Operan a mano, nunca automáticamente.

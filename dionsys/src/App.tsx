@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { cloudEnabled } from './lib/supabase'
-import { pullAll, subscribeRealtime } from './lib/cloudStore'
+import { pullAll, subscribeRealtime, refreshFromCloud } from './lib/cloudStore'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { OrdersProvider } from './context/OrdersContext'
 import { CajaProvider } from './context/CajaContext'
@@ -95,9 +95,16 @@ function CloudGate({ children }: { children: React.ReactNode }) {
       setReady(true)
       unsubscribe = subscribeRealtime()
     })
+    // Al volver a la app (otro equipo guardó mientras estaba en segundo plano, o
+    // el Realtime en vivo no llegó), re-bajamos de la nube y refrescamos.
+    const onVisible = () => { if (document.visibilityState === 'visible') void refreshFromCloud() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
     return () => {
       active = false
       unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
     }
   }, [])
 
