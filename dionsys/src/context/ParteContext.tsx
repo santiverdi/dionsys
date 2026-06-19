@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type { ParteHabitaciones } from '../types'
 import { persist, useCloudSync } from '../lib/cloudStore'
+import { parteAnteriorDe } from '../lib/parteControl'
 
 const LS_PARTES = 'dionsys_partes'
 
@@ -28,7 +29,8 @@ export function ParteProvider({ children }: { children: ReactNode }) {
     setPartes(prev => {
       // Dedup por Nro. de Caja: re-importar el mismo parte lo reemplaza.
       const rest = prev.filter(p => p.nroCaja !== parte.nroCaja)
-      const updated = [parte, ...rest].sort((a, b) => b.fechaCaja.localeCompare(a.fechaCaja))
+      // Orden por nroCaja desc (la fechaCaja puede venir vacía/mal de la IA).
+      const updated = [parte, ...rest].sort((a, b) => b.nroCaja - a.nroCaja)
       persist(LS_PARTES, updated)
       return updated
     })
@@ -47,12 +49,10 @@ export function ParteProvider({ children }: { children: ReactNode }) {
     [partes],
   )
 
-  const getParteAnterior = useCallback((parte: ParteHabitaciones): ParteHabitaciones | undefined => {
-    const candidatas = partes
-      .filter(p => p.id !== parte.id && p.fechaCaja < parte.fechaCaja)
-      .sort((a, b) => b.fechaCaja.localeCompare(a.fechaCaja))
-    return candidatas[0]
-  }, [partes])
+  const getParteAnterior = useCallback(
+    (parte: ParteHabitaciones) => parteAnteriorDe(parte, partes),
+    [partes],
+  )
 
   return (
     <ParteContext.Provider value={{ partes, addParte, deleteParte, getParteByCaja, getParteAnterior }}>

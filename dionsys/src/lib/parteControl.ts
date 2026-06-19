@@ -55,6 +55,19 @@ export interface CheckoutRecord {
   cobro?: CheckoutCobro   // ausente = sin cobro registrado en ninguna caja
 }
 
+// El parte inmediatamente anterior, por NÚMERO DE CAJA. El nroCaja del PMS es
+// secuencial y confiable; la fechaCaja puede venir VACÍA o con año mal de las
+// lecturas por IA (foto/escaneo), y ordenar por ella rompía la conciliación
+// (un parte con fechaCaja vacía no encontraba anterior → no detectaba salidas).
+export function parteAnteriorDe(
+  parte: ParteHabitaciones,
+  todos: ParteHabitaciones[],
+): ParteHabitaciones | undefined {
+  return todos
+    .filter(p => p.id !== parte.id && p.nroCaja < parte.nroCaja)
+    .sort((a, b) => b.nroCaja - a.nroCaja)[0]
+}
+
 export function getParteResumen(parte: ParteHabitaciones): ParteResumen {
   const total = parte.totalOcupadas + parte.totalLibres
   return {
