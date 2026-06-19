@@ -139,6 +139,64 @@ const RESPONSE_SCHEMA_PARTE = {
   required: ['nroCaja', 'usuario', 'fechaCaja', 'ocupadas', 'libres', 'totalOcupadas', 'totalPlazas', 'totalLibres'],
 }
 
+// --- Modo "caja": Informe de caja del PMS (foto/escaneo del reporte impreso) ---
+const PROMPT_CAJA = `Sos un asistente que lee el "Informe de caja" de un hotel (sistema Todoalojamiento). Te paso una foto, escaneo o PDF del informe impreso. Extraé EXACTAMENTE estos campos:
+- nroCaja: el número que figura junto a "Nro. Caja". Solo el número.
+- puntoVenta: lo que figura en "Pto. Vta." (ej "Recepcion").
+- moneda: lo que figura en "Moneda de la caja" (ej "AR$"). Si no figura, "".
+- usuarioApertura: el nombre en "Usuario apertura".
+- usuarioCierre: el nombre en "Usuario cierre". Si la caja no está cerrada, "".
+- aperturaAt: fecha/hora de "Apertura" en formato "dd/mm/yyyy hh:mm".
+- cierreAt: fecha/hora de "Cierre" en formato "dd/mm/yyyy hh:mm". Si no cerró, "".
+- aperturaMonto: el "Monto de Apertura (Efectivo)" como número con punto decimal, sin separador de miles (ej "2419075.55").
+- saldoFinal: el "Saldo total en caja" (el número final del informe) como número con punto decimal.
+- ingresos: movimientos de la sección "Ingresos" (los cobros). egresos: sección "Egresos". retiros: sección "Retiros" o "Egreso al cerrar Caja".
+  Por cada movimiento (en las TRES listas):
+    * fechaHora: fecha/hora de la fila en "dd/mm/yyyy hh:mm".
+    * usuario: usuario de la fila.
+    * comp: la columna "Comp" (comprobante). En cobros con tarjeta suele traer "FB 3-527". Si está vacía, "".
+    * habitacion: la habitación de la fila (ej "1001", "205/202"). Si no hay, "".
+    * observacion: el texto de la columna "Observación" tal cual (ej "Reserva 389 - Yamila Inzaurraldez", "Pago Reserva 492 /", "RETIRO EFECTIVO").
+    * efectivo, tarjetas, cheques, transferencia, otros, total: el importe de cada columna como número con punto decimal, sin separador de miles. Si esa columna está vacía en la fila, "0". (La columna "Transf." es transferencia.)
+NO incluyas las filas de "Totales" ni los encabezados como movimientos. Los números van sin puntos de miles. No inventes filas; listá solo las que ves.`
+
+const CAJA_MOV_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    fechaHora: { type: 'STRING' },
+    usuario: { type: 'STRING' },
+    comp: { type: 'STRING' },
+    habitacion: { type: 'STRING' },
+    observacion: { type: 'STRING' },
+    efectivo: { type: 'STRING' },
+    tarjetas: { type: 'STRING' },
+    cheques: { type: 'STRING' },
+    transferencia: { type: 'STRING' },
+    otros: { type: 'STRING' },
+    total: { type: 'STRING' },
+  },
+  required: ['fechaHora', 'usuario', 'comp', 'habitacion', 'observacion', 'efectivo', 'tarjetas', 'cheques', 'transferencia', 'otros', 'total'],
+}
+
+const RESPONSE_SCHEMA_CAJA = {
+  type: 'OBJECT',
+  properties: {
+    nroCaja: { type: 'STRING' },
+    puntoVenta: { type: 'STRING' },
+    moneda: { type: 'STRING' },
+    usuarioApertura: { type: 'STRING' },
+    usuarioCierre: { type: 'STRING' },
+    aperturaAt: { type: 'STRING' },
+    cierreAt: { type: 'STRING' },
+    aperturaMonto: { type: 'STRING' },
+    saldoFinal: { type: 'STRING' },
+    ingresos: { type: 'ARRAY', items: CAJA_MOV_SCHEMA },
+    egresos: { type: 'ARRAY', items: CAJA_MOV_SCHEMA },
+    retiros: { type: 'ARRAY', items: CAJA_MOV_SCHEMA },
+  },
+  required: ['nroCaja', 'puntoVenta', 'moneda', 'usuarioApertura', 'usuarioCierre', 'aperturaAt', 'cierreAt', 'aperturaMonto', 'saldoFinal', 'ingresos', 'egresos', 'retiros'],
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método no permitido' })
@@ -157,7 +215,7 @@ module.exports = async (req, res) => {
   }
   const mimeType = body && body.mimeType
   const data = body && body.data
-  const mode = ['proveedor', 'parte'].includes(body && body.mode) ? body.mode : 'servicio'
+  const mode = ['proveedor', 'parte', 'caja'].includes(body && body.mode) ? body.mode : 'servicio'
   if (!mimeType || !data) {
     res.status(400).json({ error: 'Faltan datos del archivo (mimeType / data).' })
     return
@@ -168,8 +226,8 @@ module.exports = async (req, res) => {
     return
   }
 
-  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : PROMPT
-  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : RESPONSE_SCHEMA
+  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : PROMPT
+  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : RESPONSE_SCHEMA
 
   const payload = {
     contents: [
@@ -270,6 +328,39 @@ module.exports = async (req, res) => {
             totalOcupadas: str(parsed.totalOcupadas),
             totalPlazas: str(parsed.totalPlazas),
             totalLibres: str(parsed.totalLibres),
+          })
+          return
+        }
+        if (mode === 'caja') {
+          const str = v => String(v ?? '').trim()
+          const mapMov = arr => Array.isArray(arr)
+            ? arr.map(m => ({
+                fechaHora: str(m?.fechaHora),
+                usuario: str(m?.usuario),
+                comp: str(m?.comp),
+                habitacion: str(m?.habitacion),
+                observacion: str(m?.observacion),
+                efectivo: str(m?.efectivo),
+                tarjetas: str(m?.tarjetas),
+                cheques: str(m?.cheques),
+                transferencia: str(m?.transferencia),
+                otros: str(m?.otros),
+                total: str(m?.total),
+              })).filter(m => m.observacion || m.total !== '' || m.habitacion)
+            : []
+          res.status(200).json({
+            nroCaja: str(parsed.nroCaja),
+            puntoVenta: str(parsed.puntoVenta),
+            moneda: str(parsed.moneda),
+            usuarioApertura: str(parsed.usuarioApertura),
+            usuarioCierre: str(parsed.usuarioCierre),
+            aperturaAt: str(parsed.aperturaAt),
+            cierreAt: str(parsed.cierreAt),
+            aperturaMonto: str(parsed.aperturaMonto),
+            saldoFinal: str(parsed.saldoFinal),
+            ingresos: mapMov(parsed.ingresos),
+            egresos: mapMov(parsed.egresos),
+            retiros: mapMov(parsed.retiros),
           })
           return
         }

@@ -9,11 +9,11 @@ import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS } from '../context/OccupancyContext'
 import type { CajaParte } from '../types'
 
-// Lectura de caja por foto/IA: queda APAGADA hasta que /api/extract-invoice
-// soporte el modo 'caja' (endpoint fuera del repo). Para encenderla: agregar el
-// modo en el endpoint, poner esto en true y redeployar. La caja exacta —con la
-// plata y la conciliación de check-outs— sigue siendo el Excel del PMS.
-const CAJA_IA_ENABLED = false
+// Lectura de caja por foto/IA (modo 'caja' de /api/extract-invoice, ya soportado).
+// El Excel del PMS sigue siendo la fuente EXACTA; la foto/IA es un respaldo
+// aproximado para cuando el conserje no tiene el Excel a mano (se confirma en la
+// vista previa antes de guardar). Apagar = poner en false.
+const CAJA_IA_ENABLED = true
 
 function fmtFecha(iso: string): string {
   if (!iso) return '—'
