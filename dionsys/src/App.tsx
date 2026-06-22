@@ -25,6 +25,7 @@ import Impuestos from './pages/Impuestos'
 import Administracion from './pages/Administracion'
 import Facturas from './pages/Facturas'
 import ControlCaja from './pages/ControlCaja'
+import Panorama from './pages/Panorama'
 import CerrarTurno from './pages/CerrarTurno'
 import SyncPanel from './pages/SyncPanel'
 
@@ -71,6 +72,7 @@ function AppRoutes() {
         <Route path="pedidos-admin" element={<RoleRoute path="/pedidos-admin"><PedidosAdmin /></RoleRoute>} />
         <Route path="facturas-proveedores" element={<RoleRoute path="/facturas-proveedores"><Facturas /></RoleRoute>} />
         <Route path="control-caja" element={<RoleRoute path="/control-caja"><ControlCaja /></RoleRoute>} />
+        <Route path="panorama" element={<RoleRoute path="/panorama"><Panorama /></RoleRoute>} />
         <Route path="cerrar-turno" element={<RoleRoute path="/cerrar-turno"><CerrarTurno /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Cualquier usuario logueado. */}
