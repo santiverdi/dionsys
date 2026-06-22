@@ -72,23 +72,35 @@ function HojaCheckout({ reserva }: { reserva: string }) {
 
 function CheckoutRow({ co }: { co: CheckoutRecord }) {
   const habs = co.habitaciones.join(', ')
-  const wrap = co.cobro ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
+  const probable = !!co.cobro?.porHabitacion
+  const wrap = !co.cobro
+    ? 'border-red-200 bg-red-50'
+    : probable
+      ? 'border-amber-200 bg-amber-50'
+      : 'border-green-200 bg-green-50'
   return (
     <div className={`rounded-lg border p-2.5 text-xs ${wrap}`}>
       <div className="flex items-start gap-2">
-        {co.cobro
+        {co.cobro && !probable
           ? <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-green-600" />
-          : <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-600" />}
+          : <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${probable ? 'text-amber-600' : 'text-red-600'}`} />}
         <div className="min-w-0">
           <p className="text-navy-700">
             <span className="font-semibold">Hab. {habs}</span> · reserva {co.reserva}
             {co.cobro?.pasajero ? ` · ${co.cobro.pasajero}` : ''}
           </p>
           {co.cobro ? (
-            <p className="text-green-700">
-              Cobrado en Caja {co.cobro.nroCaja} · {co.cobro.medioPago} · {formatMontoCurrency(co.cobro.monto)}
-              {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
-            </p>
+            probable ? (
+              <p className="text-amber-700">
+                Cobro probable (por habitación) en Caja {co.cobro.nroCaja} · {co.cobro.medioPago} · {formatMontoCurrency(co.cobro.monto)}
+                {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
+              </p>
+            ) : (
+              <p className="text-green-700">
+                Cobrado en Caja {co.cobro.nroCaja} · {co.cobro.medioPago} · {formatMontoCurrency(co.cobro.monto)}
+                {fmtFechaCorta(co.cobro.fechaHora) ? ` · ${fmtFechaCorta(co.cobro.fechaHora)}` : ''}
+              </p>
+            )
           ) : (
             <p className="text-red-700 font-bold">SIN COBRO registrado en caja</p>
           )}

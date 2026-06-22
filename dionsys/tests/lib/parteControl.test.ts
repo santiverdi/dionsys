@@ -56,6 +56,23 @@ describe('parteAnteriorDe (ordena por nroCaja, robusto a fechaCaja vacía)', () 
     expect(co?.habitaciones).toEqual(['905'])
     expect(co?.cobro?.nroCaja).toBe(95)
     expect(co?.cobro?.monto).toBe(227500)
+    expect(co?.cobro?.porHabitacion).toBeUndefined() // match exacto por reserva
+  })
+
+  it('concilia por habitación cuando la reserva de la caja no coincide (caso 901)', () => {
+    // La 905 se cobró pero la Observación de la caja trae OTRA reserva (497, no 408).
+    // El cruce por reserva falla; el fallback por habitación lo rescata como probable.
+    const cajas = [mkCaja(95, [mkCobro('497', '905', 227500)]), mkCaja(97, [])]
+    const co = getCheckouts(p97, parteAnteriorDe(p97, todos), cajas).find(c => c.reserva === '408')
+    expect(co?.cobro?.nroCaja).toBe(95)
+    expect(co?.cobro?.monto).toBe(227500)
+    expect(co?.cobro?.porHabitacion).toBe(true)
+  })
+
+  it('matchea habitaciones combinadas ("905/906" del cobro contra la 905 del parte)', () => {
+    const cajas = [mkCaja(95, [mkCobro('497', '905/906', 227500)]), mkCaja(97, [])]
+    const co = getCheckouts(p97, parteAnteriorDe(p97, todos), cajas).find(c => c.reserva === '408')
+    expect(co?.cobro?.porHabitacion).toBe(true)
   })
 })
 

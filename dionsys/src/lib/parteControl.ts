@@ -36,6 +36,7 @@ export interface CheckoutCobro {
   monto: number
   medioPago: string   // "Efectivo" / "Tarjeta" / "Transf." / "Cheque" / "Otros"
   pasajero?: string
+  porHabitacion?: boolean   // el match no fue por reserva sino por habitación (probable)
 }
 
 // Medio de pago "principal" de un movimiento (la columna con monto).
@@ -81,21 +82,41 @@ export function getParteResumen(parte: ParteHabitaciones): ParteResumen {
   }
 }
 
-// Primer cobro de una reserva en las cajas importadas (con la caja donde cayó).
-function buscarCobro(reserva: string, cajas: CajaParte[]): CheckoutCobro | undefined {
-  if (!reserva) return undefined
-  for (const c of cajas) {
-    const m = c.ingresos.find(i => i.reserva === reserva)
-    if (m) {
-      return {
-        nroCaja: c.nroCaja,
-        ...(c.turno ? { turno: c.turno } : {}),
-        fechaHora: m.fechaHora,
-        monto: m.total,
-        medioPago: medioDe(m),
-        ...(m.pasajero ? { pasajero: m.pasajero } : {}),
-      }
+// ¿El cobro es de una de estas habitaciones? Tolerante a combinadas: la caja
+// puede traer "205/202" en un solo movimiento y el parte la habitación suelta.
+function habsMatch(habCobro: string, habsCheckout: string[]): boolean {
+  if (!habCobro || !habsCheckout.length) return false
+  return habCobro.split('/').map(s => s.trim()).some(h => h && habsCheckout.includes(h))
+}
+
+function cobroDe(c: CajaParte, m: CajaParte['ingresos'][number], porHabitacion: boolean): CheckoutCobro {
+  return {
+    nroCaja: c.nroCaja,
+    ...(c.turno ? { turno: c.turno } : {}),
+    fechaHora: m.fechaHora,
+    monto: m.total,
+    medioPago: medioDe(m),
+    ...(m.pasajero ? { pasajero: m.pasajero } : {}),
+    ...(porHabitacion ? { porHabitacion: true } : {}),
+  }
+}
+
+// Cobro de una reserva en las cajas importadas. Primero por NÚMERO DE RESERVA
+// (exacto y confiable). Si no aparece —el nº de reserva del PMS no siempre
+// coincide entre el parte y la columna "Observación" de la caja, o esa columna no
+// trae "Reserva NNN" parseable— se cae a un match por HABITACIÓN: el mismo cuarto
+// que ocupaba la salida, cobrado en alguna caja. Como una habitación se reusa, ese
+// match es solo PROBABLE y se marca con porHabitacion para mostrarlo distinto.
+function buscarCobro(reserva: string, habitaciones: string[], cajas: CajaParte[]): CheckoutCobro | undefined {
+  if (reserva) {
+    for (const c of cajas) {
+      const m = c.ingresos.find(i => i.reserva === reserva)
+      if (m) return cobroDe(c, m, false)
     }
+  }
+  for (const c of cajas) {
+    const m = c.ingresos.find(i => habsMatch(i.habitacion, habitaciones))
+    if (m) return cobroDe(c, m, true)
   }
   return undefined
 }
@@ -120,7 +141,7 @@ export function getCheckouts(
     const habitaciones = [...new Set(
       parteAnterior.ocupadas.filter(o => o.reserva === reserva).map(o => o.habitacion),
     )]
-    const cobro = buscarCobro(reserva, cajas)
+    const cobro = buscarCobro(reserva, habitaciones, cajas)
     return { reserva, habitaciones, ...(cobro ? { cobro } : {}) }
   })
 }
@@ -175,7 +196,10 @@ export function getParteFlags(
   // pudo pagar en un turno cuya caja aún no se cargó).
   if (cajas.length) {
     const reservasOcupadas = [...new Set(parte.ocupadas.map(o => o.reserva))]
-    const sinCobro = reservasOcupadas.filter(r => !buscarCobro(r, cajas))
+    const sinCobro = reservasOcupadas.filter(r => {
+      const habs = parte.ocupadas.filter(o => o.reserva === r).map(o => o.habitacion)
+      return !buscarCobro(r, habs, cajas)
+    })
     if (sinCobro.length) {
       flags.push({
         level: 'info',
