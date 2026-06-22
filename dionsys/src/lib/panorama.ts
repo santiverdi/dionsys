@@ -35,8 +35,8 @@ export interface DineroResumen {
   otros: number
   cantIngresos: number
   ticketPromedio: number
-  totalRetiros: number          // retiros de efectivo (RETIRO EFECTIVO)
-  totalGastosARevisar: number   // egresos que NO son retiro de efectivo
+  totalRetiros: number          // RETIRO EFECTIVO: plata que sale a la caja fuerte/oficina. NO es gasto.
+  totalGastosARevisar: number   // egresos que NO son retiro de efectivo (posible gasto real a revisar)
   cobrosTarjeta: number
   cobrosTarjetaConFB: number
   pctFB: number                 // % de cobros con tarjeta que traen Factura B

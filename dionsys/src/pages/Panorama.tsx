@@ -183,7 +183,7 @@ export default function Panorama() {
           })}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Kpi label="Retiros de efectivo" value={formatMontoCurrency(dinero.totalRetiros)} />
+          <Kpi label="Retiros a caja fuerte" value={formatMontoCurrency(dinero.totalRetiros)} sub="no es gasto · va a la oficina" />
           <Kpi label="Gastos a revisar" value={formatMontoCurrency(dinero.totalGastosARevisar)} sub={`${gastos.length} egreso(s)`} tone={gastos.length ? 'amber' : 'navy'} />
         </div>
       </Section>
