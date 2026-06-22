@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
-import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase, ClipboardCheck, BarChart3 } from 'lucide-react'
+import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase, ClipboardCheck } from 'lucide-react'
 import type { Role } from '../types'
 import OccupancyReminder from './OccupancyReminder'
 import PedidosPorRecibir from './PedidosPorRecibir'
@@ -10,7 +10,6 @@ import PedidosPorRecibir from './PedidosPorRecibir'
 // Impuestos y Proveedores no tienen entrada propia: se acceden desde Administracion.
 const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
   { to: '/administracion', label: 'Administracion', icon: Briefcase },
-  { to: '/panorama', label: 'Panorama', icon: BarChart3 },
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/recepcion', label: 'Recepcion', icon: ConciergeBell },
   { to: '/cerrar-turno', label: 'Cerrar turno', icon: ClipboardCheck },

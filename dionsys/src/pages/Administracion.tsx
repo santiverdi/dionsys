@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Receipt, FileText, Wallet, BarChart3 } from 'lucide-react'
+import { ClipboardList, Receipt, FileText, Wallet } from 'lucide-react'
 
 export default function Administracion() {
   const navigate = useNavigate()
@@ -10,16 +10,6 @@ export default function Administracion() {
       <p className="text-sm text-navy-500 mb-6">Pedidos a proveedores, impuestos y servicios.</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <button
-          onClick={() => navigate('/panorama')}
-          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
-        >
-          <div className="w-12 h-12 rounded-full bg-gold-100 text-gold-700 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
-            <BarChart3 size={24} />
-          </div>
-          <h3 className="font-bold text-navy-800 text-lg">Panorama</h3>
-          <p className="text-sm text-navy-500 mt-1">Todo lo que cargan los conserjes (cajas y partes), agregado: control, dinero, gastos, ocupación y cobertura.</p>
-        </button>
 
         <button
           onClick={() => navigate('/pedidos-admin')}

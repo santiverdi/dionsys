@@ -6,10 +6,11 @@ import { useOccupancy, HOTEL_CAPACITY } from '../context/OccupancyContext'
 import { useImpuestos } from '../context/ImpuestosContext'
 import { isInMonth, monthKey } from '../utils/dateRange'
 import MonthlyView from '../components/MonthlyView'
+import Panorama from './Panorama'
 import {
   AlertTriangle, ShoppingCart, Wrench, DollarSign,
   Package, TrendingDown, Clock, CheckCircle2, Users,
-  Calendar, LayoutDashboard,
+  Calendar, LayoutDashboard, Wallet,
 } from 'lucide-react'
 
 export default function Dashboard() {
@@ -19,7 +20,7 @@ export default function Dashboard() {
   const { getToday } = useOccupancy()
   const { pagos } = useImpuestos()
 
-  const [tab, setTab] = useState<'hoy' | 'mes'>('hoy')
+  const [tab, setTab] = useState<'hoy' | 'mes' | 'control'>('hoy')
   const now = new Date()
   const dateCtx = useMemo(() => {
     const n = new Date()
@@ -119,10 +120,18 @@ export default function Dashboard() {
           >
             <Calendar size={14} /> Mes
           </button>
+          <button
+            onClick={() => setTab('control')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              tab === 'control' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
+            }`}
+          >
+            <Wallet size={14} /> Caja & partes
+          </button>
         </div>
       </div>
 
-      {tab === 'mes' ? <MonthlyView /> : (
+      {tab === 'mes' ? <MonthlyView /> : tab === 'control' ? <Panorama /> : (
       <>
       <p className="text-sm text-navy-400 mb-6">
         {now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}

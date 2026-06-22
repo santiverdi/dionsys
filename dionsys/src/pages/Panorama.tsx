@@ -102,13 +102,10 @@ export default function Panorama() {
 
   if (cajas.length === 0 && partes.length === 0) {
     return (
-      <div>
-        <h2 className="text-xl font-bold text-navy-800 mb-1">Panorama</h2>
-        <div className="text-center py-16">
-          <LayoutList size={48} className="mx-auto text-navy-200 mb-3" />
-          <p className="text-navy-400 font-medium">Todavía no hay cajas ni partes cargados</p>
-          <p className="text-sm text-navy-300 mt-1">A medida que los conserjes carguen, acá ves todo el análisis agregado.</p>
-        </div>
+      <div className="text-center py-16">
+        <LayoutList size={48} className="mx-auto text-navy-200 mb-3" />
+        <p className="text-navy-400 font-medium">Todavía no hay cajas ni partes cargados</p>
+        <p className="text-sm text-navy-300 mt-1">A medida que los conserjes carguen, acá ves todo el análisis agregado.</p>
       </div>
     )
   }
@@ -127,7 +124,6 @@ export default function Panorama() {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-navy-800 mb-1">Panorama</h2>
       <p className="text-sm text-navy-500 mb-4">
         Todo lo que cargan los conserjes en sus cajas y partes, agregado. {cobertura.cajas} cajas · {cobertura.partes} partes.
       </p>
