@@ -75,6 +75,18 @@ describe('getGastosCaja', () => {
     expect(g[0].nroCaja).toBe(1)
     expect(g[0].conserje).toBe('Gaston')
   })
+
+  it('excluye movimientos internos: retiro, cierre de lote y transferencia entre cajas', () => {
+    const cajas = [mkCaja({ nroCaja: 1, egresos: [
+      mov({ observacion: 'RETIRO EFECTIVO OFICINA', total: 5000 }),
+      mov({ observacion: 'CIERRE DE LOTE TARJETA DE', total: 4000 }),
+      mov({ observacion: 'Egreso de caja 100', total: 3000 }),
+      mov({ observacion: 'C-100', total: 2000 }),
+      mov({ observacion: 'verduleria', total: 1500 }),
+    ] })]
+    const g = getGastosCaja(cajas)
+    expect(g.map(x => x.observacion)).toEqual(['verduleria']) // solo el gasto real
+  })
 })
 
 describe('getImperfeccionesGlobal + getConserjeStats', () => {

@@ -23,6 +23,17 @@ export function conserjeDeParte(p: ParteHabitaciones): string {
   return p.conserje || p.usuario || '—'
 }
 
+// Un egreso de caja NO es gasto cuando es un movimiento INTERNO de plata: retiro
+// a la caja fuerte/oficina, cierre de lote de tarjeta, o transferencia a otra caja
+// ("egreso de caja 100", "C-100"). Solo el resto (compras, pagos a proveedores…)
+// es gasto real. Patrones confirmados contra cajas reales del PMS.
+const NO_ES_GASTO = [
+  /retiro\s+efectivo/i,         // a la caja fuerte / oficina
+  /cierre\s+de\s+lote/i,        // liquidación de tarjeta al cerrar
+  /egreso\s+(de|a|al)\s+caja/i, // transferencia a otra caja
+  /\bc\s*-\s*\d+\b/i,           // referencia a otra caja ("C-100")
+]
+const esMovimientoInterno = (m: CajaMovimiento) => NO_ES_GASTO.some(re => re.test(m.observacion))
 const esRetiroEfectivo = (m: CajaMovimiento) => /retiro\s+efectivo/i.test(m.observacion)
 
 // ===== Dinero / cobranzas =====
@@ -36,7 +47,7 @@ export interface DineroResumen {
   cantIngresos: number
   ticketPromedio: number
   totalRetiros: number          // RETIRO EFECTIVO: plata que sale a la caja fuerte/oficina. NO es gasto.
-  totalGastosCaja: number       // egresos que NO son retiro: gasto real pagado de la caja
+  totalGastosCaja: number       // egresos que NO son movimiento interno (retiro/cierre lote/transf): gasto real
   cobrosTarjeta: number
   cobrosTarjetaConFB: number
   pctFB: number                 // % de cobros con tarjeta que traen Factura B
@@ -58,7 +69,7 @@ export function getDineroResumen(cajas: CajaParte[]): DineroResumen {
     cantIngresos: ingresos.length,
     ticketPromedio: ingresos.length ? Math.round(totalCobrado / ingresos.length) : 0,
     totalRetiros: sum(egresos.filter(esRetiroEfectivo).map(m => m.total)),
-    totalGastosCaja: sum(egresos.filter(m => !esRetiroEfectivo(m)).map(m => m.total)),
+    totalGastosCaja: sum(egresos.filter(m => !esMovimientoInterno(m)).map(m => m.total)),
     cobrosTarjeta,
     cobrosTarjetaConFB,
     pctFB: cobrosTarjeta ? Math.round((cobrosTarjetaConFB / cobrosTarjeta) * 100) : 100,
@@ -79,7 +90,7 @@ export function getGastosCaja(cajas: CajaParte[]): GastoItem[] {
   const items: GastoItem[] = []
   for (const c of cajas) {
     for (const e of c.egresos) {
-      if (esRetiroEfectivo(e)) continue
+      if (esMovimientoInterno(e)) continue
       items.push({
         nroCaja: c.nroCaja,
         conserje: conserjeDeCaja(c),
