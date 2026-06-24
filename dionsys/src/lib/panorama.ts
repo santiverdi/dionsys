@@ -100,17 +100,16 @@ export interface ImperfeccionesCount {
   checkoutsSinCobro: number
   estadiasOcultas: number
   cajasSinCerrar: number
-  egresosRevisar: number
   total: number
 }
 
 const cero = (): ImperfeccionesCount => ({
   descuadres: 0, tarjetaSinFB: 0, checkoutsSinCobro: 0, estadiasOcultas: 0,
-  cajasSinCerrar: 0, egresosRevisar: 0, total: 0,
+  cajasSinCerrar: 0, total: 0,
 })
 
 function totalDe(i: ImperfeccionesCount): number {
-  return i.descuadres + i.tarjetaSinFB + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar + i.egresosRevisar
+  return i.descuadres + i.tarjetaSinFB + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
 }
 
 function cajaAnteriorDe(caja: CajaParte, todas: CajaParte[]): CajaParte | undefined {
@@ -126,7 +125,6 @@ function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[]): Imperfeccion
   i.descuadres = flags.some(f => f.tipo === 'continuidad') ? 1 : 0
   i.tarjetaSinFB = caja.ingresos.filter(m => m.tarjetas > 0 && !m.facturaB).length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
-  i.egresosRevisar = caja.egresos.filter(m => !esRetiroEfectivo(m)).length
   i.total = totalDe(i)
   return i
 }
@@ -147,7 +145,6 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
   a.checkoutsSinCobro += b.checkoutsSinCobro
   a.estadiasOcultas += b.estadiasOcultas
   a.cajasSinCerrar += b.cajasSinCerrar
-  a.egresosRevisar += b.egresosRevisar
   a.total += b.total
 }
 

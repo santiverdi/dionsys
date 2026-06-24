@@ -75,15 +75,8 @@ export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFla
     })
   }
 
-  // 4) Egresos que no son un "RETIRO EFECTIVO" → posible gasto no habilitado, a revisar.
-  const egresosRaros = caja.egresos.filter(m => !/retiro\s+efectivo/i.test(m.observacion))
-  for (const e of egresosRaros) {
-    flags.push({
-      level: 'info',
-      tipo: 'egreso_revisar',
-      mensaje: `Egreso a revisar: "${e.observacion || 'sin observación'}" por ${fmt(e.total)}.`,
-    })
-  }
+  // Los egresos que no son "RETIRO EFECTIVO" son gastos de caja (no alertas): se
+  // muestran como gasto en el análisis, no como imperfección a revisar.
 
   return flags
 }
