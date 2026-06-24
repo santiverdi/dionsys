@@ -184,13 +184,13 @@ export default function Panorama() {
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Kpi label="Retiros a caja fuerte" value={formatMontoCurrency(dinero.totalRetiros)} sub="no es gasto · va a la oficina" />
-          <Kpi label="Gastos a revisar" value={formatMontoCurrency(dinero.totalGastosARevisar)} sub={`${gastos.length} egreso(s)`} tone={gastos.length ? 'amber' : 'navy'} />
+          <Kpi label="Gastos de caja" value={formatMontoCurrency(dinero.totalGastosCaja)} sub={`${gastos.length} egreso(s)`} tone={gastos.length ? 'amber' : 'navy'} />
         </div>
       </Section>
 
       {/* Gastos a revisar */}
       {gastos.length > 0 && (
-        <Section icon={Receipt} title={`Gastos a revisar (${gastos.length})`}>
+        <Section icon={Receipt} title={`Gastos de caja (${gastos.length})`}>
           <ul className="space-y-1 text-xs">
             {gastos.slice(0, 12).map((g, i) => (
               <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">

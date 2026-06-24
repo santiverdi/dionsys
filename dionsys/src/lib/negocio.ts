@@ -39,12 +39,24 @@ export function getIngresosMes(year: number, month: number, cajas: CajaParte[]):
   return acc
 }
 
+// Gasto pagado DESDE la caja: egresos que NO son retiro de efectivo (el retiro va
+// a la caja fuerte, no es gasto). Suma de las cajas cuya apertura cae en el mes.
+export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte[]): number {
+  return cajas
+    .filter(c => isInMonth(c.aperturaAt, year, month))
+    .flatMap(c => c.egresos)
+    .filter(m => !/retiro\s+efectivo/i.test(m.observacion))
+    .reduce((s, m) => s + m.total, 0)
+}
+
 // ===== Resultado del mes (ingresos − egresos) =====
 export interface ResultadoMes {
   ingresos: number
-  egresos: number
+  egresos: number       // compras/impuestos/mant + gastos pagados de la caja
+  gastosCompras: number // proveedores/pedidos/mantenimiento/impuestos (getMonthlyExpenses)
+  gastosCaja: number    // egresos de caja (sin retiros)
   resultado: number
-  margenPct: number   // resultado / ingresos
+  margenPct: number     // resultado / ingresos
 }
 
 export function getResultadoMes(
@@ -52,10 +64,12 @@ export function getResultadoMes(
   cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
 ): ResultadoMes {
   const ingresos = getIngresosMes(year, month, cajas).total
-  const egresos = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos).total
+  const gastosCompras = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos).total
+  const gastosCaja = getGastosDeCajaMes(year, month, cajas)
+  const egresos = gastosCompras + gastosCaja
   const resultado = ingresos - egresos
   return {
-    ingresos, egresos, resultado,
+    ingresos, egresos, gastosCompras, gastosCaja, resultado,
     margenPct: ingresos > 0 ? Math.round((resultado / ingresos) * 100) : 0,
   }
 }

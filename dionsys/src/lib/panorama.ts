@@ -36,7 +36,7 @@ export interface DineroResumen {
   cantIngresos: number
   ticketPromedio: number
   totalRetiros: number          // RETIRO EFECTIVO: plata que sale a la caja fuerte/oficina. NO es gasto.
-  totalGastosARevisar: number   // egresos que NO son retiro de efectivo (posible gasto real a revisar)
+  totalGastosCaja: number       // egresos que NO son retiro: gasto real pagado de la caja
   cobrosTarjeta: number
   cobrosTarjetaConFB: number
   pctFB: number                 // % de cobros con tarjeta que traen Factura B
@@ -58,14 +58,14 @@ export function getDineroResumen(cajas: CajaParte[]): DineroResumen {
     cantIngresos: ingresos.length,
     ticketPromedio: ingresos.length ? Math.round(totalCobrado / ingresos.length) : 0,
     totalRetiros: sum(egresos.filter(esRetiroEfectivo).map(m => m.total)),
-    totalGastosARevisar: sum(egresos.filter(m => !esRetiroEfectivo(m)).map(m => m.total)),
+    totalGastosCaja: sum(egresos.filter(m => !esRetiroEfectivo(m)).map(m => m.total)),
     cobrosTarjeta,
     cobrosTarjetaConFB,
     pctFB: cobrosTarjeta ? Math.round((cobrosTarjetaConFB / cobrosTarjeta) * 100) : 100,
   }
 }
 
-// ===== Gastos / egresos a revisar (lo que NO es retiro de efectivo) =====
+// ===== Gastos de caja (egresos que NO son retiro de efectivo) =====
 export interface GastoItem {
   nroCaja: number
   conserje: string
@@ -75,7 +75,7 @@ export interface GastoItem {
   fechaHora: string
 }
 
-export function getGastosARevisar(cajas: CajaParte[]): GastoItem[] {
+export function getGastosCaja(cajas: CajaParte[]): GastoItem[] {
   const items: GastoItem[] = []
   for (const c of cajas) {
     for (const e of c.egresos) {
@@ -355,7 +355,7 @@ export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[]): Pa
     conserjes: getConserjeStats(cajas, partes),
     ocupacion: getOcupacionResumen(partes),
     cobertura: getCobertura(cajas, partes),
-    gastos: getGastosARevisar(cajas),
+    gastos: getGastosCaja(cajas),
     serie: getSerieDiaria(cajas, partes),
   }
 }

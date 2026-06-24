@@ -63,6 +63,7 @@ export default function Negocio() {
     { label: 'Recepción diaria', v: expenses.pedidosDistribuidor },
     { label: 'Mantenimiento', v: expenses.mantenimiento },
     { label: 'Impuestos', v: expenses.impuestosPagado },
+    { label: 'Gastos de caja', v: resultado.gastosCaja },
   ].sort((a, b) => b.v - a.v)
 
   const sinDatos = ingresos.total === 0 && resultado.egresos === 0

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getDineroResumen, getImperfeccionesGlobal, getConserjeStats,
-  getOcupacionResumen, getCobertura, getGastosARevisar, getPanorama,
+  getOcupacionResumen, getCobertura, getGastosCaja, getPanorama,
 } from '../../src/lib/panorama'
 import type { CajaParte, CajaMovimiento, ParteHabitaciones, EstadoHabitacion } from '../../src/types'
 
@@ -49,10 +49,10 @@ describe('getDineroResumen', () => {
     expect(r.cantIngresos).toBe(3)
   })
 
-  it('separa retiros de efectivo de los gastos a revisar', () => {
+  it('separa retiros de efectivo (a caja fuerte) de los gastos de caja', () => {
     const r = getDineroResumen(cajas)
     expect(r.totalRetiros).toBe(800)
-    expect(r.totalGastosARevisar).toBe(300)
+    expect(r.totalGastosCaja).toBe(300)
   })
 
   it('calcula el % de cobros con tarjeta que traen Factura B', () => {
@@ -63,14 +63,14 @@ describe('getDineroResumen', () => {
   })
 })
 
-describe('getGastosARevisar', () => {
+describe('getGastosCaja', () => {
   it('lista solo los egresos que no son retiro de efectivo, ordenados por monto', () => {
     const cajas = [mkCaja({ nroCaja: 1, conserje: 'Gaston', egresos: [
       mov({ observacion: 'RETIRO EFECTIVO', total: 5000 }),
       mov({ observacion: 'Ferreteria', total: 300 }),
       mov({ observacion: 'Delivery', total: 900 }),
     ] })]
-    const g = getGastosARevisar(cajas)
+    const g = getGastosCaja(cajas)
     expect(g.map(x => x.observacion)).toEqual(['Delivery', 'Ferreteria'])
     expect(g[0].nroCaja).toBe(1)
     expect(g[0].conserje).toBe('Gaston')

@@ -47,17 +47,22 @@ describe('getIngresosMes', () => {
 })
 
 describe('getResultadoMes', () => {
-  it('resultado = ingresos (cajas) − egresos (compras), sin contar retiros', () => {
+  it('resultado = ingresos − compras − gastos de caja; el retiro NO cuenta', () => {
     const cajas = [mkCaja({ aperturaAt: '2026-06-10T07:00:00.000Z',
       ingresos: [mov({ efectivo: 100000, total: 100000 })],
-      egresos: [mov({ observacion: 'RETIRO EFECTIVO', efectivo: 80000, total: 80000 })] })] // NO debe restar
+      egresos: [
+        mov({ observacion: 'RETIRO EFECTIVO', efectivo: 80000, total: 80000 }), // a caja fuerte, NO resta
+        mov({ observacion: 'Ferreteria', efectivo: 10000, total: 10000 }),       // gasto de caja, SÍ resta
+      ] })]
     const orders = [mkOrder({ monto: 20000, createdAt: '2026-06-06T10:00:00.000Z' })]
     const pedidos = [mkPedido({ monto: 30000, date: '2026-06-05T10:00:00.000Z' })]
     const r = getResultadoMes(2026, 6, cajas, orders, pedidos, [], [])
     expect(r.ingresos).toBe(100000)
-    expect(r.egresos).toBe(50000)       // 20000 + 30000, el retiro de 80000 NO cuenta
-    expect(r.resultado).toBe(50000)
-    expect(r.margenPct).toBe(50)
+    expect(r.gastosCompras).toBe(50000)  // 20000 + 30000
+    expect(r.gastosCaja).toBe(10000)     // Ferreteria; el retiro de 80000 NO
+    expect(r.egresos).toBe(60000)
+    expect(r.resultado).toBe(40000)
+    expect(r.margenPct).toBe(40)
   })
 })
 
