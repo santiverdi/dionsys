@@ -10,6 +10,7 @@
 import type { CajaParte, Order, PedidoSemanal, MaintenanceTask, PagoMensual, FacturaProveedor } from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
 import { getCajaResumen } from './cajaControl'
+import { getGastosCaja, type GastoItem } from './panorama'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { isInMonth, getPreviousMonth, monthLabel } from '../utils/dateRange'
 
@@ -39,14 +40,16 @@ export function getIngresosMes(year: number, month: number, cajas: CajaParte[]):
   return acc
 }
 
-// Gasto pagado DESDE la caja: egresos que NO son retiro de efectivo (el retiro va
-// a la caja fuerte, no es gasto). Suma de las cajas cuya apertura cae en el mes.
+// Detalle de los gastos pagados DESDE la caja en el mes: cada egreso que NO es
+// retiro de efectivo (el retiro va a la caja fuerte, no es gasto). Reusa
+// getGastosCaja (ya excluye los RETIRO EFECTIVO), filtrando las cajas del mes.
+export function getGastosDeCajaDetalle(year: number, month: number, cajas: CajaParte[]): GastoItem[] {
+  return getGastosCaja(cajas.filter(c => isInMonth(c.aperturaAt, year, month)))
+}
+
+// Total de esos gastos de caja del mes.
 export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte[]): number {
-  return cajas
-    .filter(c => isInMonth(c.aperturaAt, year, month))
-    .flatMap(c => c.egresos)
-    .filter(m => !/retiro\s+efectivo/i.test(m.observacion))
-    .reduce((s, m) => s + m.total, 0)
+  return getGastosDeCajaDetalle(year, month, cajas).reduce((s, g) => s + g.total, 0)
 }
 
 // ===== Resultado del mes (ingresos − egresos) =====

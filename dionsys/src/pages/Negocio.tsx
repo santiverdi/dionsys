@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
-  Truck, CalendarClock, AlertTriangle, BedDouble,
+  Truck, CalendarClock, AlertTriangle, BedDouble, Receipt,
 } from 'lucide-react'
 import { useCajas } from '../context/CajaContext'
 import { useOrders } from '../context/OrdersContext'
@@ -11,7 +11,7 @@ import { useImpuestos } from '../context/ImpuestosContext'
 import { useOccupancy } from '../context/OccupancyContext'
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
-  getGastoPorProveedor, getRevenueOcupacion,
+  getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle,
 } from '../lib/negocio'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { getCurrentMonth, getPreviousMonth, monthLabel } from '../utils/dateRange'
@@ -51,6 +51,7 @@ export default function Negocio() {
   const ingresos = useMemo(() => getIngresosMes(cur.year, cur.month, cajas), [cur, cajas])
   const expenses = useMemo(() => getMonthlyExpenses(cur.year, cur.month, orders, pedidos, tasks, pagos), [cur, orders, pedidos, tasks, pagos])
   const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos), [cajas, orders, pedidos, tasks, pagos])
+  const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
   const revenue = useMemo(() => getRevenueOcupacion(cur.year, cur.month, cajas, records), [cur, cajas, records])
@@ -158,6 +159,26 @@ export default function Negocio() {
           </div>
         </Section>
       </div>
+
+      {/* Desglose de gastos de caja (NO incluye retiros a caja fuerte) */}
+      <Section icon={Receipt} title={`Gastos de caja — desglose (${gastosCajaDetalle.length})`}>
+        {gastosCajaDetalle.length === 0 ? (
+          <p className="text-xs text-navy-400">Sin gastos pagados de la caja este mes.</p>
+        ) : (
+          <ul className="space-y-1 text-xs">
+            {gastosCajaDetalle.map((g, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
+                <span className="min-w-0 truncate text-navy-700">
+                  {g.observacion}
+                  <span className="text-navy-400"> · Caja {g.nroCaja}{g.conserje ? ` · ${g.conserje}` : ''}</span>
+                </span>
+                <span className="shrink-0 font-semibold text-navy-800">{formatMontoCurrency(g.total)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[10px] text-navy-400 mt-2">No incluye los retiros a la caja fuerte (no son gasto).</p>
+      </Section>
 
       {/* Revenue por ocupación */}
       <Section icon={BedDouble} title="Ingreso por ocupación (aprox.)">
