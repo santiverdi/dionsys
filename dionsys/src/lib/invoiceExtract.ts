@@ -125,7 +125,7 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
 }
 
 // Comprime/codifica el archivo y llama al endpoint con el modo indicado.
-async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja'): Promise<unknown> {
+async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -154,6 +154,24 @@ async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' 
   return await res.json()
 }
 
+// Un renglón del recibo de sueldo leído por IA.
+export interface ExtractedReciboItem {
+  descripcion: string
+  tipo: 'haber' | 'haber_nr' | 'deduccion'
+  importe: string // número con punto decimal o ''
+}
+
+// Recibo de sueldo argentino leído por IA desde foto o PDF.
+export interface ExtractedRecibo {
+  empleado: string
+  cuil: string
+  periodo: string  // YYYY-MM o ''
+  fechaPago: string // YYYY-MM-DD o ''
+  neto: string     // número con punto decimal, listo para validateMonto
+  bruto: string
+  items: ExtractedReciboItem[]
+}
+
 export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
   return (await callExtract(file, 'servicio')) as ExtractedInvoice
 }
@@ -161,6 +179,11 @@ export async function extractInvoice(file: File): Promise<ExtractedInvoice> {
 /** Lee una factura comercial de proveedor (detecta tipo A/B/C, monto y fecha). */
 export async function extractProviderInvoice(file: File): Promise<ExtractedProviderInvoice> {
   return (await callExtract(file, 'proveedor')) as ExtractedProviderInvoice
+}
+
+/** Lee un recibo de sueldo (foto o PDF): empleado, período, neto y desglose. */
+export async function extractRecibo(file: File): Promise<ExtractedRecibo> {
+  return (await callExtract(file, 'recibo')) as ExtractedRecibo
 }
 
 /** Lee el Parte Diario de habitaciones desde una foto/escaneo (PDF o imagen). */

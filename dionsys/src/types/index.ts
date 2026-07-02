@@ -358,6 +358,13 @@ export type TipoPagoSueldo = 'sueldo' | 'adelanto' | 'aguinaldo' | 'extra'
 
 export type MedioPagoSueldo = 'efectivo' | 'transferencia'
 
+// Un renglón del recibo de sueldo (lo lee la IA desde la foto del recibo).
+export interface ReciboLinea {
+  descripcion: string       // "Sueldo básico", "Antigüedad", "Jubilación", "Cuota sindical"…
+  tipo: 'haber' | 'haber_nr' | 'deduccion'
+  importe: number           // siempre positivo; el signo lo da `tipo`
+}
+
 export interface PagoSueldo {
   id: string
   empleadoId: string
@@ -370,6 +377,9 @@ export interface PagoSueldo {
   notas?: string
   reciboUrl?: string // archivo en Supabase Storage
   reciboNombre?: string
+  desglose?: ReciboLinea[] // renglones del recibo leídos por IA (haberes/deducciones)
+  bruto?: number           // total remunerativo del recibo, si la IA lo detectó
+  cuil?: string            // CUIL leído del recibo
   createdBy?: string
   createdAt?: string
 }

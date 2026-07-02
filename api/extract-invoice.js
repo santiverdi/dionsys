@@ -86,6 +86,47 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
   required: ['tipoFactura', 'proveedor', 'monto', 'fecha', 'condicionVenta', 'vencimiento', 'items'],
 }
 
+// --- Modo "recibo": recibo de sueldo argentino (foto o PDF) ---
+const PROMPT_RECIBO = `Sos un asistente que lee RECIBOS DE SUELDO argentinos (recibo de haberes, Ley 20.744). Te paso una foto o PDF del recibo. Extraé EXACTAMENTE estos campos:
+- empleado: nombre y apellido del TRABAJADOR (no del empleador). Como figura en el recibo.
+- cuil: CUIL del trabajador, solo números y guiones si figuran (ej "20-12345678-3"). Si no figura, "".
+- periodo: mes al que corresponde el sueldo, en formato YYYY-MM. Buscá "Período" / "Período abonado" / "Mes" (ej "Junio 2026" → "2026-06"). Si es quincena, igual devolvé el mes.
+- fechaPago: fecha de pago en formato YYYY-MM-DD. Si no figura, "".
+- neto: importe NETO A COBRAR (lo que recibe el trabajador en mano), como número con punto decimal, sin separador de miles ni símbolo (ej "850000.50"). Suele figurar como "NETO A COBRAR" / "Total Neto" / "Son pesos...".
+- bruto: total de haberes REMUNERATIVOS (sueldo bruto sujeto a aportes), número con punto decimal. Si no se distingue, "".
+- items: lista con CADA renglón del recibo, en orden. Para cada renglón:
+    - descripcion: concepto tal como figura (ej "Sueldo básico", "Antigüedad", "Presentismo", "Horas extras 50%", "Jubilación", "Ley 19032", "Obra Social", "Cuota sindical UTHGRA").
+    - tipo: "haber" si es un haber remunerativo; "haber_nr" si es un haber NO remunerativo (suele estar en columna aparte o aclarado); "deduccion" si es un descuento/retención (jubilación, ley 19032, obra social, sindicato, seguro, adelantos descontados, embargos).
+    - importe: importe del renglón, número con punto decimal, sin separador de miles ni símbolo. Siempre POSITIVO (aunque sea deducción).
+  NO incluyas los totales (total haberes, total deducciones, neto) como renglones.
+  La cuenta debe cerrar: haberes + haberes_nr - deducciones ≈ neto.
+Si un dato no aparece en el documento, devolvé cadena vacía "" en ese campo. No inventes datos.`
+
+const RESPONSE_SCHEMA_RECIBO = {
+  type: 'OBJECT',
+  properties: {
+    empleado: { type: 'STRING' },
+    cuil: { type: 'STRING' },
+    periodo: { type: 'STRING' },
+    fechaPago: { type: 'STRING' },
+    neto: { type: 'STRING' },
+    bruto: { type: 'STRING' },
+    items: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          descripcion: { type: 'STRING' },
+          tipo: { type: 'STRING' },
+          importe: { type: 'STRING' },
+        },
+        required: ['descripcion', 'tipo', 'importe'],
+      },
+    },
+  },
+  required: ['empleado', 'cuil', 'periodo', 'fechaPago', 'neto', 'bruto', 'items'],
+}
+
 // --- Modo "parte": Parte Diario de habitaciones (foto/escaneo del reporte impreso) ---
 const PROMPT_PARTE = `Sos un asistente que lee el "Parte Diario" de habitaciones de un hotel (sistema Todoalojamiento). Te paso una foto o escaneo del reporte impreso. Extraé EXACTAMENTE estos campos:
 - nroCaja: el número que figura junto a "Caja" en el título "Parte Diario Caja N". Solo el número.
@@ -215,7 +256,7 @@ module.exports = async (req, res) => {
   }
   const mimeType = body && body.mimeType
   const data = body && body.data
-  const mode = ['proveedor', 'parte', 'caja'].includes(body && body.mode) ? body.mode : 'servicio'
+  const mode = ['proveedor', 'parte', 'caja', 'recibo'].includes(body && body.mode) ? body.mode : 'servicio'
   if (!mimeType || !data) {
     res.status(400).json({ error: 'Faltan datos del archivo (mimeType / data).' })
     return
@@ -226,8 +267,8 @@ module.exports = async (req, res) => {
     return
   }
 
-  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : PROMPT
-  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : RESPONSE_SCHEMA
+  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : mode === 'recibo' ? PROMPT_RECIBO : PROMPT
+  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : mode === 'recibo' ? RESPONSE_SCHEMA_RECIBO : RESPONSE_SCHEMA
 
   const payload = {
     contents: [
@@ -277,6 +318,29 @@ module.exports = async (req, res) => {
         let parsed
         try { parsed = JSON.parse(text) } catch {
           res.status(502).json({ error: 'No se pudo interpretar la respuesta de la IA.' })
+          return
+        }
+        if (mode === 'recibo') {
+          const str = v => String(v ?? '').trim()
+          const items = Array.isArray(parsed.items)
+            ? parsed.items.map(it => {
+                const t = str(it?.tipo).toLowerCase()
+                return {
+                  descripcion: str(it?.descripcion),
+                  tipo: t === 'deduccion' ? 'deduccion' : t === 'haber_nr' ? 'haber_nr' : 'haber',
+                  importe: str(it?.importe),
+                }
+              }).filter(it => it.descripcion || it.importe)
+            : []
+          res.status(200).json({
+            empleado: str(parsed.empleado),
+            cuil: str(parsed.cuil),
+            periodo: str(parsed.periodo),
+            fechaPago: str(parsed.fechaPago),
+            neto: str(parsed.neto),
+            bruto: str(parsed.bruto),
+            items,
+          })
           return
         }
         if (mode === 'proveedor') {
