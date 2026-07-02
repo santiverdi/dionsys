@@ -1,21 +1,24 @@
 import { useMemo } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
-  Truck, CalendarClock, AlertTriangle, BedDouble, Receipt,
+  Truck, CalendarClock, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
 } from 'lucide-react'
 import { useCajas } from '../context/CajaContext'
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
 import { useImpuestos } from '../context/ImpuestosContext'
+import { useSueldos } from '../context/SueldosContext'
 import { useOccupancy } from '../context/OccupancyContext'
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
   getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle,
 } from '../lib/negocio'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
+import { exportMonthlyReport } from '../utils/monthlyExport'
 import { getCurrentMonth, getPreviousMonth, monthLabel } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
+import { employees } from '../data/mock'
 
 function Section({ icon: Icon, title, children }: { icon: typeof Scale; title: string; children: React.ReactNode }) {
   return (
@@ -38,19 +41,22 @@ function fmtVto(s?: string): string {
 export default function Negocio() {
   const { cajas } = useCajas()
   const { orders } = useOrders()
-  const { pedidos } = useStock()
+  const { pedidos, movements } = useStock()
   const { tasks } = useMaintenance()
-  const { pagos } = useImpuestos()
+  const { pagos, servicios } = useImpuestos()
+  // Sueldos son solo-admin: en un dispositivo no-admin esta lista viene vacía y
+  // suman 0 en los gastos (comportamiento correcto, ver ADMIN_ONLY_KEYS).
+  const { pagos: pagosSueldos } = useSueldos()
   const { records } = useOccupancy()
 
   const cur = useMemo(() => getCurrentMonth(), [])
   const prev = useMemo(() => getPreviousMonth(cur.year, cur.month), [cur])
 
-  const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos), [cur, cajas, orders, pedidos, tasks, pagos])
-  const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos), [prev, cajas, orders, pedidos, tasks, pagos])
+  const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos), [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos])
+  const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos), [prev, cajas, orders, pedidos, tasks, pagos, pagosSueldos])
   const ingresos = useMemo(() => getIngresosMes(cur.year, cur.month, cajas), [cur, cajas])
-  const expenses = useMemo(() => getMonthlyExpenses(cur.year, cur.month, orders, pedidos, tasks, pagos), [cur, orders, pedidos, tasks, pagos])
-  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos), [cajas, orders, pedidos, tasks, pagos])
+  const expenses = useMemo(() => getMonthlyExpenses(cur.year, cur.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios), [cur, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
+  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, new Date(), pagosSueldos), [cajas, orders, pedidos, tasks, pagos, pagosSueldos])
   const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
@@ -60,20 +66,38 @@ export default function Negocio() {
   const maxTend = Math.max(...tendencia.flatMap(t => [t.ingresos, t.egresos]), 1)
   const maxProv = Math.max(...proveedores.map(p => p.monto), 1)
   const egresosCats = [
+    { label: 'Sueldos', v: expenses.sueldos },
+    { label: 'Impuestos/cargas', v: expenses.impuestosPagado },
+    { label: 'Servicios (luz/gas/agua)', v: expenses.serviciosPagado },
+    { label: 'Profesionales/abonos', v: expenses.profesionalesPagado },
     { label: 'Pedido semanal', v: expenses.pedidosSemanales },
     { label: 'Recepción diaria', v: expenses.pedidosDistribuidor },
     { label: 'Mantenimiento', v: expenses.mantenimiento },
-    { label: 'Impuestos', v: expenses.impuestosPagado },
     { label: 'Gastos de caja', v: resultado.gastosCaja },
-  ].sort((a, b) => b.v - a.v)
+  ].filter(c => c.v > 0).sort((a, b) => b.v - a.v)
 
   const sinDatos = ingresos.total === 0 && resultado.egresos === 0
 
+  function handleExport() {
+    exportMonthlyReport(cur.year, cur.month, {
+      orders, pedidos, movements, tasks, pagos, records, employees, pagosSueldos, servicios,
+    })
+  }
+
   return (
     <div>
-      <p className="text-sm text-navy-500 mb-4">
-        Lo que entra (cajas) vs lo que sale (compras, impuestos, mantenimiento) — {monthLabel(cur.year, cur.month)}.
-      </p>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <p className="text-sm text-navy-500">
+          Lo que entra (cajas) vs lo que sale (sueldos, compras, impuestos, servicios, mantenimiento) — {monthLabel(cur.year, cur.month)}.
+        </p>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors shrink-0"
+          title="Descargar el Excel del mes (incluye sueldos, servicios y profesionales)"
+        >
+          <FileSpreadsheet size={14} /> Excel
+        </button>
+      </div>
 
       {sinDatos && (
         <div className="text-center py-10 bg-white rounded-xl border border-navy-100 mb-4">
@@ -144,6 +168,9 @@ export default function Negocio() {
         </Section>
         <Section icon={ArrowUpCircle} title="Egresos por rubro">
           <div className="space-y-1 text-xs">
+            {egresosCats.length === 0 && (
+              <p className="text-navy-400">Sin egresos cargados este mes.</p>
+            )}
             {egresosCats.map(c => (
               <div key={c.label} className="flex items-center justify-between">
                 <span className="text-navy-600">{c.label}</span>

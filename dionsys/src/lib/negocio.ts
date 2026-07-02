@@ -7,7 +7,7 @@
 // la caja fuerte/oficina, sigue siendo del hotel. Por eso los egresos del resultado
 // salen de getMonthlyExpenses (compras/impuestos/mant), nunca de los retiros.
 
-import type { CajaParte, Order, PedidoSemanal, MaintenanceTask, PagoMensual, FacturaProveedor } from '../types'
+import type { CajaParte, Order, PedidoSemanal, MaintenanceTask, PagoMensual, PagoSueldo, FacturaProveedor } from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
 import { getCajaResumen } from './cajaControl'
 import { getGastosCaja, type GastoItem } from './panorama'
@@ -55,8 +55,8 @@ export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte
 // ===== Resultado del mes (ingresos − egresos) =====
 export interface ResultadoMes {
   ingresos: number
-  egresos: number       // compras/impuestos/mant + gastos pagados de la caja
-  gastosCompras: number // proveedores/pedidos/mantenimiento/impuestos (getMonthlyExpenses)
+  egresos: number       // compras/impuestos/sueldos/mant + gastos pagados de la caja
+  gastosCompras: number // sueldos/proveedores/pedidos/mantenimiento/impuestos (getMonthlyExpenses)
   gastosCaja: number    // egresos de caja (sin retiros)
   resultado: number
   margenPct: number     // resultado / ingresos
@@ -65,9 +65,12 @@ export interface ResultadoMes {
 export function getResultadoMes(
   year: number, month: number,
   cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
+  pagosSueldos: PagoSueldo[] = [],
 ): ResultadoMes {
   const ingresos = getIngresosMes(year, month, cajas).total
-  const gastosCompras = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos).total
+  // Los sueldos SÍ son un egreso del mes. Solo llegan con un admin logueado
+  // (ADMIN_ONLY_KEYS); para no-admin la lista viene vacía y suman 0, que es lo correcto.
+  const gastosCompras = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos, pagosSueldos).total
   const gastosCaja = getGastosDeCajaMes(year, month, cajas)
   const egresos = gastosCompras + gastosCaja
   const resultado = ingresos - egresos
@@ -91,12 +94,13 @@ export function getTendencia(
   meses: number,
   cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
   hoy: Date = new Date(),
+  pagosSueldos: PagoSueldo[] = [],
 ): TendenciaMes[] {
   const out: TendenciaMes[] = []
   let y = hoy.getFullYear()
   let m = hoy.getMonth() + 1
   for (let i = 0; i < meses; i++) {
-    const res = getResultadoMes(y, m, cajas, orders, pedidos, tasks, pagos)
+    const res = getResultadoMes(y, m, cajas, orders, pedidos, tasks, pagos, pagosSueldos)
     out.unshift({ year: y, month: m, label: monthLabel(y, m), ingresos: res.ingresos, egresos: res.egresos, resultado: res.resultado })
     const prev = getPreviousMonth(y, m)
     y = prev.year; m = prev.month
