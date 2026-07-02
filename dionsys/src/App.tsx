@@ -76,8 +76,8 @@ function AppRoutes() {
         <Route path="cerrar-turno" element={<RoleRoute path="/cerrar-turno"><CerrarTurno /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
-        {/* Herramienta de unificación de datos (oculta del menú). Cualquier usuario logueado. */}
-        <Route path="sync" element={<SyncPanel />} />
+        {/* Herramienta de unificación de datos (oculta del menú). Solo admin. */}
+        <Route path="sync" element={<RoleRoute path="/sync"><SyncPanel /></RoleRoute>} />
       </Route>
     </Routes>
   )

@@ -43,6 +43,36 @@ export const SYNCED_KEYS = [
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number]
 
+// Almacenes SENSIBLES que solo deben viajar a dispositivos con un admin logueado
+// (datos de sueldos/nómina). Son un subconjunto de SYNCED_KEYS: por defecto NO se
+// bajan en el pull inicial ni por Realtime, y no se suben, salvo que un admin haya
+// activado el acceso vía setAdminAccess(true) (lo hace SueldosContext).
+//
+// ⚠️ LIMITACIÓN DE SEGURIDAD (a propósito, fuera de alcance de este cambio):
+// esto es SOLO defensa del lado del navegador. La anon key de Supabase sigue
+// permitiendo leer la tabla `app_state` directo contra la API REST, así que estas
+// keys NO están protegidas a nivel servidor. La protección real requiere RLS +
+// autenticación de Supabase (roles/JWT), que se hará en otra sesión. Acá solo
+// evitamos que los datos queden cacheados en localStorage de equipos compartidos
+// (ej: la PC de recepción) y que se muestren en pantalla a usuarios no-admin.
+export const ADMIN_ONLY_KEYS: readonly SyncedKey[] = [
+  'dionsys_nomina_empleados',
+  'dionsys_sueldos_pagos',
+]
+
+function isAdminOnlyKey(k: SyncedKey): boolean {
+  return (ADMIN_ONLY_KEYS as readonly string[]).includes(k)
+}
+
+// Se enciende solo cuando hay un admin logueado (SueldosContext lo maneja). Mientras
+// esté en false, las ADMIN_ONLY_KEYS se ignoran en pull/Realtime/push.
+let adminAccess = false
+
+/** Habilita/inhabilita el sync de las ADMIN_ONLY_KEYS (solo lo llama SueldosContext). */
+export function setAdminAccess(value: boolean) {
+  adminAccess = value
+}
+
 const TABLE = 'app_state'
 const SYNC_EVENT = 'dionsys-cloud-update'
 
@@ -78,6 +108,8 @@ export async function pullAll(timeoutMs = 5000): Promise<void> {
     const cloudKeys = new Set<string>()
     for (const row of result.data as { key: string; value: unknown }[]) {
       if (!isSyncedKey(row.key)) continue
+      // Datos sensibles (sueldos): no se bajan salvo que haya un admin logueado.
+      if (isAdminOnlyKey(row.key) && !adminAccess) continue
       cloudKeys.add(row.key)
       // En modo consolidación no pisamos un almacén que este dispositivo ya tiene.
       if (CONSOLIDATION_MODE && localStorage.getItem(row.key) !== null) continue
@@ -91,6 +123,8 @@ export async function pullAll(timeoutMs = 5000): Promise<void> {
     if (!CONSOLIDATION_MODE) {
       for (const key of SYNCED_KEYS) {
         if (cloudKeys.has(key)) continue
+        // No auto-subir datos sensibles desde un equipo sin admin logueado.
+        if (isAdminOnlyKey(key) && !adminAccess) continue
         const raw = localStorage.getItem(key)
         if (raw === null) continue
         try {
@@ -135,6 +169,9 @@ function pushKey(key: SyncedKey, value: unknown) {
  * guarda local y además sube a la nube (si está configurada).
  */
 export function persist(key: SyncedKey, value: unknown) {
+  // Datos sensibles (sueldos): solo se escriben/suben con un admin logueado. Sin
+  // admin no tocamos ni localStorage ni la nube (defensa para equipos compartidos).
+  if (isAdminOnlyKey(key) && !adminAccess) return
   localStorage.setItem(key, JSON.stringify(value))
   // En modo consolidación NO subimos automáticamente: la nube solo se toca a mano
   // desde /sync, para que el uso normal no pise datos sin unificar todavía.
@@ -158,6 +195,8 @@ export function subscribeRealtime(): () => void {
       payload => {
         const row = payload.new as { key?: string; value?: unknown } | null
         if (!row || !isSyncedKey(row.key)) return
+        // Datos sensibles (sueldos): no aplicar cambios remotos salvo admin logueado.
+        if (isAdminOnlyKey(row.key) && !adminAccess) return
         // En modo consolidación no aplicamos cambios remotos sobre almacenes que
         // este dispositivo ya tiene (se sincroniza a mano desde /sync).
         if (CONSOLIDATION_MODE && localStorage.getItem(row.key) !== null) return
@@ -192,6 +231,8 @@ export async function refreshFromCloud(timeoutMs = 5000): Promise<void> {
     if (!result || result.error || !result.data) return
     for (const row of result.data as { key: string; value: unknown }[]) {
       if (!isSyncedKey(row.key)) continue
+      // Datos sensibles (sueldos): no refrescar salvo admin logueado.
+      if (isAdminOnlyKey(row.key) && !adminAccess) continue
       const json = JSON.stringify(row.value)
       if (lastSeen.get(row.key) === json) continue // sin cambios respecto a lo último visto
       lastSeen.set(row.key, json)
@@ -200,6 +241,47 @@ export async function refreshFromCloud(timeoutMs = 5000): Promise<void> {
     }
   } catch (err) {
     console.warn('[cloud] refreshFromCloud falló:', err)
+  }
+}
+
+// ============================================================================
+// Almacenes solo-admin (sueldos): carga bajo demanda y purga local.
+// ============================================================================
+
+/**
+ * Baja de la nube SOLO las ADMIN_ONLY_KEYS y avisa a los Context (SueldosContext).
+ * La llama SueldosContext cuando detecta un admin logueado. No pisa lo local si la
+ * nube no tiene la key (así no borra datos locales del admin todavía sin subir).
+ * Requiere adminAccess=true (setAdminAccess) para tener efecto.
+ */
+export async function pullAdminOnlyKeys(timeoutMs = 5000): Promise<void> {
+  if (!supabase || !adminAccess) return
+  try {
+    const query = supabase.from(TABLE).select('key, value').in('key', ADMIN_ONLY_KEYS as unknown as string[])
+    const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), timeoutMs))
+    const result = await Promise.race([query, timeout])
+    if (!result || result.error || !result.data) return
+    for (const row of result.data as { key: string; value: unknown }[]) {
+      if (!isSyncedKey(row.key) || !isAdminOnlyKey(row.key)) continue
+      const json = JSON.stringify(row.value)
+      lastSeen.set(row.key, json)
+      localStorage.setItem(row.key, json)
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key: row.key, value: row.value } }))
+    }
+  } catch (err) {
+    console.warn('[cloud] pullAdminOnlyKeys falló:', err)
+  }
+}
+
+/**
+ * Borra de localStorage las ADMIN_ONLY_KEYS (datos de sueldos). Se llama al hacer
+ * logout o al loguearse un rol no-admin, para no dejar residuos de sueldos en
+ * equipos compartidos (ej: la PC de recepción).
+ */
+export function purgeAdminOnlyKeys() {
+  for (const key of ADMIN_ONLY_KEYS) {
+    localStorage.removeItem(key)
+    lastSeen.delete(key)
   }
 }
 

@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { EmpleadoNomina, PagoSueldo } from '../types'
-import { persist, useCloudSync } from '../lib/cloudStore'
+import { persist, useCloudSync, setAdminAccess, pullAdminOnlyKeys, purgeAdminOnlyKeys } from '../lib/cloudStore'
+import { useAuth } from './AuthContext'
 
 interface SueldosContextType {
   empleados: EmpleadoNomina[]
@@ -38,11 +39,37 @@ function savePagos(pagos: PagoSueldo[]) {
 const SueldosContext = createContext<SueldosContextType | null>(null)
 
 export function SueldosProvider({ children }: { children: ReactNode }) {
-  const [empleados, setEmpleados] = useState<EmpleadoNomina[]>(loadEmpleados)
-  const [pagos, setPagos] = useState<PagoSueldo[]>(loadPagos)
+  const { employee } = useAuth()
+  const isAdmin = employee?.role === 'admin'
+
+  // Sin admin no cargamos nada en memoria (los datos de sueldos son solo-admin).
+  const [empleados, setEmpleados] = useState<EmpleadoNomina[]>(() => isAdmin ? loadEmpleados() : [])
+  const [pagos, setPagos] = useState<PagoSueldo[]>(() => isAdmin ? loadPagos() : [])
 
   useCloudSync<EmpleadoNomina[]>(EMPLEADOS_KEY, setEmpleados)
   useCloudSync<PagoSueldo[]>(PAGOS_KEY, setPagos)
+
+  // El sync de sueldos se activa/desactiva según el rol del usuario logueado.
+  // - Admin: habilitamos el acceso y bajamos las keys bajo demanda desde la nube.
+  // - No admin (o logout): purgamos las keys de localStorage y vaciamos el estado,
+  //   para no dejar residuos de sueldos en equipos compartidos.
+  useEffect(() => {
+    let active = true
+    if (isAdmin) {
+      setAdminAccess(true)
+      void pullAdminOnlyKeys().then(() => {
+        if (!active) return
+        setEmpleados(loadEmpleados())
+        setPagos(loadPagos())
+      })
+    } else {
+      setAdminAccess(false)
+      purgeAdminOnlyKeys()
+      setEmpleados([])
+      setPagos([])
+    }
+    return () => { active = false }
+  }, [isAdmin])
 
   const addEmpleado = useCallback((empleado: Omit<EmpleadoNomina, 'id'>) => {
     setEmpleados(prev => {
