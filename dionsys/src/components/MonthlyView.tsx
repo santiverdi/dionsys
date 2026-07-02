@@ -8,6 +8,7 @@ import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
 import { useOccupancy, HOTEL_CAPACITY } from '../context/OccupancyContext'
 import { useImpuestos } from '../context/ImpuestosContext'
+import { useSueldos } from '../context/SueldosContext'
 import {
   monthLabel, getPreviousMonth, getCurrentMonth, getNextMonth,
 } from '../utils/dateRange'
@@ -68,7 +69,8 @@ export default function MonthlyView() {
   const { items, pedidos, movements } = useStock()
   const { tasks } = useMaintenance()
   const { records } = useOccupancy()
-  const { pagos } = useImpuestos()
+  const { pagos, servicios } = useImpuestos()
+  const { pagos: pagosSueldos } = useSueldos()
 
   const [view, setView] = useState(() => getCurrentMonth())
   const current = useMemo(() => getCurrentMonth(), [])
@@ -76,12 +78,12 @@ export default function MonthlyView() {
   const isCurrentOrPast = view.year < current.year || (view.year === current.year && view.month <= current.month)
 
   const expenses = useMemo(
-    () => getMonthlyExpenses(view.year, view.month, orders, pedidos, tasks, pagos),
-    [view, orders, pedidos, tasks, pagos]
+    () => getMonthlyExpenses(view.year, view.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios),
+    [view, orders, pedidos, tasks, pagos, pagosSueldos, servicios]
   )
   const expensesPrev = useMemo(
-    () => getMonthlyExpenses(prev.year, prev.month, orders, pedidos, tasks, pagos),
-    [prev, orders, pedidos, tasks, pagos]
+    () => getMonthlyExpenses(prev.year, prev.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios),
+    [prev, orders, pedidos, tasks, pagos, pagosSueldos, servicios]
   )
 
   const occupancy = useMemo(
@@ -118,7 +120,7 @@ export default function MonthlyView() {
 
   function handleExport() {
     exportMonthlyReport(view.year, view.month, {
-      orders, pedidos, movements, tasks, pagos, records, employees,
+      orders, pedidos, movements, tasks, pagos, records, employees, pagosSueldos, servicios,
     })
   }
 
@@ -160,11 +162,14 @@ export default function MonthlyView() {
           <DeltaPill delta={computeDelta(expenses.total, expensesPrev.total)} />
           <span className="text-xs text-navy-400">vs {monthLabel(prev.year, prev.month)}</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <ExpenseTile label="Impuestos pagados" current={expenses.impuestosPagado} previous={expensesPrev.impuestosPagado} />
-          <ExpenseTile label="Imp. pendiente" current={expenses.impuestosPendiente} previous={expensesPrev.impuestosPendiente} />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <ExpenseTile label="Sueldos" current={expenses.sueldos} previous={expensesPrev.sueldos} />
+          <ExpenseTile label="Impuestos" current={expenses.impuestosPagado} previous={expensesPrev.impuestosPagado} />
+          <ExpenseTile label="Servicios" current={expenses.serviciosPagado} previous={expensesPrev.serviciosPagado} />
+          <ExpenseTile label="Profesionales" current={expenses.profesionalesPagado} previous={expensesPrev.profesionalesPagado} />
+          <ExpenseTile label="Pendientes" current={expenses.impuestosPendiente} previous={expensesPrev.impuestosPendiente} />
           <ExpenseTile label="Pedido semanal" current={expenses.pedidosSemanales} previous={expensesPrev.pedidosSemanales} />
-          <ExpenseTile label="Recepción diaria" current={expenses.pedidosDistribuidor} previous={expensesPrev.pedidosDistribuidor} />
+          <ExpenseTile label="Recepción" current={expenses.pedidosDistribuidor} previous={expensesPrev.pedidosDistribuidor} />
           <ExpenseTile label="Mantenimiento" current={expenses.mantenimiento} previous={expensesPrev.mantenimiento} />
         </div>
       </section>

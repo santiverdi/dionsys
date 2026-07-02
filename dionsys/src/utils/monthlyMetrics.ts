@@ -1,6 +1,7 @@
 import type {
   Order, PedidoSemanal, StockMovement, MaintenanceTask,
-  PagoMensual, Employee, DepositoItem,
+  PagoMensual, Employee, DepositoItem, PagoSueldo, ImpuestoServicio,
+  CategoriaServicio,
 } from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
 import { isInMonth, monthKey } from './dateRange'
@@ -8,7 +9,10 @@ import { isInMonth, monthKey } from './dateRange'
 // ---------- Gastos ----------
 
 export interface MonthlyExpenses {
+  sueldos: number
   impuestosPagado: number
+  serviciosPagado: number
+  profesionalesPagado: number
   impuestosPendiente: number
   pedidosSemanales: number
   pedidosDistribuidor: number
@@ -23,14 +27,33 @@ export function getMonthlyExpenses(
   pedidos: PedidoSemanal[],
   tasks: MaintenanceTask[],
   pagos: PagoMensual[],
+  pagosSueldos: PagoSueldo[] = [],
+  servicios: ImpuestoServicio[] = [],
 ): MonthlyExpenses {
   const mKey = monthKey(year, month)
 
-  const impuestosPagado = pagos
-    .filter(p => p.pagado && p.mes === mKey)
+  // Mapa servicioId → categoría. Un servicio sin categoría (o inexistente) cuenta
+  // como 'impuesto' para no romper la retrocompatibilidad con lo ya cargado.
+  const categoriaDe = (impuestoId: string): CategoriaServicio => {
+    const srv = servicios.find(s => s.id === impuestoId)
+    return srv?.categoria ?? 'impuesto'
+  }
+
+  const pagados = pagos.filter(p => p.pagado && p.mes === mKey)
+  const impuestosPagado = pagados
+    .filter(p => categoriaDe(p.impuestoId) === 'impuesto')
+    .reduce((s, p) => s + p.monto, 0)
+  const serviciosPagado = pagados
+    .filter(p => categoriaDe(p.impuestoId) === 'servicio')
+    .reduce((s, p) => s + p.monto, 0)
+  const profesionalesPagado = pagados
+    .filter(p => categoriaDe(p.impuestoId) === 'profesional')
     .reduce((s, p) => s + p.monto, 0)
   const impuestosPendiente = pagos
     .filter(p => !p.pagado && p.mes === mKey)
+    .reduce((s, p) => s + p.monto, 0)
+  const sueldos = pagosSueldos
+    .filter(p => p.mes === mKey)
     .reduce((s, p) => s + p.monto, 0)
   const pedidosSemanales = pedidos
     .filter(p => p.status !== 'borrado' && p.monto != null && isInMonth(p.date, year, month))
@@ -44,8 +67,12 @@ export function getMonthlyExpenses(
       .filter(m => m.source === 'compra_externa')
       .reduce((s, m) => s + (m.cost ?? 0), 0), 0)
 
-  const total = impuestosPagado + pedidosSemanales + pedidosDistribuidor + mantenimiento
-  return { impuestosPagado, impuestosPendiente, pedidosSemanales, pedidosDistribuidor, mantenimiento, total }
+  const total = sueldos + impuestosPagado + serviciosPagado + profesionalesPagado
+    + pedidosSemanales + pedidosDistribuidor + mantenimiento
+  return {
+    sueldos, impuestosPagado, serviciosPagado, profesionalesPagado, impuestosPendiente,
+    pedidosSemanales, pedidosDistribuidor, mantenimiento, total,
+  }
 }
 
 // ---------- Ocupación ----------

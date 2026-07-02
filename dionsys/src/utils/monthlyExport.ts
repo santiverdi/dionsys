@@ -1,8 +1,9 @@
 import * as XLSX from 'xlsx'
 import type {
   Order, PedidoSemanal, StockMovement, MaintenanceTask,
-  PagoMensual, Employee,
+  PagoMensual, Employee, PagoSueldo, ImpuestoServicio,
 } from '../types'
+import { TIPO_PAGO_SUELDO_LABELS } from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
 import { HOTEL_CAPACITY } from '../context/OccupancyContext'
 import {
@@ -21,15 +22,19 @@ export interface ExportData {
   pagos: PagoMensual[]
   records: OccupancyRecord[]
   employees: Employee[]
+  pagosSueldos?: PagoSueldo[]
+  servicios?: ImpuestoServicio[]
 }
 
 type Cell = string | number
 type Row = Cell[]
 
 export function exportMonthlyReport(year: number, month: number, data: ExportData): string {
-  const expenses = getMonthlyExpenses(year, month, data.orders, data.pedidos, data.tasks, data.pagos)
+  const pagosSueldos = data.pagosSueldos ?? []
+  const servicios = data.servicios ?? []
+  const expenses = getMonthlyExpenses(year, month, data.orders, data.pedidos, data.tasks, data.pagos, pagosSueldos, servicios)
   const prev = getPreviousMonth(year, month)
-  const expensesPrev = getMonthlyExpenses(prev.year, prev.month, data.orders, data.pedidos, data.tasks, data.pagos)
+  const expensesPrev = getMonthlyExpenses(prev.year, prev.month, data.orders, data.pedidos, data.tasks, data.pagos, pagosSueldos, servicios)
   const occupancy = getMonthlyOccupancy(year, month, data.records, HOTEL_CAPACITY)
   const deposit = getMonthlyDeposit(year, month, data.movements, [])
   const maintenance = getMonthlyMaintenance(year, month, data.tasks)
@@ -43,7 +48,10 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
     [],
     ['GASTOS DEL MES'],
     ['Concepto', 'Monto', `vs ${monthLabel(prev.year, prev.month)}`],
+    ['Sueldos', expenses.sueldos, expensesPrev.sueldos],
     ['Impuestos pagados', expenses.impuestosPagado, expensesPrev.impuestosPagado],
+    ['Servicios pagados', expenses.serviciosPagado, expensesPrev.serviciosPagado],
+    ['Profesionales pagados', expenses.profesionalesPagado, expensesPrev.profesionalesPagado],
     ['Impuestos pendientes', expenses.impuestosPendiente, expensesPrev.impuestosPendiente],
     ['Pedidos semanales', expenses.pedidosSemanales, expensesPrev.pedidosSemanales],
     ['Recepción diaria', expenses.pedidosDistribuidor, expensesPrev.pedidosDistribuidor],
@@ -76,6 +84,9 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
   // Hoja 2: Gastos detallados
   const mKey = monthKey(year, month)
   const gastosRows: Row[] = [['Tipo', 'Fecha', 'Descripción', 'Monto', 'Cargado por', 'Estado']]
+  for (const p of pagosSueldos.filter(p => p.mes === mKey)) {
+    gastosRows.push(['Sueldo', p.fecha, `${p.empleadoNombre} — ${TIPO_PAGO_SUELDO_LABELS[p.tipo]}`, p.monto, p.createdBy ?? '', p.medio])
+  }
   for (const p of data.pagos.filter(p => p.mes === mKey)) {
     gastosRows.push(['Impuesto', p.vtoActual, 'Vto pago', p.monto, p.createdBy ?? '', p.pagado ? 'Pagado' : 'Pendiente'])
   }

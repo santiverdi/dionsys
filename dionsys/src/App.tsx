@@ -12,6 +12,7 @@ import { MaintenanceProvider } from './context/MaintenanceContext'
 import { OccupancyProvider } from './context/OccupancyContext'
 import { TurnosProvider } from './context/TurnosContext'
 import { ImpuestosProvider } from './context/ImpuestosContext'
+import { SueldosProvider } from './context/SueldosContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -22,6 +23,7 @@ import Stock from './pages/Stock'
 import Mantenimiento from './pages/Mantenimiento'
 import PedidosAdmin from './pages/PedidosAdmin'
 import Impuestos from './pages/Impuestos'
+import Sueldos from './pages/Sueldos'
 import Administracion from './pages/Administracion'
 import Facturas from './pages/Facturas'
 import ControlCaja from './pages/ControlCaja'
@@ -73,6 +75,7 @@ function AppRoutes() {
         <Route path="control-caja" element={<RoleRoute path="/control-caja"><ControlCaja /></RoleRoute>} />
         <Route path="cerrar-turno" element={<RoleRoute path="/cerrar-turno"><CerrarTurno /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
+        <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Cualquier usuario logueado. */}
         <Route path="sync" element={<SyncPanel />} />
       </Route>
@@ -134,7 +137,9 @@ export default function App() {
               <OccupancyProvider>
                 <TurnosProvider>
                   <ImpuestosProvider>
-                    <AppRoutes />
+                    <SueldosProvider>
+                      <AppRoutes />
+                    </SueldosProvider>
                   </ImpuestosProvider>
                 </TurnosProvider>
               </OccupancyProvider>

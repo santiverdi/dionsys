@@ -13,6 +13,8 @@ const LABELS: Record<SyncedKey, string> = {
   dionsys_turnos: 'Turnos (conserjes)',
   dionsys_impuestos_servicios: 'Impuestos — servicios',
   dionsys_impuestos_pagos: 'Impuestos — pagos',
+  dionsys_nomina_empleados: 'Sueldos — nómina',
+  dionsys_sueldos_pagos: 'Sueldos — pagos',
   dionsys_maintenance_tasks: 'Mantenimiento',
   dionsys_basura: 'Basura',
   dionsys_occupancy: 'Ocupación',

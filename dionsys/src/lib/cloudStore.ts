@@ -30,6 +30,8 @@ export const SYNCED_KEYS = [
   'dionsys_turnos',
   'dionsys_impuestos_servicios',
   'dionsys_impuestos_pagos',
+  'dionsys_nomina_empleados',
+  'dionsys_sueldos_pagos',
   'dionsys_maintenance_tasks',
   'dionsys_basura',
   'dionsys_occupancy',

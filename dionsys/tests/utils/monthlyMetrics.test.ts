@@ -5,7 +5,7 @@ import {
 } from '../../src/utils/monthlyMetrics'
 import type {
   Order, PedidoSemanal, StockMovement, MaintenanceTask,
-  PagoMensual, Employee, DepositoItem,
+  PagoMensual, Employee, DepositoItem, PagoSueldo, ImpuestoServicio,
 } from '../../src/types'
 import type { OccupancyRecord } from '../../src/context/OccupancyContext'
 
@@ -91,6 +91,48 @@ describe('getMonthlyExpenses', () => {
       [{ id: '1', impuestoId: 'a', mes: '2026-05', monto: 1000, vtoActual: '2026-05-15', vtoSiguiente: '', pagado: true }],
     )
     expect(result.total).toBe(1350)
+  })
+
+  it('suma sueldos del mes y los incluye en el total', () => {
+    const pagosSueldos: PagoSueldo[] = [
+      { id: 's1', empleadoId: 'e1', empleadoNombre: 'Roxana', mes: '2026-05', tipo: 'sueldo', monto: 800, fecha: '2026-05-05', medio: 'efectivo' },
+      { id: 's2', empleadoId: 'e1', empleadoNombre: 'Roxana', mes: '2026-05', tipo: 'adelanto', monto: 200, fecha: '2026-05-20', medio: 'transferencia' },
+      { id: 's3', empleadoId: 'e2', empleadoNombre: 'Julio', mes: '2026-04', tipo: 'sueldo', monto: 999, fecha: '2026-04-05', medio: 'efectivo' }, // otro mes
+    ]
+    const result = getMonthlyExpenses(Y, M, [order({ monto: 100 })], [], [], [], pagosSueldos)
+    expect(result.sueldos).toBe(1000)
+    expect(result.total).toBe(1100) // 1000 sueldos + 100 recepción
+  })
+
+  it('separa los pagos por categoría de servicio (sin categoría = impuesto)', () => {
+    const servicios: ImpuestoServicio[] = [
+      { id: 'imp', nombre: 'ARBA', nroCuenta: '', urlPago: '', frecuencia: 'mensual', diaVto: 10, observaciones: '', categoria: 'impuesto' },
+      { id: 'srv', nombre: 'Ascensores', nroCuenta: '', urlPago: '', frecuencia: 'mensual', diaVto: 10, observaciones: '', categoria: 'servicio' },
+      { id: 'prof', nombre: 'Contadora', nroCuenta: '', urlPago: '', frecuencia: 'mensual', diaVto: 10, observaciones: '', categoria: 'profesional' },
+      { id: 'legacy', nombre: 'EDEA', nroCuenta: '', urlPago: '', frecuencia: 'mensual', diaVto: 10, observaciones: '' }, // sin categoría
+    ]
+    const pagos: PagoMensual[] = [
+      { id: '1', impuestoId: 'imp', mes: '2026-05', monto: 1000, vtoActual: '2026-05-10', vtoSiguiente: '', pagado: true },
+      { id: '2', impuestoId: 'srv', mes: '2026-05', monto: 300, vtoActual: '2026-05-10', vtoSiguiente: '', pagado: true },
+      { id: '3', impuestoId: 'prof', mes: '2026-05', monto: 500, vtoActual: '2026-05-10', vtoSiguiente: '', pagado: true },
+      { id: '4', impuestoId: 'legacy', mes: '2026-05', monto: 700, vtoActual: '2026-05-10', vtoSiguiente: '', pagado: true },
+    ]
+    const result = getMonthlyExpenses(Y, M, [], [], [], pagos, [], servicios)
+    expect(result.impuestosPagado).toBe(1700) // ARBA + EDEA (sin categoría)
+    expect(result.serviciosPagado).toBe(300)
+    expect(result.profesionalesPagado).toBe(500)
+    expect(result.total).toBe(2500)
+  })
+
+  it('sin lista de servicios, todos los pagos cuentan como impuesto (retrocompat)', () => {
+    const pagos: PagoMensual[] = [
+      { id: '1', impuestoId: 'a', mes: '2026-05', monto: 1000, vtoActual: '2026-05-15', vtoSiguiente: '', pagado: true },
+      { id: '2', impuestoId: 'b', mes: '2026-05', monto: 500, vtoActual: '2026-05-20', vtoSiguiente: '', pagado: true },
+    ]
+    const result = getMonthlyExpenses(Y, M, [], [], [], pagos)
+    expect(result.impuestosPagado).toBe(1500)
+    expect(result.serviciosPagado).toBe(0)
+    expect(result.profesionalesPagado).toBe(0)
   })
 })
 

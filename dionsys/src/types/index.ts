@@ -285,6 +285,18 @@ export interface CheckoutDoc {
 
 export type FrecuenciaVto = 'mensual' | 'anual'
 
+// Categoría de un ítem cargado en "Impuestos y Servicios". Sirve para separar en
+// el reporte los impuestos reales (AFIP, ARBA, EDEA…) de los abonos de servicios
+// (ascensores, NetMDQ…) y de los honorarios profesionales (contadora, técnicos).
+// Retrocompat: un servicio SIN categoría cuenta como 'impuesto'.
+export type CategoriaServicio = 'impuesto' | 'servicio' | 'profesional'
+
+export const CATEGORIA_LABELS: Record<CategoriaServicio, string> = {
+  impuesto: 'Impuesto',
+  servicio: 'Servicio / abono',
+  profesional: 'Profesional',
+}
+
 export interface ImpuestoServicio {
   id: string
   nombre: string
@@ -293,6 +305,7 @@ export interface ImpuestoServicio {
   frecuencia: FrecuenciaVto
   diaVto: number // dia del mes del vencimiento
   observaciones: string
+  categoria?: CategoriaServicio // opcional; ausente = 'impuesto' (retrocompat)
 }
 
 export interface PagoMensual {
@@ -326,4 +339,44 @@ export interface MaintenanceTask {
   completionPhoto?: string
   resolutionNotes?: string
   materials?: MaintenanceMaterial[]
+}
+
+// --- Sueldos / nómina ---
+//
+// La nómina es INDEPENDIENTE de Employee (usuarios con PIN del sistema): Roxana o
+// Julio pueden cobrar sueldo sin tener acceso a la app. Por eso EmpleadoNomina es
+// su propia entidad y PagoSueldo guarda un snapshot del nombre.
+
+export interface EmpleadoNomina {
+  id: string
+  nombre: string
+  puesto: string
+  activo: boolean
+}
+
+export type TipoPagoSueldo = 'sueldo' | 'adelanto' | 'aguinaldo' | 'extra'
+
+export type MedioPagoSueldo = 'efectivo' | 'transferencia'
+
+export interface PagoSueldo {
+  id: string
+  empleadoId: string
+  empleadoNombre: string // snapshot: si después se renombra/borra el empleado, el pago lo conserva
+  mes: string // YYYY-MM
+  tipo: TipoPagoSueldo
+  monto: number
+  fecha: string // YYYY-MM-DD
+  medio: MedioPagoSueldo
+  notas?: string
+  reciboUrl?: string // archivo en Supabase Storage
+  reciboNombre?: string
+  createdBy?: string
+  createdAt?: string
+}
+
+export const TIPO_PAGO_SUELDO_LABELS: Record<TipoPagoSueldo, string> = {
+  sueldo: 'Sueldo',
+  adelanto: 'Adelanto',
+  aguinaldo: 'Aguinaldo',
+  extra: 'Extra',
 }

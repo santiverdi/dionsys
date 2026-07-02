@@ -9,7 +9,8 @@ import {
   Check, AlertTriangle, Clock, Edit3, Save, Copy, Plus, Trash2, FileUp, Loader2,
   Paperclip, Eye, Download, X
 } from 'lucide-react'
-import type { ImpuestoServicio, FrecuenciaVto } from '../types'
+import type { ImpuestoServicio, FrecuenciaVto, CategoriaServicio } from '../types'
+import { CATEGORIA_LABELS } from '../types'
 
 // Normaliza un texto para comparar (saca espacios, guiones, mayúsculas).
 function normKey(s: string): string {
@@ -66,6 +67,7 @@ const NUEVO_SERVICIO_VACIO: Omit<ImpuestoServicio, 'id'> = {
   frecuencia: 'mensual',
   diaVto: 1,
   observaciones: '',
+  categoria: 'impuesto',
 }
 
 export default function Impuestos() {
@@ -700,6 +702,18 @@ export default function Impuestos() {
               </select>
             </div>
             <div>
+              <label className="text-xs text-navy-500 font-medium">Categoría</label>
+              <select
+                value={nuevoServicio.categoria ?? 'impuesto'}
+                onChange={e => setNuevoServicio({ ...nuevoServicio, categoria: e.target.value as CategoriaServicio })}
+                className="w-full text-sm border border-navy-200 rounded-lg px-3 py-2 mt-0.5"
+              >
+                {(Object.keys(CATEGORIA_LABELS) as CategoriaServicio[]).map(cat => (
+                  <option key={cat} value={cat}>{CATEGORIA_LABELS[cat]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="text-xs text-navy-500 font-medium">URL de Pago</label>
               <input
                 value={nuevoServicio.urlPago}
@@ -1133,6 +1147,18 @@ export default function Impuestos() {
                             <option value="anual">Anual</option>
                           </select>
                         </div>
+                        <div>
+                          <label className="text-xs text-navy-500 font-medium">Categoría</label>
+                          <select
+                            value={editServicio.categoria ?? 'impuesto'}
+                            onChange={e => setEditServicio({ ...editServicio, categoria: e.target.value as CategoriaServicio })}
+                            className="w-full text-sm border border-navy-200 rounded-lg px-2 py-1.5 mt-0.5"
+                          >
+                            {(Object.keys(CATEGORIA_LABELS) as CategoriaServicio[]).map(cat => (
+                              <option key={cat} value={cat}>{CATEGORIA_LABELS[cat]}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs text-navy-500 font-medium">Observaciones</label>
@@ -1154,11 +1180,16 @@ export default function Impuestos() {
                   ) : (
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium text-navy-800">{srv.nombre}</span>
                           <span className="text-[10px] bg-navy-100 text-navy-500 px-1.5 py-0.5 rounded-full">
                             {srv.frecuencia}
                           </span>
+                          {srv.categoria && srv.categoria !== 'impuesto' && (
+                            <span className="text-[10px] bg-gold-100 text-gold-700 px-1.5 py-0.5 rounded-full font-medium">
+                              {CATEGORIA_LABELS[srv.categoria]}
+                            </span>
+                          )}
                         </div>
                         {srv.nroCuenta && (
                           <div className="flex items-center gap-1">
