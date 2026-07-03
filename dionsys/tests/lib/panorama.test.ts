@@ -119,7 +119,7 @@ describe('getImperfeccionesGlobal + getConserjeStats', () => {
   })
 
   it('cuenta las cajas salteadas como imperfección y las atribuye a quien salteó', () => {
-    // Gaston cargó la 32 salteando la 31 (la anterior por fecha es la 30).
+    // Gaston cargó la 32 salteando la 31 (la anterior por número es la 30).
     const conHueco = [
       mkCaja({ nroCaja: 30, conserje: 'Leandro', saldoFinal: 100 }),
       mkCaja({ nroCaja: 32, conserje: 'Gaston', aperturaMonto: 999, aperturaAt: '2026-06-20T23:00:00.000Z' }),
@@ -131,6 +131,17 @@ describe('getImperfeccionesGlobal + getConserjeStats', () => {
     const stats = getConserjeStats(conHueco, [])
     expect(stats.find(s => s.conserje === 'Gaston')?.imperfecciones.huecos).toBe(1)
     expect(stats.find(s => s.conserje === 'Leandro')?.imperfecciones.huecos).toBe(0)
+  })
+
+  it('detecta el hueco aunque la caja venga por IA sin fecha de apertura', () => {
+    // La anterior se busca por NÚMERO: una caja con aperturaAt vacío (lectura IA)
+    // igual encuentra a la 30 como anterior y el hueco de la 31 no se pierde.
+    const conHueco = [
+      mkCaja({ nroCaja: 30, conserje: 'Leandro', saldoFinal: 100 }),
+      mkCaja({ nroCaja: 32, conserje: 'Gaston', aperturaAt: '' }),
+    ]
+    const i = getImperfeccionesGlobal(conHueco, [])
+    expect(i.huecos).toBe(1)
   })
 })
 
@@ -168,12 +179,22 @@ describe('getOcupacionResumen', () => {
 describe('getCobertura', () => {
   it('detecta cajas sin parte, partes sin caja y huecos en la numeración', () => {
     const cajas = [mkCaja({ nroCaja: 30 }), mkCaja({ nroCaja: 32 })] // falta 31
-    const partes = [mkParte({ nroCaja: 30 }), mkParte({ nroCaja: 40 })]
+    const partes = [mkParte({ nroCaja: 30 }), mkParte({ nroCaja: 33 })]
     const c = getCobertura(cajas, partes)
     expect(c.cajasSinParte).toEqual([32])
-    expect(c.partesSinCaja).toEqual([40])
-    expect(c.huecosNroCaja).toEqual([31])
+    expect(c.partesSinCaja).toEqual([33])
+    expect(c.huecosNroCaja).toEqual([31]) // sin caja NI parte
     expect(c.ultimaCajaNro).toBe(32)
+  })
+
+  it('los huecos se miden sobre la unión: los partes también delatan cajas que faltan', () => {
+    // Las cajas llegan hasta la 32, pero hay un parte de la 36: los turnos
+    // 33-35 no rindieron NADA y antes eran invisibles (solo se miraba el rango de cajas).
+    const cajas = [mkCaja({ nroCaja: 31 }), mkCaja({ nroCaja: 32 })]
+    const partes = [mkParte({ nroCaja: 31 }), mkParte({ nroCaja: 36 })]
+    const c = getCobertura(cajas, partes)
+    expect(c.huecosNroCaja).toEqual([33, 34, 35])
+    expect(c.partesSinCaja).toEqual([36])
   })
 
   it('mide las horas sin carga desde la apertura de la última caja (hueco en la cola)', () => {

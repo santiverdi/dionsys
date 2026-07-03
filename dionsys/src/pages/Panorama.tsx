@@ -153,8 +153,8 @@ export default function Panorama() {
       {cobertura.huecosNroCaja.length > 0 && (
         <Alerta
           level="error"
-          titulo={`Faltan cajas: ${cobertura.huecosNroCaja.map(n => `Nº ${n}`).join(', ')}`}
-          detalle="La numeración jamás se saltea. Hasta que no se carguen, no se puede conciliar la continuidad de la plata de las cajas siguientes."
+          titulo={`Turnos sin rendir: ${cobertura.huecosNroCaja.map(n => `Nº ${n}`).join(', ')}`}
+          detalle="De esos números no hay NI caja NI parte cargados. La numeración jamás se saltea: hasta que no aparezcan, no se puede conciliar la continuidad de la plata de las cajas siguientes."
         />
       )}
       {cobertura.horasSinCarga != null && cobertura.horasSinCarga >= SIN_CARGA_WARN_H && (
@@ -290,7 +290,7 @@ export default function Panorama() {
           <Kpi label="Cajas" value={String(cobertura.cajas)} />
           <Kpi label="Partes" value={String(cobertura.partes)} />
           <Kpi label="Cajas sin parte" value={String(cobertura.cajasSinParte.length)} tone={cobertura.cajasSinParte.length ? 'amber' : 'green'} />
-          <Kpi label="Huecos de Nº caja" value={String(cobertura.huecosNroCaja.length)} tone={cobertura.huecosNroCaja.length ? 'amber' : 'green'} />
+          <Kpi label="Turnos sin rendir" value={String(cobertura.huecosNroCaja.length)} tone={cobertura.huecosNroCaja.length ? 'red' : 'green'} />
         </div>
         {cobertura.cajasSinParte.length > 0 && (
           <p className="text-xs text-amber-700 mb-1">Cajas sin parte: {cobertura.cajasSinParte.join(', ')}</p>
@@ -299,7 +299,7 @@ export default function Panorama() {
           <p className="text-xs text-amber-700 mb-1">Partes sin caja: {cobertura.partesSinCaja.join(', ')}</p>
         )}
         {cobertura.huecosNroCaja.length > 0 && (
-          <p className="text-xs text-amber-700 mb-1">Cajas que faltan cargar (Nº): {cobertura.huecosNroCaja.join(', ')}</p>
+          <p className="text-xs text-red-700 mb-1">Turnos sin caja ni parte (Nº): {cobertura.huecosNroCaja.join(', ')}</p>
         )}
         <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mt-2 mb-1">Última carga por conserje</p>
         <ul className="text-xs space-y-0.5">

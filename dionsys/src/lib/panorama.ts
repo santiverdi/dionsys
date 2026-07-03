@@ -124,10 +124,14 @@ function totalDe(i: ImperfeccionesCount): number {
   return i.descuadres + i.huecos + i.tarjetaSinFB + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
 }
 
+// La caja inmediatamente anterior, por NÚMERO (mismo criterio que parteAnteriorDe):
+// el nroCaja del PMS es secuencial y confiable; el aperturaAt de las cajas leídas
+// por IA puede venir vacío o mal, y ordenar por fecha dejaba esas cajas sin
+// anterior → sin detección de huecos ni descuadres.
 function cajaAnteriorDe(caja: CajaParte, todas: CajaParte[]): CajaParte | undefined {
   return todas
-    .filter(c => c.id !== caja.id && c.aperturaAt && c.aperturaAt < caja.aperturaAt)
-    .sort((a, b) => b.aperturaAt.localeCompare(a.aperturaAt))[0]
+    .filter(c => c.id !== caja.id && c.nroCaja < caja.nroCaja)
+    .sort((a, b) => b.nroCaja - a.nroCaja)[0]
 }
 
 // Imperfecciones de una caja (reusa getCajaFlags para el descuadre de continuidad).
@@ -302,10 +306,15 @@ export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[], ah
   const cajasSinParte = [...nrosCaja].filter(n => !nrosParte.has(n)).sort((a, b) => a - b)
   const partesSinCaja = [...nrosParte].filter(n => !nrosCaja.has(n)).sort((a, b) => a - b)
 
+  // Huecos = números sin caja NI parte dentro del rango conocido (la unión de
+  // ambos): turnos enteros sin rendir nada. Si los partes llegan más lejos que
+  // las cajas (o al revés), el rango del otro también delata lo que falta. Un
+  // número con solo una de las dos cargas ya sale en cajasSinParte/partesSinCaja.
+  const todosNros = new Set([...nrosCaja, ...nrosParte])
   const huecos: number[] = []
-  if (nrosCaja.size > 1) {
-    const min = Math.min(...nrosCaja), max = Math.max(...nrosCaja)
-    for (let n = min + 1; n < max; n++) if (!nrosCaja.has(n)) huecos.push(n)
+  if (todosNros.size > 1) {
+    const min = Math.min(...todosNros), max = Math.max(...todosNros)
+    for (let n = min + 1; n < max; n++) if (!todosNros.has(n)) huecos.push(n)
   }
 
   const ultimaPorConserje = new Map<string, string>()

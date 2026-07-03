@@ -8,7 +8,7 @@ interface CajaContextType {
   cajas: CajaParte[]
   addCaja: (caja: CajaParte) => void
   deleteCaja: (id: string) => void
-  // Caja inmediatamente anterior (por fecha de apertura) — para el cruce de continuidad.
+  // Caja inmediatamente anterior (por Nº de caja) — para el cruce de continuidad y numeración.
   getCajaAnterior: (caja: CajaParte) => CajaParte | undefined
 }
 
@@ -26,7 +26,8 @@ export function CajaProvider({ children }: { children: ReactNode }) {
     setCajas(prev => {
       // Dedup por Nro. de Caja: re-importar la misma caja la reemplaza.
       const rest = prev.filter(c => c.nroCaja !== caja.nroCaja)
-      const updated = [caja, ...rest].sort((a, b) => b.aperturaAt.localeCompare(a.aperturaAt))
+      // Orden por nroCaja desc (el aperturaAt de las cajas por IA puede venir vacío/mal).
+      const updated = [caja, ...rest].sort((a, b) => b.nroCaja - a.nroCaja)
       persist(LS_CAJAS, updated)
       return updated
     })
@@ -41,11 +42,13 @@ export function CajaProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const getCajaAnterior = useCallback((caja: CajaParte): CajaParte | undefined => {
-    // La anterior por apertura; preferimos misma caja de Pto.Vta y por nro consecutivo si está.
-    const candidatas = cajas
-      .filter(c => c.id !== caja.id && c.aperturaAt < caja.aperturaAt)
-      .sort((a, b) => b.aperturaAt.localeCompare(a.aperturaAt))
-    return candidatas[0]
+    // La anterior por NÚMERO (mismo criterio que parteAnteriorDe): el nroCaja del
+    // PMS es secuencial y confiable; el aperturaAt de las cajas leídas por IA puede
+    // venir vacío o mal, y ordenar por fecha dejaba esas cajas sin anterior → sin
+    // detección de huecos ni descuadres de continuidad.
+    return cajas
+      .filter(c => c.id !== caja.id && c.nroCaja < caja.nroCaja)
+      .sort((a, b) => b.nroCaja - a.nroCaja)[0]
   }, [cajas])
 
   return (
