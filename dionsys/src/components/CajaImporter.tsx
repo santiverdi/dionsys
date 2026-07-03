@@ -82,7 +82,7 @@ export default function CajaImporter({ onSaved }: { onSaved?: (caja: CajaParte) 
   const busy = !!importing
   // Regla del hotel: la numeración de cajas JAMÁS se saltea. Si entre la última
   // cargada y esta faltan números, se bloquea el guardado (el admin puede forzar).
-  const faltantes = preview ? faltantesAntesDe(preview.nroCaja, cajas.map(c => c.nroCaja)) : []
+  const faltantes = preview ? faltantesAntesDe(preview.nroCaja, cajas) : []
   const esAdmin = employee?.role === 'admin'
   const bloqueada = faltantes.length > 0 && !esAdmin
 

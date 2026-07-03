@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { getCajaFlags, type CajaFlag } from '../lib/cajaControl'
+import { getTarifaFlags } from '../lib/tarifas'
 import { TURNO_LABELS } from '../context/OccupancyContext'
 import PartePanel from '../components/PartePanel'
 import CajaImporter from '../components/CajaImporter'
@@ -120,7 +121,7 @@ export default function CerrarTurno() {
             <Clock size={11} /> {fmtFecha(caja.aperturaAt)} · {caja.conserje ?? caja.usuarioApertura}
           </p>
           {(() => {
-            const flags = getCajaFlags(caja, getCajaAnterior(caja))
+            const flags = [...getCajaFlags(caja, getCajaAnterior(caja)), ...getTarifaFlags(caja, partes)]
             return flags.length > 0 ? (
               <div className="space-y-1.5">
                 {flags.map((f, i) => <FlagPill key={i} flag={f} />)}

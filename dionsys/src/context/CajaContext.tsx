@@ -1,8 +1,14 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type { CajaParte } from '../types'
 import { persist, useCloudSync } from '../lib/cloudStore'
+import { anteriorPorNro, fechaConfiable } from '../lib/cajaControl'
 
 const LS_CAJAS = 'dionsys_cajas'
+
+// Mismo Nº con fechas a menos de esto = la misma caja (re-import). El ciclo del
+// contador dura ~33 días (100 números a 3 turnos/día), así que 15 días separa
+// con margen un re-import de una colisión de ciclo.
+const MISMO_CICLO_MS = 15 * 24 * 3_600_000
 
 interface CajaContextType {
   cajas: CajaParte[]
@@ -24,10 +30,18 @@ export function CajaProvider({ children }: { children: ReactNode }) {
 
   const addCaja = useCallback((caja: CajaParte) => {
     setCajas(prev => {
-      // Dedup por Nro. de Caja: re-importar la misma caja la reemplaza.
-      const rest = prev.filter(c => c.nroCaja !== caja.nroCaja)
-      // Orden por nroCaja desc (el aperturaAt de las cajas por IA puede venir vacío/mal).
-      const updated = [caja, ...rest].sort((a, b) => b.nroCaja - a.nroCaja)
+      // Dedup por Nro. de Caja SOLO dentro del mismo ciclo: el contador del PMS da
+      // la vuelta en 100, así que la Nº 80 de hoy NO es la Nº 80 de hace dos meses
+      // (borrar esa sería perder una caja vieja). Re-importar la misma caja
+      // (mismo Nº, fechas cercanas) sí la reemplaza.
+      const f = fechaConfiable(caja.aperturaAt, caja.importedAt)
+      const rest = prev.filter(c =>
+        c.nroCaja !== caja.nroCaja ||
+        Math.abs(new Date(fechaConfiable(c.aperturaAt, c.importedAt)).getTime() - new Date(f).getTime()) > MISMO_CICLO_MS,
+      )
+      // Orden por fecha confiable desc (por Nº quedaría la 100 vieja arriba de la 37 nueva).
+      const updated = [caja, ...rest].sort((a, b) =>
+        fechaConfiable(b.aperturaAt, b.importedAt).localeCompare(fechaConfiable(a.aperturaAt, a.importedAt)))
       persist(LS_CAJAS, updated)
       return updated
     })
@@ -42,13 +56,9 @@ export function CajaProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const getCajaAnterior = useCallback((caja: CajaParte): CajaParte | undefined => {
-    // La anterior por NÚMERO (mismo criterio que parteAnteriorDe): el nroCaja del
-    // PMS es secuencial y confiable; el aperturaAt de las cajas leídas por IA puede
-    // venir vacío o mal, y ordenar por fecha dejaba esas cajas sin anterior → sin
-    // detección de huecos ni descuadres de continuidad.
-    return cajas
-      .filter(c => c.id !== caja.id && c.nroCaja < caja.nroCaja)
-      .sort((a, b) => b.nroCaja - a.nroCaja)[0]
+    // La anterior por Nº circular (la anterior a la 1 es la 100). No depende de
+    // fechas: las cajas leídas por IA pueden venir con aperturaAt vacío o mal.
+    return anteriorPorNro(caja, cajas)
   }, [cajas])
 
   return (

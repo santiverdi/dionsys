@@ -11,27 +11,46 @@ function mkCaja(p: Partial<CajaParte>): CajaParte {
   }
 }
 
+// Carga existente para faltantesAntesDe: nro + cuándo se importó (día de junio 2026).
+function carga(nroCaja: number, dia: number): { nroCaja: number; importedAt: string } {
+  return { nroCaja, importedAt: `2026-06-${String(dia).padStart(2, '0')}T12:00:00.000Z` }
+}
+
 describe('faltantesAntesDe', () => {
   it('sin cajas cargadas no bloquea (primera carga histórica)', () => {
     expect(faltantesAntesDe(32, [])).toEqual([])
   })
 
-  it('la caja consecutiva no deja hueco', () => {
-    expect(faltantesAntesDe(31, [29, 30])).toEqual([])
+  it('la caja consecutiva a la última cargada no deja hueco', () => {
+    expect(faltantesAntesDe(31, [carga(29, 1), carga(30, 2)])).toEqual([])
   })
 
   it('saltear un número devuelve el faltante', () => {
-    expect(faltantesAntesDe(32, [29, 30])).toEqual([31])
+    expect(faltantesAntesDe(32, [carga(29, 1), carga(30, 2)])).toEqual([31])
   })
 
   it('saltear varios números los devuelve todos', () => {
-    expect(faltantesAntesDe(35, [30])).toEqual([31, 32, 33, 34])
+    expect(faltantesAntesDe(35, [carga(30, 1)])).toEqual([31, 32, 33, 34])
   })
 
   it('re-importar una caja existente o rellenar un hueco viejo siempre está permitido', () => {
-    expect(faltantesAntesDe(30, [28, 30, 32])).toEqual([]) // re-import
-    expect(faltantesAntesDe(31, [30, 32])).toEqual([])     // rellena el hueco
-    expect(faltantesAntesDe(29, [30, 32])).toEqual([])     // caja vieja
+    expect(faltantesAntesDe(32, [carga(28, 1), carga(30, 2), carga(32, 3)])).toEqual([]) // re-import de la última
+    expect(faltantesAntesDe(31, [carga(30, 1), carga(32, 2)])).toEqual([])               // rellena el hueco
+    expect(faltantesAntesDe(29, [carga(30, 1), carga(32, 2)])).toEqual([])               // caja vieja (va para atrás)
+  })
+
+  it('entiende la vuelta del contador: después de la 100 viene la 1', () => {
+    expect(faltantesAntesDe(1, [carga(99, 1), carga(100, 2)])).toEqual([])      // consecutiva con vuelta
+    expect(faltantesAntesDe(2, [carga(99, 1), carga(100, 2)])).toEqual([1])     // salteó la 1
+    expect(faltantesAntesDe(3, [carga(99, 1)])).toEqual([100, 1, 2])            // salteó cruzando la vuelta
+  })
+
+  it('compara contra la ÚLTIMA carga aunque haya números más altos de un ciclo viejo', () => {
+    // Ciclo viejo 99-100 (importado hace un mes) + ciclo nuevo hasta la 36 (hoy):
+    // guardar la 38 tiene que reclamar la 37, no creerse que "rellena un hueco viejo".
+    const existentes = [carga(99, 1), carga(100, 1), carga(35, 29), carga(36, 30)]
+    expect(faltantesAntesDe(38, existentes)).toEqual([37])
+    expect(faltantesAntesDe(37, existentes)).toEqual([])
   })
 })
 
@@ -73,6 +92,27 @@ describe('getCajaFlags — numeración y continuidad', () => {
 
   it('sin caja anterior no marca numeración ni continuidad', () => {
     const flags = getCajaFlags(mkCaja({ nroCaja: 32, aperturaMonto: 999 }))
+    expect(flags.some(f => f.tipo === 'continuidad' || f.tipo === 'falta_caja')).toBe(false)
+  })
+
+  it('la caja 1 es consecutiva de la 100 (vuelta del contador) y concilia la plata', () => {
+    const anterior = mkCaja({ nroCaja: 100, saldoFinal: 100 })
+    const caja = mkCaja({ nroCaja: 1, aperturaMonto: 999 })
+    const flags = getCajaFlags(caja, anterior)
+    expect(flags.some(f => f.tipo === 'continuidad')).toBe(true) // compara montos, no marca falta_caja
+    expect(flags.some(f => f.tipo === 'falta_caja')).toBe(false)
+  })
+
+  it('un salto cruzando la vuelta lista los números que faltan', () => {
+    const flags = getCajaFlags(mkCaja({ nroCaja: 2 }), mkCaja({ nroCaja: 99 }))
+    const falta = flags.find(f => f.tipo === 'falta_caja')
+    expect(falta?.mensaje).toContain('Nº 100')
+    expect(falta?.mensaje).toContain('Nº 1')
+  })
+
+  it('una "anterior" a más de media vuelta es de otro ciclo: no se concilia nada', () => {
+    // Caja vieja 91 contra la nueva 36: distancia circular 55 → ni descuadre ni falta_caja.
+    const flags = getCajaFlags(mkCaja({ nroCaja: 91, aperturaMonto: 999 }), mkCaja({ nroCaja: 36, saldoFinal: 5 }))
     expect(flags.some(f => f.tipo === 'continuidad' || f.tipo === 'falta_caja')).toBe(false)
   })
 })

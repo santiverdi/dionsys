@@ -178,7 +178,10 @@ describe('getOcupacionResumen', () => {
 
 describe('getCobertura', () => {
   it('detecta cajas sin parte, partes sin caja y huecos en la numeración', () => {
-    const cajas = [mkCaja({ nroCaja: 30 }), mkCaja({ nroCaja: 32 })] // falta 31
+    const cajas = [
+      mkCaja({ nroCaja: 30 }),
+      mkCaja({ nroCaja: 32, aperturaAt: '2026-06-20T23:00:00.000Z' }), // falta 31
+    ]
     const partes = [mkParte({ nroCaja: 30 }), mkParte({ nroCaja: 33 })]
     const c = getCobertura(cajas, partes)
     expect(c.cajasSinParte).toEqual([32])
@@ -204,6 +207,19 @@ describe('getCobertura', () => {
     ]
     const c = getCobertura(cajas, [], new Date('2026-06-21T17:00:00.000Z'))
     expect(c.horasSinCarga).toBe(26) // un día entero sin rendir, aunque no haya hueco numérico
+  })
+
+  it('el paso 100→1 no es hueco (el contador del PMS da la vuelta) y la última caja es por fecha', () => {
+    const cajas = [
+      mkCaja({ nroCaja: 99, aperturaAt: '2026-06-19T22:00:00.000Z' }),
+      mkCaja({ nroCaja: 100, aperturaAt: '2026-06-20T06:00:00.000Z' }),
+      mkCaja({ nroCaja: 1, aperturaAt: '2026-06-20T14:00:00.000Z' }),
+      mkCaja({ nroCaja: 2, aperturaAt: '2026-06-20T22:00:00.000Z' }),
+      mkCaja({ nroCaja: 4, aperturaAt: '2026-06-21T06:00:00.000Z' }),
+    ]
+    const c = getCobertura(cajas, [])
+    expect(c.huecosNroCaja).toEqual([3])  // NO aparecen 5..98 como "faltantes"
+    expect(c.ultimaCajaNro).toBe(4)       // la última por fecha, no la Nº 100
   })
 
   it('sin cajas cargadas no reporta horas (no hay desde cuándo medir)', () => {

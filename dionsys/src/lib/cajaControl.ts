@@ -45,17 +45,79 @@ export function getCajaResumen(caja: CajaParte): CajaResumen {
 // Tolerancia de redondeo para los cuadres (centavos).
 const EPS = 0.5
 
-// Números de caja que FALTAN cargar antes de poder guardar `nroCaja`. La regla
-// del hotel: la numeración del PMS es correlativa y JAMÁS se saltea — guardar la
-// 32 con la 31 sin cargar deja un hueco que después nadie reclama. Solo bloquea
-// hacia adelante: re-importar una caja existente o rellenar un hueco viejo
-// (nroCaja ≤ máximo cargado) siempre está permitido.
-export function faltantesAntesDe(nroCaja: number, existentes: number[]): number[] {
+// La numeración del PMS es CIRCULAR: el contador llega a 100 y arranca de nuevo
+// en 1. Verificado con datos reales: la caja 100 y la caja 1 son del mismo día
+// (20/06/2026), y la Nº 80 existe en febrero Y en junio. O sea el Nº identifica
+// el turno solo dentro del ciclo (~33 días a 3 turnos por día).
+export const CICLO_NROS = 100
+// Más de media vuelta de distancia = es una carga vieja / de otro ciclo, no un salto.
+export const MAX_SALTO_NROS = CICLO_NROS / 2
+
+// Distancia circular hacia adelante de `desde` a `hasta` (0 = mismo número,
+// 1 = consecutivo; la 1 viene después de la 100).
+export function gapCircular(desde: number, hasta: number): number {
+  return ((hasta - desde) % CICLO_NROS + CICLO_NROS) % CICLO_NROS
+}
+
+// Números que quedan en el medio yendo de `desde` a `hasta` (ambos exclusivos),
+// dando la vuelta si hace falta: nrosEntre(99, 2) = [100, 1].
+export function nrosEntre(desde: number, hasta: number): number[] {
+  const gap = gapCircular(desde, hasta)
+  const res: number[] = []
+  for (let i = 1; i < gap; i++) res.push(((desde + i - 1) % CICLO_NROS) + 1)
+  return res
+}
+
+// El ítem "anterior" a uno dado, por Nº circular (la anterior a la Nº 1 es la
+// Nº 100). No depende de fechas: las cajas/partes leídos por IA pueden venir con
+// fecha vacía o rota. Compartido por cajas y partes (misma numeración del PMS).
+// A más de media vuelta no hay anterior (en un contador circular TODO número
+// tendría uno; tan lejos es otro ciclo o el futuro, no "el turno de antes").
+export function anteriorPorNro<T extends { id: string; nroCaja: number }>(
+  item: T,
+  todos: T[],
+): T | undefined {
+  let best: T | undefined
+  let bestGap = Infinity
+  for (const c of todos) {
+    if (c.id === item.id) continue
+    const gap = gapCircular(c.nroCaja, item.nroCaja)
+    if (gap > 0 && gap <= MAX_SALTO_NROS && gap < bestGap) { best = c; bestGap = gap }
+  }
+  return best
+}
+
+// Números que FALTAN cargar antes de poder guardar `nroCaja`. La regla del
+// hotel: la numeración JAMÁS se saltea — guardar la 32 con la 31 sin cargar deja
+// un hueco que después nadie reclama. Se compara contra la ÚLTIMA carga (por
+// importedAt): solo bloquea si el nuevo número viene "adelante" de esa (hasta
+// media vuelta). Re-importar, rellenar huecos viejos o cargar historia queda
+// permitido. Los números ya cargados hace poco no cuentan como faltantes.
+const CARGA_RECIENTE_MS = 25 * 24 * 3_600_000 // < un ciclo completo (~33 días)
+
+export function faltantesAntesDe(
+  nroCaja: number,
+  existentes: { nroCaja: number; importedAt: string }[],
+): number[] {
   if (!existentes.length) return []
-  const max = Math.max(...existentes)
-  const faltan: number[] = []
-  for (let n = max + 1; n < nroCaja; n++) faltan.push(n)
-  return faltan
+  const ultima = existentes.reduce((a, b) => (b.importedAt > a.importedAt ? b : a))
+  const gap = gapCircular(ultima.nroCaja, nroCaja)
+  if (gap === 0 || gap > MAX_SALTO_NROS) return []
+  const ref = new Date(ultima.importedAt).getTime()
+  const recientes = new Set(
+    existentes
+      .filter(e => ref - new Date(e.importedAt).getTime() < CARGA_RECIENTE_MS)
+      .map(e => e.nroCaja),
+  )
+  return nrosEntre(ultima.nroCaja, nroCaja).filter(n => !recientes.has(n))
+}
+
+// Fecha "confiable" de una caja/parte para ordenar en el tiempo: la del PMS si
+// es plausible (las lecturas por IA traen fechas vacías o con año roto, ej.
+// "2009"), si no la de importación (siempre presente y correcta).
+export function fechaConfiable(fechaPms: string | undefined, importedAt: string): string {
+  const f = fechaPms ?? ''
+  return f && !isNaN(new Date(f).getTime()) && f >= '2020' ? f : importedAt
 }
 
 // Lista corta de números faltantes para mensajes ("Nº 31, Nº 32" o un rango si son muchos).
@@ -67,12 +129,13 @@ export function fmtFaltantes(nums: number[]): string {
 export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFlag[] {
   const flags: CajaFlag[] = []
 
-  // 1) Numeración + continuidad contra la caja anterior (por fecha). Si la
+  // 1) Numeración + continuidad contra la caja anterior (por Nº circular). Si la
   // anterior no es la consecutiva, el problema real es que FALTA una caja en el
   // medio: se avisa eso y NO se compara la plata (comparar la apertura contra el
   // cierre de una caja más vieja daría un descuadre falso y confuso).
   if (cajaAnterior) {
-    if (cajaAnterior.nroCaja === caja.nroCaja - 1) {
+    const gap = gapCircular(cajaAnterior.nroCaja, caja.nroCaja)
+    if (gap === 1) {
       const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
       if (Math.abs(diff) > EPS) {
         flags.push({
@@ -81,16 +144,14 @@ export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFla
           mensaje: `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`,
         })
       }
-    } else if (cajaAnterior.nroCaja < caja.nroCaja - 1) {
-      const faltan: number[] = []
-      for (let n = cajaAnterior.nroCaja + 1; n < caja.nroCaja; n++) faltan.push(n)
+    } else if (gap > 1 && gap <= MAX_SALTO_NROS) {
       flags.push({
         level: 'error',
         tipo: 'falta_caja',
-        mensaje: `Entre la caja ${cajaAnterior.nroCaja} y esta falta cargar: ${fmtFaltantes(faltan)}. La numeración jamás se saltea — sin esa caja no se puede conciliar la continuidad de la plata.`,
+        mensaje: `Entre la caja ${cajaAnterior.nroCaja} y esta falta cargar: ${fmtFaltantes(nrosEntre(cajaAnterior.nroCaja, caja.nroCaja))}. La numeración jamás se saltea — sin esa caja no se puede conciliar la continuidad de la plata.`,
       })
     }
-    // Anterior con número mayor o igual: numeración inconsistente, no se concilia.
+    // Más de media vuelta: es de otro ciclo / carga vieja, no se concilia.
   }
 
   // 2) Caja sin cerrar.

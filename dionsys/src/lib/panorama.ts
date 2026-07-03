@@ -3,8 +3,12 @@
 // reglas ya definidas en cajaControl/parteControl para no duplicar criterios.
 
 import type { CajaParte, ParteHabitaciones, Turno, CajaMovimiento } from '../types'
-import { getCajaResumen, getCajaFlags } from './cajaControl'
+import {
+  getCajaResumen, getCajaFlags, anteriorPorNro, gapCircular, nrosEntre,
+  fechaConfiable, MAX_SALTO_NROS,
+} from './cajaControl'
 import { getParteResumen, getCheckouts, getEstadiasOcultas, parteAnteriorDe } from './parteControl'
+import { getTarifaFlags } from './tarifas'
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 
@@ -109,6 +113,7 @@ export interface ImperfeccionesCount {
   descuadres: number
   huecos: number            // cajas salteadas: números que faltan antes de esta caja
   tarjetaSinFB: number
+  tarifasFuera: number      // cobros que no cuadran con la tarifa pactada
   checkoutsSinCobro: number
   estadiasOcultas: number
   cajasSinCerrar: number
@@ -116,34 +121,29 @@ export interface ImperfeccionesCount {
 }
 
 const cero = (): ImperfeccionesCount => ({
-  descuadres: 0, huecos: 0, tarjetaSinFB: 0, checkoutsSinCobro: 0, estadiasOcultas: 0,
-  cajasSinCerrar: 0, total: 0,
+  descuadres: 0, huecos: 0, tarjetaSinFB: 0, tarifasFuera: 0, checkoutsSinCobro: 0,
+  estadiasOcultas: 0, cajasSinCerrar: 0, total: 0,
 })
 
 function totalDe(i: ImperfeccionesCount): number {
-  return i.descuadres + i.huecos + i.tarjetaSinFB + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
+  return i.descuadres + i.huecos + i.tarjetaSinFB + i.tarifasFuera
+    + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
 }
 
-// La caja inmediatamente anterior, por NÚMERO (mismo criterio que parteAnteriorDe):
-// el nroCaja del PMS es secuencial y confiable; el aperturaAt de las cajas leídas
-// por IA puede venir vacío o mal, y ordenar por fecha dejaba esas cajas sin
-// anterior → sin detección de huecos ni descuadres.
-function cajaAnteriorDe(caja: CajaParte, todas: CajaParte[]): CajaParte | undefined {
-  return todas
-    .filter(c => c.id !== caja.id && c.nroCaja < caja.nroCaja)
-    .sort((a, b) => b.nroCaja - a.nroCaja)[0]
-}
-
-// Imperfecciones de una caja (reusa getCajaFlags para el descuadre de continuidad).
-function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[]): ImperfeccionesCount {
-  const anterior = cajaAnteriorDe(caja, cajas)
+// Imperfecciones de una caja (reusa getCajaFlags para el descuadre de continuidad
+// y getTarifaFlags para los cobros fuera de la tarifa pactada).
+function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: ParteHabitaciones[]): ImperfeccionesCount {
+  const anterior = anteriorPorNro(caja, cajas)
   const flags = getCajaFlags(caja, anterior)
   const i = cero()
   i.descuadres = flags.some(f => f.tipo === 'continuidad') ? 1 : 0
-  // Números salteados entre la caja anterior (por fecha) y esta. Se atribuyen a
-  // quien cargó ESTA caja: es quien guardó salteando la numeración.
-  i.huecos = anterior && anterior.nroCaja < caja.nroCaja - 1 ? caja.nroCaja - anterior.nroCaja - 1 : 0
+  // Números salteados entre la caja anterior (por Nº circular) y esta. Se
+  // atribuyen a quien cargó ESTA caja: es quien guardó salteando la numeración.
+  const gap = anterior ? gapCircular(anterior.nroCaja, caja.nroCaja) : 0
+  i.huecos = gap > 1 && gap <= MAX_SALTO_NROS ? gap - 1 : 0
   i.tarjetaSinFB = caja.ingresos.filter(m => m.tarjetas > 0 && !m.facturaB).length
+  // Solo los warn cuentan como imperfección (los info son descuentos a confirmar).
+  i.tarifasFuera = getTarifaFlags(caja, partes).filter(f => f.level === 'warn').length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
   i.total = totalDe(i)
   return i
@@ -163,6 +163,7 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
   a.descuadres += b.descuadres
   a.huecos += b.huecos
   a.tarjetaSinFB += b.tarjetaSinFB
+  a.tarifasFuera += b.tarifasFuera
   a.checkoutsSinCobro += b.checkoutsSinCobro
   a.estadiasOcultas += b.estadiasOcultas
   a.cajasSinCerrar += b.cajasSinCerrar
@@ -171,7 +172,7 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
 
 export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[]): ImperfeccionesCount {
   const acc = cero()
-  for (const c of cajas) acumular(acc, imperfeccionesDeCaja(c, cajas))
+  for (const c of cajas) acumular(acc, imperfeccionesDeCaja(c, cajas, partes))
   for (const p of partes) acumular(acc, imperfeccionesDeParte(p, partes, cajas))
   return acc
 }
@@ -207,7 +208,7 @@ export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[]
     s.cajas += 1
     s.totalCobrado += r.totalCobrado
     s.cantIngresos += r.cantIngresos
-    acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas))
+    acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas, partes))
     const f = fb.get(s.conserje) ?? { tarjeta: 0, conFB: 0 }
     f.tarjeta += c.ingresos.filter(m => m.tarjetas > 0).length
     f.conFB += c.ingresos.filter(m => m.tarjetas > 0 && m.facturaB).length
@@ -306,16 +307,32 @@ export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[], ah
   const cajasSinParte = [...nrosCaja].filter(n => !nrosParte.has(n)).sort((a, b) => a - b)
   const partesSinCaja = [...nrosParte].filter(n => !nrosCaja.has(n)).sort((a, b) => a - b)
 
-  // Huecos = números sin caja NI parte dentro del rango conocido (la unión de
-  // ambos): turnos enteros sin rendir nada. Si los partes llegan más lejos que
-  // las cajas (o al revés), el rango del otro también delata lo que falta. Un
-  // número con solo una de las dos cargas ya sale en cajasSinParte/partesSinCaja.
-  const todosNros = new Set([...nrosCaja, ...nrosParte])
-  const huecos: number[] = []
-  if (todosNros.size > 1) {
-    const min = Math.min(...todosNros), max = Math.max(...todosNros)
-    for (let n = min + 1; n < max; n++) if (!todosNros.has(n)) huecos.push(n)
+  // Huecos = números sin caja NI parte: turnos enteros sin rendir nada. Como el
+  // contador del PMS da la vuelta en 100, no sirve mirar el rango min–max: se
+  // arma la LÍNEA DE TIEMPO de números cargados (caja o parte, ordenados por
+  // fecha confiable) y se marcan los saltos circulares entre vecinos. Así los
+  // partes también delatan cajas que faltan en la cola, y el paso 100→1 no es
+  // hueco. Un número con solo una de las dos cargas ya sale en
+  // cajasSinParte/partesSinCaja.
+  const porNro = new Map<number, string>()
+  const anotar = (nro: number, f: string) => {
+    const prev = porNro.get(nro)
+    if (!prev || f < prev) porNro.set(nro, f)
   }
+  for (const c of cajas) anotar(c.nroCaja, fechaConfiable(c.aperturaAt, c.importedAt))
+  for (const p of partes) anotar(p.nroCaja, fechaConfiable(p.fechaCaja, p.importedAt))
+  const linea = [...porNro.entries()]
+    .map(([nro, f]) => ({ nro, f }))
+    .sort((a, b) => a.f.localeCompare(b.f))
+  const huecosSet = new Set<number>()
+  for (let k = 1; k < linea.length; k++) {
+    const gap = gapCircular(linea[k - 1].nro, linea[k].nro)
+    if (gap > 1 && gap <= MAX_SALTO_NROS) {
+      for (const n of nrosEntre(linea[k - 1].nro, linea[k].nro)) huecosSet.add(n)
+    }
+  }
+  // Un número cargado nunca es hueco (las fechas de import pueden desordenar la línea).
+  const huecos = [...huecosSet].filter(n => !porNro.has(n)).sort((a, b) => a - b)
 
   const ultimaPorConserje = new Map<string, string>()
   for (const c of cajas) {
@@ -324,9 +341,13 @@ export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[], ah
     if (!prev || c.importedAt > prev) ultimaPorConserje.set(k, c.importedAt)
   }
 
-  const aperturas = cajas.map(c => new Date(c.aperturaAt).getTime()).filter(t => !isNaN(t))
-  const horasSinCarga = aperturas.length
-    ? Math.max(0, Math.round((ahora.getTime() - Math.max(...aperturas)) / 3_600_000))
+  // La última caja por fecha confiable (por Nº no sirve: la 100 vieja le "ganaría" a la 37 nueva).
+  const ultimaCaja = cajas.length
+    ? cajas.reduce((a, b) =>
+        fechaConfiable(b.aperturaAt, b.importedAt) > fechaConfiable(a.aperturaAt, a.importedAt) ? b : a)
+    : null
+  const horasSinCarga = ultimaCaja
+    ? Math.max(0, Math.round((ahora.getTime() - new Date(fechaConfiable(ultimaCaja.aperturaAt, ultimaCaja.importedAt)).getTime()) / 3_600_000))
     : null
 
   return {
@@ -335,7 +356,7 @@ export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[], ah
     cajasSinParte,
     partesSinCaja,
     huecosNroCaja: huecos,
-    ultimaCajaNro: nrosCaja.size ? Math.max(...nrosCaja) : null,
+    ultimaCajaNro: ultimaCaja?.nroCaja ?? null,
     horasSinCarga,
     ultimaCargaPorConserje: [...ultimaPorConserje.entries()]
       .map(([conserje, ultima]) => ({ conserje, ultima }))

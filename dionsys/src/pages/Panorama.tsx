@@ -61,6 +61,7 @@ function imperfArray(i: ImperfeccionesCount) {
   return [
     { label: 'Cajas salteadas', n: i.huecos, level: 'error' as const },
     { label: 'Descuadres', n: i.descuadres, level: 'error' as const },
+    { label: 'Tarifa fuera de pactada', n: i.tarifasFuera, level: 'warn' as const },
     { label: 'Tarjeta sin FB', n: i.tarjetaSinFB, level: 'warn' as const },
     { label: 'Check-out sin cobro', n: i.checkoutsSinCobro, level: 'error' as const },
     { label: 'Estadías ocultas', n: i.estadiasOcultas, level: 'warn' as const },
@@ -175,7 +176,7 @@ export default function Panorama() {
 
       {/* Control & cumplimiento */}
       <Section icon={AlertTriangle} title="Control & cumplimiento">
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
           {imperfArray(imperfecciones).map(x => <ImperfCell key={x.label} {...x} />)}
         </div>
       </Section>

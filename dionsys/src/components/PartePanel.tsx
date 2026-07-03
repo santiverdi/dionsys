@@ -184,7 +184,7 @@ export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onS
 
   // Misma regla que las cajas: la numeración de los partes JAMÁS se saltea. Si
   // entre el último cargado y este faltan números, se bloquea (el admin puede forzar).
-  const faltantes = preview ? faltantesAntesDe(preview.nroCaja, partes.map(p => p.nroCaja)) : []
+  const faltantes = preview ? faltantesAntesDe(preview.nroCaja, partes) : []
   const esAdmin = employee?.role === 'admin'
   const bloqueado = faltantes.length > 0 && !esAdmin
 
