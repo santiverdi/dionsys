@@ -3,7 +3,8 @@ import { Bell, X } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { useOccupancy, type Turno } from '../context/OccupancyContext'
 
-function minutesUntilTurnoEnd(turno: Turno, now: Date): number {
+// Compartido con CierreTurnoReminder (mismos horarios de turno: 7/15/23 hs).
+export function minutesUntilTurnoEnd(turno: Turno, now: Date): number {
   const h = now.getHours()
   const m = now.getMinutes()
   const nowMin = h * 60 + m

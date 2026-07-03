@@ -117,6 +117,21 @@ describe('getImperfeccionesGlobal + getConserjeStats', () => {
     // Leandro tiene 2 imperfecciones, Santiago 1 → Leandro primero.
     expect(stats[0].conserje).toBe('Leandro')
   })
+
+  it('cuenta las cajas salteadas como imperfección y las atribuye a quien salteó', () => {
+    // Gaston cargó la 32 salteando la 31 (la anterior por fecha es la 30).
+    const conHueco = [
+      mkCaja({ nroCaja: 30, conserje: 'Leandro', saldoFinal: 100 }),
+      mkCaja({ nroCaja: 32, conserje: 'Gaston', aperturaMonto: 999, aperturaAt: '2026-06-20T23:00:00.000Z' }),
+    ]
+    const i = getImperfeccionesGlobal(conHueco, [])
+    expect(i.huecos).toBe(1)
+    // El hueco NO genera además un descuadre falso (apertura de la 32 vs cierre de la 30).
+    expect(i.descuadres).toBe(0)
+    const stats = getConserjeStats(conHueco, [])
+    expect(stats.find(s => s.conserje === 'Gaston')?.imperfecciones.huecos).toBe(1)
+    expect(stats.find(s => s.conserje === 'Leandro')?.imperfecciones.huecos).toBe(0)
+  })
 })
 
 describe('getOcupacionResumen', () => {
@@ -158,6 +173,22 @@ describe('getCobertura', () => {
     expect(c.cajasSinParte).toEqual([32])
     expect(c.partesSinCaja).toEqual([40])
     expect(c.huecosNroCaja).toEqual([31])
+    expect(c.ultimaCajaNro).toBe(32)
+  })
+
+  it('mide las horas sin carga desde la apertura de la última caja (hueco en la cola)', () => {
+    const cajas = [
+      mkCaja({ nroCaja: 30, aperturaAt: '2026-06-20T07:00:00.000Z' }),
+      mkCaja({ nroCaja: 31, aperturaAt: '2026-06-20T15:00:00.000Z' }),
+    ]
+    const c = getCobertura(cajas, [], new Date('2026-06-21T17:00:00.000Z'))
+    expect(c.horasSinCarga).toBe(26) // un día entero sin rendir, aunque no haya hueco numérico
+  })
+
+  it('sin cajas cargadas no reporta horas (no hay desde cuándo medir)', () => {
+    const c = getCobertura([], [], new Date('2026-06-21T17:00:00.000Z'))
+    expect(c.horasSinCarga).toBeNull()
+    expect(c.ultimaCajaNro).toBeNull()
   })
 })
 

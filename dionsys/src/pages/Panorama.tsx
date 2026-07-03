@@ -59,12 +59,34 @@ function ImperfCell({ label, n, level = 'warn' }: { label: string; n: number; le
 
 function imperfArray(i: ImperfeccionesCount) {
   return [
+    { label: 'Cajas salteadas', n: i.huecos, level: 'error' as const },
     { label: 'Descuadres', n: i.descuadres, level: 'error' as const },
     { label: 'Tarjeta sin FB', n: i.tarjetaSinFB, level: 'warn' as const },
     { label: 'Check-out sin cobro', n: i.checkoutsSinCobro, level: 'error' as const },
     { label: 'Estadías ocultas', n: i.estadiasOcultas, level: 'warn' as const },
     { label: 'Cajas sin cerrar', n: i.cajasSinCerrar, level: 'warn' as const },
   ]
+}
+
+// Con 3 turnos por día debería entrar una caja cada ~8 h. Más de 12 h sin cargas
+// es sospechoso; más de 24 h es un día entero sin rendir nada.
+const SIN_CARGA_WARN_H = 12
+const SIN_CARGA_ERROR_H = 24
+// Un conserje que hace más de 2 días que no carga nada se marca en la lista.
+const CONSERJE_VIEJO_MS = 48 * 3_600_000
+
+// Banner de alerta al tope del panorama (lo que hay que ver ANTES que los números).
+function Alerta({ level, titulo, detalle }: { level: 'error' | 'warn'; titulo: string; detalle: string }) {
+  const cls = level === 'error' ? 'border-red-300 bg-red-50 text-red-800' : 'border-amber-300 bg-amber-50 text-amber-800'
+  return (
+    <div className={`flex items-start gap-2 rounded-xl border-2 p-3 mb-3 ${cls}`}>
+      <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <p className="text-sm font-bold">{titulo}</p>
+        <p className="text-xs mt-0.5">{detalle}</p>
+      </div>
+    </div>
+  )
 }
 
 function ConserjeRow({ s, maxCobrado }: { s: ConserjeStats; maxCobrado: number }) {
@@ -127,6 +149,22 @@ export default function Panorama() {
         Todo lo que cargan los conserjes en sus cajas y partes, agregado. {cobertura.cajas} cajas · {cobertura.partes} partes.
       </p>
 
+      {/* Alertas duras: lo que hay que resolver antes de mirar los números */}
+      {cobertura.huecosNroCaja.length > 0 && (
+        <Alerta
+          level="error"
+          titulo={`Faltan cajas: ${cobertura.huecosNroCaja.map(n => `Nº ${n}`).join(', ')}`}
+          detalle="La numeración jamás se saltea. Hasta que no se carguen, no se puede conciliar la continuidad de la plata de las cajas siguientes."
+        />
+      )}
+      {cobertura.horasSinCarga != null && cobertura.horasSinCarga >= SIN_CARGA_WARN_H && (
+        <Alerta
+          level={cobertura.horasSinCarga >= SIN_CARGA_ERROR_H ? 'error' : 'warn'}
+          titulo={`Hace ~${cobertura.horasSinCarga} h que no entra ninguna caja nueva`}
+          detalle={`La última cargada es la Nº ${cobertura.ultimaCajaNro}. Con 3 turnos por día debería entrar una caja cada ~8 h — revisá qué turnos no rindieron.`}
+        />
+      )}
+
       {/* KPIs principales */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <Kpi label="Total cobrado" value={formatMontoCurrency(dinero.totalCobrado)} sub={`${dinero.cantIngresos} cobros`} tone="green" />
@@ -137,7 +175,7 @@ export default function Panorama() {
 
       {/* Control & cumplimiento */}
       <Section icon={AlertTriangle} title="Control & cumplimiento">
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {imperfArray(imperfecciones).map(x => <ImperfCell key={x.label} {...x} />)}
         </div>
       </Section>
@@ -265,12 +303,17 @@ export default function Panorama() {
         )}
         <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mt-2 mb-1">Última carga por conserje</p>
         <ul className="text-xs space-y-0.5">
-          {cobertura.ultimaCargaPorConserje.map(u => (
-            <li key={u.conserje} className="flex items-center justify-between">
-              <span className="text-navy-600">{u.conserje}</span>
-              <span className="text-navy-400">{fmtFechaCorta(u.ultima)}</span>
-            </li>
-          ))}
+          {cobertura.ultimaCargaPorConserje.map(u => {
+            const viejo = Date.now() - new Date(u.ultima).getTime() > CONSERJE_VIEJO_MS
+            return (
+              <li key={u.conserje} className="flex items-center justify-between">
+                <span className="text-navy-600">{u.conserje}</span>
+                <span className={viejo ? 'text-amber-600 font-semibold' : 'text-navy-400'}>
+                  {fmtFechaCorta(u.ultima)}{viejo && ' · +2 días sin cargar'}
+                </span>
+              </li>
+            )
+          })}
         </ul>
       </Section>
     </div>

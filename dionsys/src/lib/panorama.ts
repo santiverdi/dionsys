@@ -107,6 +107,7 @@ export function getGastosCaja(cajas: CajaParte[]): GastoItem[] {
 // ===== Control / imperfecciones =====
 export interface ImperfeccionesCount {
   descuadres: number
+  huecos: number            // cajas salteadas: números que faltan antes de esta caja
   tarjetaSinFB: number
   checkoutsSinCobro: number
   estadiasOcultas: number
@@ -115,12 +116,12 @@ export interface ImperfeccionesCount {
 }
 
 const cero = (): ImperfeccionesCount => ({
-  descuadres: 0, tarjetaSinFB: 0, checkoutsSinCobro: 0, estadiasOcultas: 0,
+  descuadres: 0, huecos: 0, tarjetaSinFB: 0, checkoutsSinCobro: 0, estadiasOcultas: 0,
   cajasSinCerrar: 0, total: 0,
 })
 
 function totalDe(i: ImperfeccionesCount): number {
-  return i.descuadres + i.tarjetaSinFB + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
+  return i.descuadres + i.huecos + i.tarjetaSinFB + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
 }
 
 function cajaAnteriorDe(caja: CajaParte, todas: CajaParte[]): CajaParte | undefined {
@@ -131,9 +132,13 @@ function cajaAnteriorDe(caja: CajaParte, todas: CajaParte[]): CajaParte | undefi
 
 // Imperfecciones de una caja (reusa getCajaFlags para el descuadre de continuidad).
 function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[]): ImperfeccionesCount {
-  const flags = getCajaFlags(caja, cajaAnteriorDe(caja, cajas))
+  const anterior = cajaAnteriorDe(caja, cajas)
+  const flags = getCajaFlags(caja, anterior)
   const i = cero()
   i.descuadres = flags.some(f => f.tipo === 'continuidad') ? 1 : 0
+  // Números salteados entre la caja anterior (por fecha) y esta. Se atribuyen a
+  // quien cargó ESTA caja: es quien guardó salteando la numeración.
+  i.huecos = anterior && anterior.nroCaja < caja.nroCaja - 1 ? caja.nroCaja - anterior.nroCaja - 1 : 0
   i.tarjetaSinFB = caja.ingresos.filter(m => m.tarjetas > 0 && !m.facturaB).length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
   i.total = totalDe(i)
@@ -152,6 +157,7 @@ function imperfeccionesDeParte(parte: ParteHabitaciones, partes: ParteHabitacion
 
 function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
   a.descuadres += b.descuadres
+  a.huecos += b.huecos
   a.tarjetaSinFB += b.tarjetaSinFB
   a.checkoutsSinCobro += b.checkoutsSinCobro
   a.estadiasOcultas += b.estadiasOcultas
@@ -281,10 +287,16 @@ export interface Cobertura {
   cajasSinParte: number[]    // nroCaja con caja pero sin parte
   partesSinCaja: number[]    // nroCaja con parte pero sin caja
   huecosNroCaja: number[]    // números faltantes entre la primera y la última caja
+  ultimaCajaNro: number | null
+  // Horas desde la apertura de la última caja cargada. Los huecos de arriba solo
+  // ven ENTRE cajas cargadas; esto detecta el hueco en la cola: si nadie carga
+  // las últimas cajas, no hay hueco numérico pero esta cifra crece (con 3 turnos
+  // por día debería entrar una caja cada ~8 h).
+  horasSinCarga: number | null
   ultimaCargaPorConserje: { conserje: string; ultima: string }[]
 }
 
-export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[]): Cobertura {
+export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date()): Cobertura {
   const nrosCaja = new Set(cajas.map(c => c.nroCaja))
   const nrosParte = new Set(partes.map(p => p.nroCaja))
   const cajasSinParte = [...nrosCaja].filter(n => !nrosParte.has(n)).sort((a, b) => a - b)
@@ -302,12 +314,20 @@ export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[]): C
     const prev = ultimaPorConserje.get(k)
     if (!prev || c.importedAt > prev) ultimaPorConserje.set(k, c.importedAt)
   }
+
+  const aperturas = cajas.map(c => new Date(c.aperturaAt).getTime()).filter(t => !isNaN(t))
+  const horasSinCarga = aperturas.length
+    ? Math.max(0, Math.round((ahora.getTime() - Math.max(...aperturas)) / 3_600_000))
+    : null
+
   return {
     cajas: cajas.length,
     partes: partes.length,
     cajasSinParte,
     partesSinCaja,
     huecosNroCaja: huecos,
+    ultimaCajaNro: nrosCaja.size ? Math.max(...nrosCaja) : null,
+    horasSinCarga,
     ultimaCargaPorConserje: [...ultimaPorConserje.entries()]
       .map(([conserje, ultima]) => ({ conserje, ultima }))
       .sort((a, b) => b.ultima.localeCompare(a.ultima)),
@@ -356,13 +376,13 @@ export interface Panorama {
   serie: SerieDia[]
 }
 
-export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[]): Panorama {
+export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date()): Panorama {
   return {
     dinero: getDineroResumen(cajas),
     imperfecciones: getImperfeccionesGlobal(cajas, partes),
     conserjes: getConserjeStats(cajas, partes),
     ocupacion: getOcupacionResumen(partes),
-    cobertura: getCobertura(cajas, partes),
+    cobertura: getCobertura(cajas, partes, ahora),
     gastos: getGastosCaja(cajas),
     serie: getSerieDiaria(cajas, partes),
   }

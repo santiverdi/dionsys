@@ -45,19 +45,52 @@ export function getCajaResumen(caja: CajaParte): CajaResumen {
 // Tolerancia de redondeo para los cuadres (centavos).
 const EPS = 0.5
 
+// Números de caja que FALTAN cargar antes de poder guardar `nroCaja`. La regla
+// del hotel: la numeración del PMS es correlativa y JAMÁS se saltea — guardar la
+// 32 con la 31 sin cargar deja un hueco que después nadie reclama. Solo bloquea
+// hacia adelante: re-importar una caja existente o rellenar un hueco viejo
+// (nroCaja ≤ máximo cargado) siempre está permitido.
+export function faltantesAntesDe(nroCaja: number, existentes: number[]): number[] {
+  if (!existentes.length) return []
+  const max = Math.max(...existentes)
+  const faltan: number[] = []
+  for (let n = max + 1; n < nroCaja; n++) faltan.push(n)
+  return faltan
+}
+
+// Lista corta de números faltantes para mensajes ("Nº 31, Nº 32" o un rango si son muchos).
+export function fmtFaltantes(nums: number[]): string {
+  if (nums.length <= 4) return nums.map(n => `Nº ${n}`).join(', ')
+  return `${nums.length} cajas (Nº ${nums[0]} a Nº ${nums[nums.length - 1]})`
+}
+
 export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFlag[] {
   const flags: CajaFlag[] = []
 
-  // 1) Continuidad: la apertura de esta caja debe coincidir con el cierre (saldo) de la anterior.
+  // 1) Numeración + continuidad contra la caja anterior (por fecha). Si la
+  // anterior no es la consecutiva, el problema real es que FALTA una caja en el
+  // medio: se avisa eso y NO se compara la plata (comparar la apertura contra el
+  // cierre de una caja más vieja daría un descuadre falso y confuso).
   if (cajaAnterior) {
-    const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
-    if (Math.abs(diff) > EPS) {
+    if (cajaAnterior.nroCaja === caja.nroCaja - 1) {
+      const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
+      if (Math.abs(diff) > EPS) {
+        flags.push({
+          level: 'error',
+          tipo: 'continuidad',
+          mensaje: `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`,
+        })
+      }
+    } else if (cajaAnterior.nroCaja < caja.nroCaja - 1) {
+      const faltan: number[] = []
+      for (let n = cajaAnterior.nroCaja + 1; n < caja.nroCaja; n++) faltan.push(n)
       flags.push({
         level: 'error',
-        tipo: 'continuidad',
-        mensaje: `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`,
+        tipo: 'falta_caja',
+        mensaje: `Entre la caja ${cajaAnterior.nroCaja} y esta falta cargar: ${fmtFaltantes(faltan)}. La numeración jamás se saltea — sin esa caja no se puede conciliar la continuidad de la plata.`,
       })
     }
+    // Anterior con número mayor o igual: numeración inconsistente, no se concilia.
   }
 
   // 2) Caja sin cerrar.

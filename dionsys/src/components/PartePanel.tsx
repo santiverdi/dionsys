@@ -10,6 +10,7 @@ import { useCheckoutDocs } from '../context/CheckoutDocsContext'
 import { parsePartePdf, parteFromExtracted } from '../lib/parsePartePdf'
 import { extractParte } from '../lib/invoiceExtract'
 import { getParteFlags, getParteResumen, getCheckouts, type ParteFlag, type CheckoutRecord } from '../lib/parteControl'
+import { faltantesAntesDe, fmtFaltantes } from '../lib/cajaControl'
 import { scanImageFile } from '../lib/scanDocument'
 import { fileToPdf } from '../lib/imageToPdf'
 import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
@@ -133,7 +134,7 @@ const ESTADO_STYLE: Record<EstadoHabitacion, { label: string; cls: string; Icon:
 
 export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onSaved?: (parte: ParteHabitaciones) => void }) {
   const { employee } = useAuth()
-  const { addParte, deleteParte, getParteByCaja, getParteAnterior } = usePartes()
+  const { partes, addParte, deleteParte, getParteByCaja, getParteAnterior } = usePartes()
   const { cajas } = useCajas()
   const [preview, setPreview] = useState<ParteHabitaciones | null>(null)
   const [importing, setImporting] = useState<'' | 'pdf' | 'ia'>('')
@@ -181,8 +182,14 @@ export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onS
     if (file) procesar(file, 'ia', async f => parteFromExtracted(await extractParte(f), employee?.name ?? '', f.name), fileIaRef)
   }
 
+  // Misma regla que las cajas: la numeración de los partes JAMÁS se saltea. Si
+  // entre el último cargado y este faltan números, se bloquea (el admin puede forzar).
+  const faltantes = preview ? faltantesAntesDe(preview.nroCaja, partes.map(p => p.nroCaja)) : []
+  const esAdmin = employee?.role === 'admin'
+  const bloqueado = faltantes.length > 0 && !esAdmin
+
   function confirmImport() {
-    if (!preview) return
+    if (!preview || bloqueado) return
     addParte(preview)
     onSaved?.(preview)
     setPreview(null)
@@ -221,8 +228,32 @@ export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onS
             <p className="text-xs text-navy-500 mb-3">
               {preview.totalOcupadas} ocupadas · {preview.totalPlazas} plazas · {preview.totalLibres} libres
             </p>
-            <button onClick={confirmImport} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-navy-800 text-cream font-bold text-sm hover:bg-navy-700 transition-colors">
-              <Save size={16} /> Guardar parte
+            {faltantes.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-2.5 text-xs text-red-700 mb-3">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  <strong>No se puede saltear la numeración.</strong> Antes del parte de la Caja {preview.nroCaja} falta
+                  cargar el de: {fmtFaltantes(faltantes)}. Buscá ese parte y subilo primero.
+                  {esAdmin && ' Como admin podés guardar igual, pero el hueco queda marcado en el dashboard.'}
+                </span>
+              </div>
+            )}
+            <button
+              onClick={confirmImport}
+              disabled={bloqueado}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-colors ${
+                bloqueado
+                  ? 'bg-navy-100 text-navy-400 cursor-not-allowed'
+                  : faltantes.length > 0
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-navy-800 text-cream hover:bg-navy-700'
+              }`}
+            >
+              <Save size={16} /> {bloqueado
+                ? `Falta el parte de la Caja ${faltantes[0]} — no se puede guardar`
+                : faltantes.length > 0
+                  ? 'Guardar igual dejando hueco (admin)'
+                  : 'Guardar parte'}
             </button>
           </div>
         )}

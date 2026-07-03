@@ -5,6 +5,7 @@ import { canAccess } from '../utils/permissions'
 import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase, ClipboardCheck } from 'lucide-react'
 import type { Role } from '../types'
 import OccupancyReminder from './OccupancyReminder'
+import CierreTurnoReminder from './CierreTurnoReminder'
 import PedidosPorRecibir from './PedidosPorRecibir'
 
 // Impuestos y Proveedores no tienen entrada propia: se acceden desde Administracion.
@@ -121,6 +122,7 @@ export default function Layout() {
       {/* Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6">
         {role && canAccess(role, '/recepcion') && <OccupancyReminder />}
+        {role && canAccess(role, '/cerrar-turno') && <CierreTurnoReminder />}
         <PedidosPorRecibir />
         <Outlet />
       </main>

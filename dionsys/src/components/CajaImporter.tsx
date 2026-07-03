@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
-import { Upload, FileSpreadsheet, Save, X, Sparkles } from 'lucide-react'
+import { Upload, FileSpreadsheet, Save, X, Sparkles, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCajas } from '../context/CajaContext'
 import { parseCajaExcel, cajaFromExtracted } from '../lib/parseCaja'
 import { extractCaja } from '../lib/invoiceExtract'
-import { getCajaResumen } from '../lib/cajaControl'
+import { getCajaResumen, faltantesAntesDe, fmtFaltantes } from '../lib/cajaControl'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS } from '../context/OccupancyContext'
 import type { CajaParte } from '../types'
@@ -30,7 +30,7 @@ function fmtFecha(iso: string): string {
  */
 export default function CajaImporter({ onSaved }: { onSaved?: (caja: CajaParte) => void }) {
   const { employee } = useAuth()
-  const { addCaja } = useCajas()
+  const { cajas, addCaja } = useCajas()
   const [preview, setPreview] = useState<CajaParte | null>(null)
   const [importing, setImporting] = useState<'' | 'excel' | 'ia'>('')
   const [error, setError] = useState('')
@@ -73,13 +73,18 @@ export default function CajaImporter({ onSaved }: { onSaved?: (caja: CajaParte) 
   }
 
   function confirmImport() {
-    if (!preview) return
+    if (!preview || bloqueada) return
     addCaja(preview)
     onSaved?.(preview)
     setPreview(null)
   }
 
   const busy = !!importing
+  // Regla del hotel: la numeración de cajas JAMÁS se saltea. Si entre la última
+  // cargada y esta faltan números, se bloquea el guardado (el admin puede forzar).
+  const faltantes = preview ? faltantesAntesDe(preview.nroCaja, cajas.map(c => c.nroCaja)) : []
+  const esAdmin = employee?.role === 'admin'
+  const bloqueada = faltantes.length > 0 && !esAdmin
 
   return (
     <div>
@@ -130,8 +135,32 @@ export default function CajaImporter({ onSaved }: { onSaved?: (caja: CajaParte) 
             <div className="bg-navy-50 rounded-lg p-2"><p className="text-[10px] text-navy-500 uppercase">Cobros</p><p className="font-bold text-navy-800">{preview.ingresos.length}</p></div>
             <div className="bg-green-50 rounded-lg p-2"><p className="text-[10px] text-green-700 uppercase">Saldo</p><p className="font-bold text-navy-800">{formatMontoCurrency(preview.saldoFinal)}</p></div>
           </div>
-          <button onClick={confirmImport} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-navy-800 text-cream font-bold text-sm hover:bg-navy-700 transition-colors">
-            <Save size={16} /> Guardar caja {preview.nroCaja}
+          {faltantes.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-2.5 text-xs text-red-700 mb-3">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>
+                <strong>No se puede saltear la numeración.</strong> Antes de la caja {preview.nroCaja} falta
+                cargar: {fmtFaltantes(faltantes)}. Buscá el Excel de esa caja en el PMS y subilo primero.
+                {esAdmin && ' Como admin podés guardar igual, pero el hueco queda marcado en el dashboard.'}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={confirmImport}
+            disabled={bloqueada}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-colors ${
+              bloqueada
+                ? 'bg-navy-100 text-navy-400 cursor-not-allowed'
+                : faltantes.length > 0
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-navy-800 text-cream hover:bg-navy-700'
+            }`}
+          >
+            <Save size={16} /> {bloqueada
+              ? `Falta la caja ${faltantes[0]} — no se puede guardar`
+              : faltantes.length > 0
+                ? `Guardar igual dejando hueco (admin)`
+                : `Guardar caja ${preview.nroCaja}`}
           </button>
         </div>
       )}
