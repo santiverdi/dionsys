@@ -8,7 +8,7 @@
 // descuento por pagar en efectivo. Un cobro que cuadra = n noches × tarifa.
 
 import type { CajaParte, ParteHabitaciones, CajaMovimiento } from '../types'
-import type { CajaFlag } from './cajaControl'
+import { fechaConfiable, type CajaFlag } from './cajaControl'
 
 export interface TarifaPeriodo {
   desde: string   // YYYY-MM-DD inclusive
@@ -50,6 +50,30 @@ export function tarifaVigente(fecha: string, tarifas: TarifaPeriodo[] = TARIFAS_
   const dia = (fecha || '').slice(0, 10)
   if (!dia) return undefined
   return tarifas.find(t => t.desde <= dia && dia <= t.hasta)
+}
+
+// Ventana hacia atrás que se controla para el aviso de cobertura de tarifas.
+const VENTANA_SIN_TARIFA_MS = 15 * 24 * 3_600_000
+
+// Meses (YYYY-MM) RECIENTES sin ninguna tarifa cargada: hoy y los días de las
+// cajas de los últimos 15 días. Es el aviso al admin de que esos cobros están
+// quedando SIN control de tarifa (la historia vieja sin tarifas no es accionable
+// y no se reclama). Devuelve ordenado.
+export function mesesSinTarifa(
+  cajas: CajaParte[],
+  tarifas: TarifaPeriodo[] = TARIFAS_PACTADAS,
+  ahora: Date = new Date(),
+): string[] {
+  const meses = new Set<string>()
+  const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+  if (!tarifaVigente(hoy, tarifas)) meses.add(hoy.slice(0, 7))
+  for (const c of cajas) {
+    const f = fechaConfiable(c.aperturaAt, c.importedAt)
+    const t = new Date(f).getTime()
+    if (isNaN(t) || ahora.getTime() - t > VENTANA_SIN_TARIFA_MS) continue
+    if (!tarifaVigente(f, tarifas)) meses.add(f.slice(0, 7))
+  }
+  return [...meses].sort()
 }
 
 // Plazas (personas) de un cobro según los partes: primero por Nº de reserva

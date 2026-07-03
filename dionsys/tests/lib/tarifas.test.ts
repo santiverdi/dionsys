@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getTarifaFlags, tarifaVigente, TARIFAS_PACTADAS } from '../../src/lib/tarifas'
+import { getTarifaFlags, tarifaVigente, mesesSinTarifa, TARIFAS_PACTADAS } from '../../src/lib/tarifas'
 import type { CajaParte, CajaMovimiento, ParteHabitaciones } from '../../src/types'
 
 function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
@@ -97,6 +97,18 @@ describe('getTarifaFlags', () => {
     const caja = mkCaja({ ingresos: [mov({ habitacion: '101/102', tarjetas: 50_000, total: 50_000 })] })
     const flags = getTarifaFlags(caja, [mkParte(2, '500', '101')])
     expect(flags).toHaveLength(1) // encontró las 2 plazas por la hab 101 y el monto no cuadra
+  })
+
+  it('avisa los meses recientes sin tarifa cargada (hoy y cajas de los últimos 15 días)', () => {
+    // Hoy 5 de agosto sin tarifas de agosto: avisa, aunque haya una caja de julio cubierta.
+    const cajas = [
+      mkCaja({ nroCaja: 50, aperturaAt: '2026-08-03T07:00:00.000Z', importedAt: '2026-08-03T15:00:00.000Z' }),
+      mkCaja({ nroCaja: 40, aperturaAt: '2026-07-16T07:00:00.000Z', importedAt: '2026-07-16T15:00:00.000Z' }),
+    ]
+    expect(mesesSinTarifa(cajas, TARIFAS_PACTADAS, new Date('2026-08-05T12:00:00'))).toEqual(['2026-08'])
+    // En pleno julio (cubierto) no avisa nada, aunque exista historia vieja sin tarifas.
+    const conVieja = [mkCaja({ nroCaja: 10, aperturaAt: '2026-06-10T07:00:00.000Z', importedAt: '2026-06-10T15:00:00.000Z' })]
+    expect(mesesSinTarifa(conVieja, TARIFAS_PACTADAS, new Date('2026-07-10T12:00:00'))).toEqual([])
   })
 
   it('las tarifas pactadas de julio son las que pasó el dueño', () => {

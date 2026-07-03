@@ -7,6 +7,7 @@ import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useTarifas } from '../context/TarifasContext'
 import { getPanorama, type ConserjeStats, type ImperfeccionesCount } from '../lib/panorama'
+import { mesesSinTarifa } from '../lib/tarifas'
 import { formatMontoCurrency } from '../utils/validators'
 
 function fmtFechaCorta(s: string): string {
@@ -14,6 +15,12 @@ function fmtFechaCorta(s: string): string {
   const d = new Date(s)
   if (isNaN(d.getTime())) return s
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+}
+
+// "2026-08" → "agosto 2026" (para el aviso de tarifas faltantes).
+function fmtMes(yyyyMm: string): string {
+  const d = new Date(`${yyyyMm}-15T12:00:00`)
+  return isNaN(d.getTime()) ? yyyyMm : d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
 }
 
 function Section({ icon: Icon, title, children }: { icon: typeof Wallet; title: string; children: React.ReactNode }) {
@@ -123,6 +130,7 @@ export default function Panorama() {
   const { partes } = usePartes()
   const { tarifas } = useTarifas()
   const p = useMemo(() => getPanorama(cajas, partes, new Date(), tarifas), [cajas, partes, tarifas])
+  const sinTarifa = useMemo(() => mesesSinTarifa(cajas, tarifas), [cajas, tarifas])
 
   if (cajas.length === 0 && partes.length === 0) {
     return (
@@ -165,6 +173,13 @@ export default function Panorama() {
           level={cobertura.horasSinCarga >= SIN_CARGA_ERROR_H ? 'error' : 'warn'}
           titulo={`Hace ~${cobertura.horasSinCarga} h que no entra ninguna caja nueva`}
           detalle={`La última cargada es la Nº ${cobertura.ultimaCajaNro}. Con 3 turnos por día debería entrar una caja cada ~8 h — revisá qué turnos no rindieron.`}
+        />
+      )}
+      {sinTarifa.length > 0 && (
+        <Alerta
+          level="warn"
+          titulo={`Faltan tarifas pactadas para ${sinTarifa.map(fmtMes).join(', ')}`}
+          detalle="Sin tarifas cargadas, los cobros de esas fechas no se controlan contra lo pactado. Cargalas en Control de Caja → Tarifas pactadas."
         />
       )}
 
