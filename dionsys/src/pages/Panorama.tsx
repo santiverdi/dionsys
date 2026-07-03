@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
+import { useTarifas } from '../context/TarifasContext'
 import { getPanorama, type ConserjeStats, type ImperfeccionesCount } from '../lib/panorama'
 import { formatMontoCurrency } from '../utils/validators'
 
@@ -120,7 +121,8 @@ function ConserjeRow({ s, maxCobrado }: { s: ConserjeStats; maxCobrado: number }
 export default function Panorama() {
   const { cajas } = useCajas()
   const { partes } = usePartes()
-  const p = useMemo(() => getPanorama(cajas, partes), [cajas, partes])
+  const { tarifas } = useTarifas()
+  const p = useMemo(() => getPanorama(cajas, partes, new Date(), tarifas), [cajas, partes, tarifas])
 
   if (cajas.length === 0 && partes.length === 0) {
     return (

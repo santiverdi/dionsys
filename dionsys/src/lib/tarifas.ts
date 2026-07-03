@@ -20,7 +20,9 @@ export interface TarifaPeriodo {
   puedeHaberMasDescuento?: boolean
 }
 
-// Tarifas pactadas (las pasa el dueño; actualizar acá cuando cambien).
+// SEMILLA de tarifas pactadas (julio 2026, pasadas por el dueño). Después de la
+// primera carga, la fuente de verdad es lo guardado en el sistema: el admin las
+// edita desde Control de Caja → "Tarifas pactadas" (TarifasContext, sincronizado).
 export const TARIFAS_PACTADAS: TarifaPeriodo[] = [
   {
     desde: '2026-07-01', hasta: '2026-07-17',

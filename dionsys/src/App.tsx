@@ -13,6 +13,7 @@ import { OccupancyProvider } from './context/OccupancyContext'
 import { TurnosProvider } from './context/TurnosContext'
 import { ImpuestosProvider } from './context/ImpuestosContext'
 import { SueldosProvider } from './context/SueldosContext'
+import { TarifasProvider } from './context/TarifasContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -138,7 +139,9 @@ export default function App() {
                 <TurnosProvider>
                   <ImpuestosProvider>
                     <SueldosProvider>
-                      <AppRoutes />
+                      <TarifasProvider>
+                        <AppRoutes />
+                      </TarifasProvider>
                     </SueldosProvider>
                   </ImpuestosProvider>
                 </TurnosProvider>

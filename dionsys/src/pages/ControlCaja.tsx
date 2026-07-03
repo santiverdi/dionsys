@@ -6,8 +6,10 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
+import { useTarifas } from '../context/TarifasContext'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { getTarifaFlags } from '../lib/tarifas'
+import TarifasEditor from '../components/TarifasEditor'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS, type Turno } from '../context/OccupancyContext'
 import PartePanel from '../components/PartePanel'
@@ -62,6 +64,7 @@ export default function ControlCaja() {
   const { employee } = useAuth()
   const { cajas, deleteCaja, getCajaAnterior } = useCajas()
   const { partes } = usePartes()
+  const { tarifas } = useTarifas()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const selected = useMemo(() => cajas.find(c => c.id === selectedId) ?? null, [cajas, selectedId])
@@ -69,7 +72,7 @@ export default function ControlCaja() {
   // ============ DETALLE ============
   if (selected) {
     const resumen = getCajaResumen(selected)
-    const flags = [...getCajaFlags(selected, getCajaAnterior(selected)), ...getTarifaFlags(selected, partes)]
+    const flags = [...getCajaFlags(selected, getCajaAnterior(selected)), ...getTarifaFlags(selected, partes, tarifas)]
     const TIcon = selected.turno ? TURNO_ICON[selected.turno] : Clock
     return (
       <div>
@@ -209,6 +212,9 @@ export default function ControlCaja() {
       <div className="mb-4">
         <CajaImporter />
       </div>
+
+      {/* Tarifas pactadas (editable por el admin; el control cruza los cobros contra esto) */}
+      {employee?.role === 'admin' && <TarifasEditor />}
 
       {/* Listado */}
       {cajas.length === 0 ? (

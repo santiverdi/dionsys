@@ -5,6 +5,7 @@ import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { getCajaFlags, type CajaFlag } from '../lib/cajaControl'
 import { getTarifaFlags } from '../lib/tarifas'
+import { useTarifas } from '../context/TarifasContext'
 import { TURNO_LABELS } from '../context/OccupancyContext'
 import PartePanel from '../components/PartePanel'
 import CajaImporter from '../components/CajaImporter'
@@ -52,6 +53,7 @@ export default function CerrarTurno() {
   const { employee } = useAuth()
   const { cajas, getCajaAnterior } = useCajas()
   const { partes, getParteByCaja } = usePartes()
+  const { tarifas } = useTarifas()
   // Lo que subió ESTE conserje en esta sesión (sobrevive a la lógica de fallback).
   const [savedCajaNro, setSavedCajaNro] = useState<number | null>(null)
   const [savedParteNro, setSavedParteNro] = useState<number | null>(null)
@@ -121,7 +123,7 @@ export default function CerrarTurno() {
             <Clock size={11} /> {fmtFecha(caja.aperturaAt)} · {caja.conserje ?? caja.usuarioApertura}
           </p>
           {(() => {
-            const flags = [...getCajaFlags(caja, getCajaAnterior(caja)), ...getTarifaFlags(caja, partes)]
+            const flags = [...getCajaFlags(caja, getCajaAnterior(caja)), ...getTarifaFlags(caja, partes, tarifas)]
             return flags.length > 0 ? (
               <div className="space-y-1.5">
                 {flags.map((f, i) => <FlagPill key={i} flag={f} />)}

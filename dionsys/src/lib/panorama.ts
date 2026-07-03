@@ -8,7 +8,7 @@ import {
   fechaConfiable, MAX_SALTO_NROS,
 } from './cajaControl'
 import { getParteResumen, getCheckouts, getEstadiasOcultas, parteAnteriorDe } from './parteControl'
-import { getTarifaFlags } from './tarifas'
+import { getTarifaFlags, type TarifaPeriodo } from './tarifas'
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 
@@ -132,7 +132,7 @@ function totalDe(i: ImperfeccionesCount): number {
 
 // Imperfecciones de una caja (reusa getCajaFlags para el descuadre de continuidad
 // y getTarifaFlags para los cobros fuera de la tarifa pactada).
-function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: ParteHabitaciones[]): ImperfeccionesCount {
+function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[]): ImperfeccionesCount {
   const anterior = anteriorPorNro(caja, cajas)
   const flags = getCajaFlags(caja, anterior)
   const i = cero()
@@ -143,7 +143,7 @@ function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: Parte
   i.huecos = gap > 1 && gap <= MAX_SALTO_NROS ? gap - 1 : 0
   i.tarjetaSinFB = caja.ingresos.filter(m => m.tarjetas > 0 && !m.facturaB).length
   // Solo los warn cuentan como imperfección (los info son descuentos a confirmar).
-  i.tarifasFuera = getTarifaFlags(caja, partes).filter(f => f.level === 'warn').length
+  i.tarifasFuera = getTarifaFlags(caja, partes, tarifas).filter(f => f.level === 'warn').length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
   i.total = totalDe(i)
   return i
@@ -170,9 +170,9 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
   a.total += b.total
 }
 
-export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[]): ImperfeccionesCount {
+export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[]): ImperfeccionesCount {
   const acc = cero()
-  for (const c of cajas) acumular(acc, imperfeccionesDeCaja(c, cajas, partes))
+  for (const c of cajas) acumular(acc, imperfeccionesDeCaja(c, cajas, partes, tarifas))
   for (const p of partes) acumular(acc, imperfeccionesDeParte(p, partes, cajas))
   return acc
 }
@@ -189,7 +189,7 @@ export interface ConserjeStats {
   imperfecciones: ImperfeccionesCount
 }
 
-export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[]): ConserjeStats[] {
+export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[]): ConserjeStats[] {
   const map = new Map<string, ConserjeStats>()
   const get = (nombre: string): ConserjeStats => {
     let s = map.get(nombre)
@@ -208,7 +208,7 @@ export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[]
     s.cajas += 1
     s.totalCobrado += r.totalCobrado
     s.cantIngresos += r.cantIngresos
-    acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas, partes))
+    acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas, partes, tarifas))
     const f = fb.get(s.conserje) ?? { tarjeta: 0, conFB: 0 }
     f.tarjeta += c.ingresos.filter(m => m.tarjetas > 0).length
     f.conFB += c.ingresos.filter(m => m.tarjetas > 0 && m.facturaB).length
@@ -406,11 +406,11 @@ export interface Panorama {
   serie: SerieDia[]
 }
 
-export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date()): Panorama {
+export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date(), tarifas?: TarifaPeriodo[]): Panorama {
   return {
     dinero: getDineroResumen(cajas),
-    imperfecciones: getImperfeccionesGlobal(cajas, partes),
-    conserjes: getConserjeStats(cajas, partes),
+    imperfecciones: getImperfeccionesGlobal(cajas, partes, tarifas),
+    conserjes: getConserjeStats(cajas, partes, tarifas),
     ocupacion: getOcupacionResumen(partes),
     cobertura: getCobertura(cajas, partes, ahora),
     gastos: getGastosCaja(cajas),

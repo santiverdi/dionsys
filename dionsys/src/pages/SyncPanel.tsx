@@ -22,6 +22,7 @@ const LABELS: Record<SyncedKey, string> = {
   dionsys_cajas: 'Control de caja',
   dionsys_partes: 'Parte de habitaciones',
   dionsys_checkout_docs: 'Hojas de checkout',
+  dionsys_tarifas: 'Tarifas pactadas',
 }
 
 function fmtDate(iso: string | null): string {
