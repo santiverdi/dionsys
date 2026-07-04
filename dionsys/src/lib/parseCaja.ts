@@ -94,7 +94,10 @@ export function conserjeFrom(usuario: string): string | undefined {
 
 // Turno fijo de cada conserje titular (inverso de DEFAULT_SHIFTS de TurnosContext).
 // Los cubridores (Valentin/Franquero) no tienen turno fijo → se cae a la hora.
-const TURNO_FIJO: Record<string, Turno> = { Leandro: 'manana', Santiago: 'tarde', Gaston: 'noche' }
+// Santiago no tiene turno fijo real (mayormente tarde, pero también cubre otros) →
+// se cae a la hora como los cubridores; forzarlo a "tarde" pisaba turnos reales
+// (ver cajas abiertas 06:23 y 22:33, ambas mal etiquetadas "Tarde").
+const TURNO_FIJO: Record<string, Turno> = { Leandro: 'manana', Gaston: 'noche' }
 
 // El turno "lo dice la caja": primero por quién la abrió (conserje titular);
 // si es un cubridor o no se reconoce, se deduce de la hora de apertura.
