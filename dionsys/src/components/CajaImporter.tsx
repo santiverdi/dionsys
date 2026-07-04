@@ -73,18 +73,19 @@ export default function CajaImporter({ onSaved }: { onSaved?: (caja: CajaParte) 
   }
 
   function confirmImport() {
-    if (!preview || bloqueada) return
+    if (!preview) return
     addCaja(preview)
     onSaved?.(preview)
     setPreview(null)
   }
 
   const busy = !!importing
-  // Regla del hotel: la numeración de cajas JAMÁS se saltea. Si entre la última
-  // cargada y esta faltan números, se bloquea el guardado (el admin puede forzar).
+  // Regla del hotel: la numeración de cajas JAMÁS se saltea, así que se avisa
+  // fuerte si falta algo en el medio. Pero no se bloquea para siempre esperando
+  // un admin: cualquiera puede guardar igual dejando el hueco marcado (queda
+  // visible para revisar en el dashboard) — si no, un conserje sin admin cerca
+  // queda sin forma de terminar su turno.
   const faltantes = preview ? faltantesAntesDe(preview.nroCaja, cajas) : []
-  const esAdmin = employee?.role === 'admin'
-  const bloqueada = faltantes.length > 0 && !esAdmin
 
   return (
     <div>
@@ -140,27 +141,22 @@ export default function CajaImporter({ onSaved }: { onSaved?: (caja: CajaParte) 
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
               <span>
                 <strong>No se puede saltear la numeración.</strong> Antes de la caja {preview.nroCaja} falta
-                cargar: {fmtFaltantes(faltantes)}. Buscá el Excel de esa caja en el PMS y subilo primero.
-                {esAdmin && ' Como admin podés guardar igual, pero el hueco queda marcado en el dashboard.'}
+                cargar: {fmtFaltantes(faltantes)}. Si podés, buscá el Excel de esa caja en el PMS y subilo primero.
+                Si no lo tenés, guardá igual — el hueco queda marcado en el dashboard para revisar después.
               </span>
             </div>
           )}
           <button
             onClick={confirmImport}
-            disabled={bloqueada}
             className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-colors ${
-              bloqueada
-                ? 'bg-navy-100 text-navy-400 cursor-not-allowed'
-                : faltantes.length > 0
-                  ? 'bg-red-600 text-white hover:bg-red-700'
-                  : 'bg-navy-800 text-cream hover:bg-navy-700'
+              faltantes.length > 0
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-navy-800 text-cream hover:bg-navy-700'
             }`}
           >
-            <Save size={16} /> {bloqueada
-              ? `Falta la caja ${faltantes[0]} — no se puede guardar`
-              : faltantes.length > 0
-                ? `Guardar igual dejando hueco (admin)`
-                : `Guardar caja ${preview.nroCaja}`}
+            <Save size={16} /> {faltantes.length > 0
+              ? `Guardar igual dejando hueco`
+              : `Guardar caja ${preview.nroCaja}`}
           </button>
         </div>
       )}

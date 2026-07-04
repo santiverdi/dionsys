@@ -182,11 +182,10 @@ export default function PartePanel({ nroCaja, onSaved, onDeleted }: { nroCaja?: 
     if (file) procesar(file, 'ia', async f => parteFromExtracted(await extractParte(f), employee?.name ?? '', f.name), fileIaRef)
   }
 
-  // Misma regla que las cajas: la numeración de los partes JAMÁS se saltea. Si
-  // entre el último cargado y este faltan números, se bloquea (el admin puede forzar).
+  // Misma regla que las cajas: la numeración de los partes JAMÁS se saltea, así
+  // que se avisa fuerte si falta algo en el medio. No se bloquea para siempre
+  // esperando un admin: cualquiera puede guardar igual dejando el hueco marcado.
   const faltantes = preview ? faltantesAntesDe(preview.nroCaja, partes) : []
-  const esAdmin = employee?.role === 'admin'
-  const bloqueado = faltantes.length > 0 && !esAdmin
 
   // Aviso extra para cuando todavía no hay una caja de este turno cargada (recién
   // llegado a "Cerrar turno"): si el Nº ya tiene un parte de HOY, es mucho más
@@ -200,7 +199,7 @@ export default function PartePanel({ nroCaja, onSaved, onDeleted }: { nroCaja?: 
     : undefined
 
   function confirmImport() {
-    if (!preview || bloqueado) return
+    if (!preview) return
     addParte(preview)
     onSaved?.(preview)
     setPreview(null)
@@ -253,27 +252,22 @@ export default function PartePanel({ nroCaja, onSaved, onDeleted }: { nroCaja?: 
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                 <span>
                   <strong>No se puede saltear la numeración.</strong> Antes del parte de la Caja {preview.nroCaja} falta
-                  cargar el de: {fmtFaltantes(faltantes)}. Buscá ese parte y subilo primero.
-                  {esAdmin && ' Como admin podés guardar igual, pero el hueco queda marcado en el dashboard.'}
+                  cargar el de: {fmtFaltantes(faltantes)}. Si podés, buscá ese parte y subilo primero.
+                  Si no lo tenés, guardá igual — el hueco queda marcado en el dashboard para revisar después.
                 </span>
               </div>
             )}
             <button
               onClick={confirmImport}
-              disabled={bloqueado}
               className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-colors ${
-                bloqueado
-                  ? 'bg-navy-100 text-navy-400 cursor-not-allowed'
-                  : faltantes.length > 0
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-navy-800 text-cream hover:bg-navy-700'
+                faltantes.length > 0
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'bg-navy-800 text-cream hover:bg-navy-700'
               }`}
             >
-              <Save size={16} /> {bloqueado
-                ? `Falta el parte de la Caja ${faltantes[0]} — no se puede guardar`
-                : faltantes.length > 0
-                  ? 'Guardar igual dejando hueco (admin)'
-                  : 'Guardar parte'}
+              <Save size={16} /> {faltantes.length > 0
+                ? 'Guardar igual dejando hueco'
+                : 'Guardar parte'}
             </button>
           </div>
         )}
