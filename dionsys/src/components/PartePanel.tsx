@@ -10,7 +10,7 @@ import { useCheckoutDocs } from '../context/CheckoutDocsContext'
 import { parsePartePdf, parteFromExtracted } from '../lib/parsePartePdf'
 import { extractParte } from '../lib/invoiceExtract'
 import { getParteFlags, getParteResumen, getCheckouts, type ParteFlag, type CheckoutRecord } from '../lib/parteControl'
-import { faltantesAntesDe, fmtFaltantes } from '../lib/cajaControl'
+import { faltantesAntesDe, fechaConfiable, fmtFaltantes } from '../lib/cajaControl'
 import { scanImageFile } from '../lib/scanDocument'
 import { fileToPdf } from '../lib/imageToPdf'
 import { uploadFactura, downloadUrl } from '../lib/facturaStorage'
@@ -188,6 +188,17 @@ export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onS
   const esAdmin = employee?.role === 'admin'
   const bloqueado = faltantes.length > 0 && !esAdmin
 
+  // Aviso extra para cuando todavía no hay una caja de este turno cargada (recién
+  // llegado a "Cerrar turno"): si el Nº ya tiene un parte de HOY, es mucho más
+  // probable que se haya tocado sin querer una foto/PDF vieja (mismo dispositivo
+  // compartido entre conserjes) que una recarga legítima del propio turno. No
+  // bloquea — solo avisa — porque re-cargar el propio parte corregido es válido.
+  const UN_DIA_MS = 24 * 3_600_000
+  const yaExisteHoy = !parte && preview
+    ? partes.find(p => p.nroCaja === preview.nroCaja
+        && Date.now() - new Date(fechaConfiable(p.fechaCaja, p.importedAt)).getTime() < UN_DIA_MS)
+    : undefined
+
   function confirmImport() {
     if (!preview || bloqueado) return
     addParte(preview)
@@ -228,6 +239,15 @@ export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onS
             <p className="text-xs text-navy-500 mb-3">
               {preview.totalOcupadas} ocupadas · {preview.totalPlazas} plazas · {preview.totalLibres} libres
             </p>
+            {yaExisteHoy && (
+              <div className="flex items-start gap-2 rounded-lg border-2 border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-700 mb-3">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  <strong>Ojo:</strong> la Caja {preview.nroCaja} ya tiene un parte cargado hoy (por {yaExisteHoy.importedBy}).
+                  Fijate que no hayas subido sin querer una foto o PDF viejo. Si guardás, se reemplaza el que ya estaba.
+                </span>
+              </div>
+            )}
             {faltantes.length > 0 && (
               <div className="flex items-start gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-2.5 text-xs text-red-700 mb-3">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
