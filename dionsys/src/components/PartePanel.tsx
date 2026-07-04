@@ -132,7 +132,7 @@ const ESTADO_STYLE: Record<EstadoHabitacion, { label: string; cls: string; Icon:
   mantenimiento: { label: 'Mantenimiento', cls: 'bg-red-50 text-red-700 border-red-200', Icon: Wrench },
 }
 
-export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onSaved?: (parte: ParteHabitaciones) => void }) {
+export default function PartePanel({ nroCaja, onSaved, onDeleted }: { nroCaja?: number; onSaved?: (parte: ParteHabitaciones) => void; onDeleted?: () => void }) {
   const { employee } = useAuth()
   const { partes, addParte, deleteParte, getParteByCaja, getParteAnterior } = usePartes()
   const { cajas } = useCajas()
@@ -299,15 +299,13 @@ export default function PartePanel({ nroCaja, onSaved }: { nroCaja?: number; onS
     <div className="bg-white rounded-xl border border-navy-100 p-3">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-bold uppercase tracking-wide text-navy-500">Parte de habitaciones</p>
-        {employee?.role === 'admin' && (
-          <button
-            onClick={() => deleteParte(parte.id)}
-            className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-            title="Borrar este parte importado"
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
+        <button
+          onClick={() => { deleteParte(parte.id); onDeleted?.() }}
+          className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          title="Borrar este parte (¿no es el tuyo? subí el correcto)"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
 
       {/* Resumen de ocupación */}

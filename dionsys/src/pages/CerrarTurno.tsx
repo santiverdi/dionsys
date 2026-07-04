@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { AlertTriangle, CheckCircle2, Wallet, Clock, Circle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Wallet, Clock, Circle, Trash2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
@@ -51,7 +51,7 @@ function FlagPill({ flag }: { flag: CajaFlag }) {
 
 export default function CerrarTurno() {
   const { employee } = useAuth()
-  const { cajas, getCajaAnterior } = useCajas()
+  const { cajas, getCajaAnterior, deleteCaja } = useCajas()
   const { partes, getParteByCaja } = usePartes()
   const { tarifas } = useTarifas()
   // Lo que subió ESTE conserje en esta sesión (sobrevive a la lógica de fallback).
@@ -116,9 +116,18 @@ export default function CerrarTurno() {
       {/* Caja guardada: resumen + avisos */}
       {caja && (
         <div className="bg-white rounded-xl border border-navy-100 p-3 mb-3">
-          <p className="font-bold text-navy-800 flex items-center gap-1.5 mb-2">
-            <Wallet size={16} className="text-navy-500" /> Caja {caja.nroCaja} · {caja.turno ? TURNO_LABELS[caja.turno] : 'Turno —'}
-          </p>
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <p className="font-bold text-navy-800 flex items-center gap-1.5">
+              <Wallet size={16} className="text-navy-500" /> Caja {caja.nroCaja} · {caja.turno ? TURNO_LABELS[caja.turno] : 'Turno —'}
+            </p>
+            <button
+              onClick={() => { deleteCaja(caja.id); setSavedCajaNro(null) }}
+              className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+              title="Borrar esta caja (¿no es la tuya? subí la correcta)"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
           <p className="text-xs text-navy-400 flex items-center gap-1 mb-3">
             <Clock size={11} /> {fmtFecha(caja.aperturaAt)} · {caja.conserje ?? caja.usuarioApertura}
           </p>
@@ -146,7 +155,7 @@ export default function CerrarTurno() {
             <span>Ojo: tu parte es de la Caja {parteReciente?.nroCaja} pero tu caja es la {caja?.nroCaja}. Fijate que sean del mismo turno.</span>
           </div>
         )}
-        <PartePanel nroCaja={nroTurno} onSaved={p => setSavedParteNro(p.nroCaja)} />
+        <PartePanel nroCaja={nroTurno} onSaved={p => setSavedParteNro(p.nroCaja)} onDeleted={() => setSavedParteNro(null)} />
       </div>
     </div>
   )
