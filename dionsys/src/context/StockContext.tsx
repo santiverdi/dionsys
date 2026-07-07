@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem, DepositoSupplier, FacturaProveedor } from '../types'
+import type { DepositoItem, StockMovement, PedidoSemanal, PedidoSemanalItem, DepositoSupplier, FacturaProveedor, FacturaManual } from '../types'
 import { generateId } from '../utils/imageCompressor'
 import { depositoItems as mockItems, depositoSuppliers as mockSuppliers, depositoItemSupplier } from '../data/mock'
 import { getOrderUnit, getPackSize, resolveSupplierId } from '../utils/deposito'
@@ -9,6 +9,7 @@ const LS_DEPOSITO = 'dionsys_deposito'
 const LS_MOVEMENTS = 'dionsys_stock_movements'
 const LS_PEDIDOS = 'dionsys_pedidos_semanales'
 const LS_SUPPLIERS = 'dionsys_deposito_suppliers'
+const LS_FACTURAS_MANUALES = 'dionsys_facturas_manuales'
 
 // --- Migración idempotente de datos reales (PROVEEDORES HOTEL DION) ---
 // Solo completa lo que falte; no pisa ediciones manuales ni toca el stock.
@@ -111,12 +112,15 @@ interface StockContextType {
   movements: StockMovement[]
   pedidos: PedidoSemanal[]
   suppliers: DepositoSupplier[]
+  facturasManuales: FacturaManual[]
   addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string, pedidoId?: string) => void
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   marcarPedido: (pedidoId: string, by: string) => void
   deletePedido: (id: string, deletedBy: string) => void
   removeSupplierFromPedido: (pedidoId: string, supplierId: string, by: string) => void
   setFacturaProveedor: (pedidoId: string, factura: FacturaProveedor) => void
+  saveFacturaManual: (factura: FacturaManual) => void
+  deleteFacturaManual: (id: string) => void
   setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
   recibirPedido: (pedidoId: string, recibidoBy: string, recibidos: { itemId: string; cantidad: number }[]) => void
   addItem: (data: Omit<DepositoItem, 'id'>) => void
@@ -161,11 +165,17 @@ export function StockProvider({ children }: { children: ReactNode }) {
     return migrateSuppliers(saved ? JSON.parse(saved) : mockSuppliers)
   })
 
+  const [facturasManuales, setFacturasManuales] = useState<FacturaManual[]>(() => {
+    const saved = localStorage.getItem(LS_FACTURAS_MANUALES)
+    return saved ? JSON.parse(saved) : []
+  })
+
   // Sync remoto: cuando otro dispositivo cambia un almacén, refrescamos el estado.
   useCloudSync<DepositoItem[]>(LS_DEPOSITO, setItems)
   useCloudSync<StockMovement[]>(LS_MOVEMENTS, setMovements)
   useCloudSync<PedidoSemanal[]>(LS_PEDIDOS, setPedidos)
   useCloudSync<DepositoSupplier[]>(LS_SUPPLIERS, setSuppliers)
+  useCloudSync<FacturaManual[]>(LS_FACTURAS_MANUALES, setFacturasManuales)
 
   const addMovement = useCallback((
     itemId: string,
@@ -281,6 +291,24 @@ export function StockProvider({ children }: { children: ReactNode }) {
         return { ...p, facturas: [...rest, factura] }
       })
       persist(LS_PEDIDOS, updated)
+      return updated
+    })
+  }, [])
+
+  // Carga / actualiza una boleta suelta (upsert por id).
+  const saveFacturaManual = useCallback((factura: FacturaManual) => {
+    setFacturasManuales(prev => {
+      const rest = prev.filter(f => f.id !== factura.id)
+      const updated = [factura, ...rest]
+      persist(LS_FACTURAS_MANUALES, updated)
+      return updated
+    })
+  }, [])
+
+  const deleteFacturaManual = useCallback((id: string) => {
+    setFacturasManuales(prev => {
+      const updated = prev.filter(f => f.id !== id)
+      persist(LS_FACTURAS_MANUALES, updated)
       return updated
     })
   }, [])
@@ -446,8 +474,8 @@ export function StockProvider({ children }: { children: ReactNode }) {
 
   return (
     <StockContext.Provider value={{
-      items, movements, pedidos, suppliers,
-      addMovement, savePedido, marcarPedido, deletePedido, removeSupplierFromPedido, setFacturaProveedor, setPedidoMonto, recibirPedido,
+      items, movements, pedidos, suppliers, facturasManuales,
+      addMovement, savePedido, marcarPedido, deletePedido, removeSupplierFromPedido, setFacturaProveedor, saveFacturaManual, deleteFacturaManual, setPedidoMonto, recibirPedido,
       addItem, updateItem, deleteItem,
       addSupplier, updateSupplier, deleteSupplier, clearAllStock, resetStock,
     }}>

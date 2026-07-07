@@ -10,6 +10,7 @@ const LABELS: Record<SyncedKey, string> = {
   dionsys_stock_movements: 'Movimientos de stock',
   dionsys_pedidos_semanales: 'Pedidos semanales',
   dionsys_deposito_suppliers: 'Distribuidoras',
+  dionsys_facturas_manuales: 'Boletas sueltas',
   dionsys_turnos: 'Turnos (conserjes)',
   dionsys_impuestos_servicios: 'Impuestos — servicios',
   dionsys_impuestos_pagos: 'Impuestos — pagos',

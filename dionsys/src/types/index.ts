@@ -149,6 +149,13 @@ export interface FacturaProveedor {
   cargadoAt?: string
 }
 
+// Boleta/factura cargada A MANO, sin pedido asociado (compra directa o proveedor
+// fuera del circuito de pedidos). Vive en su propia colección; entra igual al
+// gasto mensual, la cuenta corriente y el reporte para la contadora.
+export interface FacturaManual extends FacturaProveedor {
+  id: string
+}
+
 export interface PedidoSemanal {
   id: string
   date: string

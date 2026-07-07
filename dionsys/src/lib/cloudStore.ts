@@ -27,6 +27,7 @@ export const SYNCED_KEYS = [
   'dionsys_stock_movements',
   'dionsys_pedidos_semanales',
   'dionsys_deposito_suppliers',
+  'dionsys_facturas_manuales',
   'dionsys_turnos',
   'dionsys_impuestos_servicios',
   'dionsys_impuestos_pagos',

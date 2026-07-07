@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw, ConciergeBell } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw, ConciergeBell, X, Trash2 } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useOrders } from '../context/OrdersContext'
 import { useAuth } from '../context/AuthContext'
@@ -9,9 +9,18 @@ import { downloadUrl, uploadFactura } from '../lib/facturaStorage'
 import { scanImageFile } from '../lib/scanDocument'
 import { fileToPdf } from '../lib/imageToPdf'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
-import type { PedidoSemanal, FacturaProveedor, DepositoSupplier, Order } from '../types'
+import { generateId } from '../utils/imageCompressor'
+import type { PedidoSemanal, FacturaProveedor, FacturaManual, DepositoSupplier, Order } from '../types'
 
 type Tab = 'recibidas' | 'gasto' | 'cuentacorriente' | 'contadora' | 'recepcion'
+
+// Una factura junto con su "contenedor": el pedido semanal del que salió, o la
+// boleta suelta (manual) si se cargó a mano sin pedido asociado.
+type FacturaEntry = { factura: FacturaProveedor; pedido?: PedidoSemanal; manual?: FacturaManual }
+
+function entryKey(e: FacturaEntry) {
+  return e.pedido ? `${e.pedido.id}:${e.factura.supplierId}` : `manual:${e.manual!.id}`
+}
 
 // Neto / IVA / percepciones de una factura, a partir de sus renglones.
 function desglosar(f: FacturaProveedor) {
@@ -43,13 +52,17 @@ function shortDate(iso: string) {
 }
 
 export default function Facturas() {
-  const { pedidos, items, suppliers, setFacturaProveedor } = useStock()
+  const { pedidos, items, suppliers, setFacturaProveedor, facturasManuales, saveFacturaManual, deleteFacturaManual } = useStock()
   const { orders, setOrderFactura } = useOrders()
   const { employee } = useAuth()
   const [tab, setTab] = useState<Tab>('recibidas')
   const [target, setTarget] = useState<{ pedido: PedidoSemanal; supplier: DepositoSupplier; initial?: FacturaProveedor } | null>(null)
   // Pedido de recepción diaria al que se le está cargando la boleta.
   const [recepcionTarget, setRecepcionTarget] = useState<Order | null>(null)
+  // Boleta suelta (a mano): primero se elige el proveedor, después se abre el modal.
+  const [manualPicker, setManualPicker] = useState(false)
+  const [manualNombre, setManualNombre] = useState('')
+  const [manualTarget, setManualTarget] = useState<{ supplierId: string; supplierName: string; initial?: FacturaManual } | null>(null)
 
   const recibidos = useMemo(
     () => pedidos
@@ -114,9 +127,45 @@ export default function Facturas() {
     setRecepcionTarget(null)
   }
 
+  // ---- Boletas sueltas (cargadas a mano, sin pedido asociado) ----
+  const manualesOrdenadas = useMemo(
+    () => [...facturasManuales].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.cargadoAt ?? '').localeCompare(a.cargadoAt ?? '')),
+    [facturasManuales]
+  )
+
+  function elegirProveedorManual(supplierId: string, supplierName: string) {
+    setManualPicker(false)
+    setManualTarget({ supplierId, supplierName })
+  }
+
+  function handleSaveManual(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'vencimiento' | 'facturaUrl' | 'facturaNombre'>) {
+    if (!manualTarget || !employee) return
+    const esCC = data.pago === 'cuenta_corriente'
+    const prev = manualTarget.initial
+    saveFacturaManual({
+      id: prev?.id ?? generateId(),
+      supplierId: manualTarget.supplierId,
+      supplierName: manualTarget.supplierName,
+      ...data,
+      pagado: esCC ? (prev?.pagado ?? false) : undefined,
+      fechaPago: esCC ? prev?.fechaPago : undefined,
+      cargadoBy: employee.name,
+      cargadoAt: new Date().toISOString(),
+    })
+    setManualTarget(null)
+  }
+
+  function borrarManual(f: FacturaManual) {
+    if (confirm(`¿Borrar la boleta de ${f.supplierName} por ${formatMontoCurrency(f.monto)}? Deja de contar en el gasto del mes.`)) {
+      deleteFacturaManual(f.id)
+    }
+  }
+
   // Marca una factura de cuenta corriente como pagada (hoy).
-  function marcarPagada(pedido: PedidoSemanal, f: FacturaProveedor) {
-    setFacturaProveedor(pedido.id, { ...f, pagado: true, fechaPago: new Date().toISOString().slice(0, 10) })
+  function marcarPagada(e: FacturaEntry) {
+    const pagada = { ...e.factura, pagado: true, fechaPago: new Date().toISOString().slice(0, 10) }
+    if (e.pedido) setFacturaProveedor(e.pedido.id, pagada)
+    else if (e.manual) saveFacturaManual({ ...e.manual, ...pagada })
   }
 
   // ---- Reporte: gasto por mes (con desglose por proveedor y por producto) ----
@@ -129,27 +178,30 @@ export default function Facturas() {
       impuestos: Map<string, { display: string; total: number }>
     }
     const meses = new Map<string, MesAgg>()
-    // Las facturas son registro financiero: cuentan aunque el pedido se haya borrado.
-    for (const p of pedidos) {
-      for (const f of p.facturas ?? []) {
-        const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
-        if (!mes) continue
-        if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map(), productos: new Map(), impuestos: new Map() })
-        const m = meses.get(mes)!
-        m.total += f.monto
-        const t = f.tipoFactura || 'Otra'
-        m.tipos[t] = (m.tipos[t] ?? 0) + f.monto
-        m.proveedores.set(f.supplierName, (m.proveedores.get(f.supplierName) ?? 0) + f.monto)
-        for (const it of f.items ?? []) {
-          const key = it.descripcion.trim().toUpperCase()
-          if (!key) continue
-          const dest = it.concepto === 'impuesto' ? m.impuestos : m.productos
-          const cur = dest.get(key) ?? { display: it.descripcion.trim(), total: 0 }
-          cur.total += it.importe
-          dest.set(key, cur)
-        }
+    const agregar = (f: FacturaProveedor, fechaFallback?: string) => {
+      const mes = (f.fecha || fechaFallback || '').slice(0, 7)
+      if (!mes) return
+      if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map(), productos: new Map(), impuestos: new Map() })
+      const m = meses.get(mes)!
+      m.total += f.monto
+      const t = f.tipoFactura || 'Otra'
+      m.tipos[t] = (m.tipos[t] ?? 0) + f.monto
+      m.proveedores.set(f.supplierName, (m.proveedores.get(f.supplierName) ?? 0) + f.monto)
+      for (const it of f.items ?? []) {
+        const key = it.descripcion.trim().toUpperCase()
+        if (!key) continue
+        const dest = it.concepto === 'impuesto' ? m.impuestos : m.productos
+        const cur = dest.get(key) ?? { display: it.descripcion.trim(), total: 0 }
+        cur.total += it.importe
+        dest.set(key, cur)
       }
     }
+    // Las facturas son registro financiero: cuentan aunque el pedido se haya borrado.
+    for (const p of pedidos) {
+      for (const f of p.facturas ?? []) agregar(f, p.recibidoAt?.slice(0, 10))
+    }
+    // Las boletas sueltas cuentan igual que las de pedidos.
+    for (const f of facturasManuales) agregar(f)
     return Array.from(meses.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mes, d]) => ({
@@ -160,28 +212,30 @@ export default function Facturas() {
         productos: Array.from(d.productos.values()).sort((a, b) => b.total - a.total),
         impuestos: Array.from(d.impuestos.values()).sort((a, b) => b.total - a.total),
       }))
-  }, [pedidos])
+  }, [pedidos, facturasManuales])
 
   const hoyStr = new Date().toISOString().slice(0, 10)
 
   // ---- Para contadora: facturas A por mes (con neto/IVA y archivo) ----
   const contadoraPorMes = useMemo(() => {
-    type Entry = { pedido: PedidoSemanal; factura: FacturaProveedor }
-    const meses = new Map<string, { entries: Entry[]; total: number; iva: number; neto: number }>()
-    for (const p of pedidos) {
-      for (const f of p.facturas ?? []) {
-        if (f.tipoFactura !== 'A') continue
-        const mes = (f.fecha || p.recibidoAt?.slice(0, 10) || '').slice(0, 7)
-        if (!mes) continue
-        if (!meses.has(mes)) meses.set(mes, { entries: [], total: 0, iva: 0, neto: 0 })
-        const m = meses.get(mes)!
-        const d = desglosar(f)
-        m.entries.push({ pedido: p, factura: f })
-        m.total += f.monto
-        m.iva += d.iva
-        m.neto += d.neto
-      }
+    const meses = new Map<string, { entries: FacturaEntry[]; total: number; iva: number; neto: number }>()
+    const agregar = (entry: FacturaEntry, fechaFallback?: string) => {
+      const f = entry.factura
+      if (f.tipoFactura !== 'A') return
+      const mes = (f.fecha || fechaFallback || '').slice(0, 7)
+      if (!mes) return
+      if (!meses.has(mes)) meses.set(mes, { entries: [], total: 0, iva: 0, neto: 0 })
+      const m = meses.get(mes)!
+      const d = desglosar(f)
+      m.entries.push(entry)
+      m.total += f.monto
+      m.iva += d.iva
+      m.neto += d.neto
     }
+    for (const p of pedidos) {
+      for (const f of p.facturas ?? []) agregar({ pedido: p, factura: f }, p.recibidoAt?.slice(0, 10))
+    }
+    for (const f of facturasManuales) agregar({ manual: f, factura: f })
     return Array.from(meses.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mes, d]) => ({
@@ -189,28 +243,27 @@ export default function Facturas() {
         entries: d.entries.sort((a, b) => (a.factura.fecha || '').localeCompare(b.factura.fecha || '')),
         total: d.total, iva: d.iva, neto: d.neto,
       }))
-  }, [pedidos])
+  }, [pedidos, facturasManuales])
 
   // Adjuntar/escaneo del archivo a una factura que quedó sin archivo (misma automatización).
   const [attaching, setAttaching] = useState<string | null>(null)
   // Vista previa de la imagen recién escaneada, ANTES de subir: así se ve al instante
   // que es el último escaneo (no un PDF viejo cacheado) y se puede descartar y reescanear.
-  const [scanPreview, setScanPreview] = useState<{ pedido: PedidoSemanal; factura: FacturaProveedor; file: File; url: string } | null>(null)
+  const [scanPreview, setScanPreview] = useState<{ entry: FacturaEntry; file: File; url: string } | null>(null)
   const [uploadingPreview, setUploadingPreview] = useState(false)
 
-  async function attachArchivo(pedido: PedidoSemanal, factura: FacturaProveedor, file: File) {
-    const key = `${pedido.id}:${factura.supplierId}`
-    setAttaching(key)
+  async function attachArchivo(entry: FacturaEntry, file: File) {
+    setAttaching(entryKey(entry))
     try {
       let scanError: string | undefined
       const scanned = await scanImageFile(file, info => { if (!info.scanned) scanError = info.error })
       if (scanned.type.startsWith('image/')) {
         // Mostramos la imagen escaneada para confirmar antes de subir.
         if (scanError) alert('No se pudo procesar la imagen; se muestra la foto original.\n\nMotivo: ' + scanError)
-        setScanPreview({ pedido, factura, file: scanned, url: URL.createObjectURL(scanned) })
+        setScanPreview({ entry, file: scanned, url: URL.createObjectURL(scanned) })
       } else {
         // No es imagen (ej. eligió un PDF): subimos directo, sin preview.
-        await subirArchivo(pedido, factura, scanned)
+        await subirArchivo(entry, scanned)
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : 'No se pudo adjuntar el archivo. Probá de nuevo.')
@@ -218,10 +271,11 @@ export default function Facturas() {
     finally { setAttaching(null) }
   }
 
-  async function subirArchivo(pedido: PedidoSemanal, factura: FacturaProveedor, archivo: File) {
+  async function subirArchivo(entry: FacturaEntry, archivo: File) {
     const pdf = await fileToPdf(archivo)
     const { url, nombre } = await uploadFactura(pdf)
-    setFacturaProveedor(pedido.id, { ...factura, facturaUrl: url, facturaNombre: nombre })
+    if (entry.pedido) setFacturaProveedor(entry.pedido.id, { ...entry.factura, facturaUrl: url, facturaNombre: nombre })
+    else if (entry.manual) saveFacturaManual({ ...entry.manual, facturaUrl: url, facturaNombre: nombre })
   }
 
   function cerrarPreview() {
@@ -233,7 +287,7 @@ export default function Facturas() {
     if (!scanPreview) return
     setUploadingPreview(true)
     try {
-      await subirArchivo(scanPreview.pedido, scanPreview.factura, scanPreview.file)
+      await subirArchivo(scanPreview.entry, scanPreview.file)
       cerrarPreview()
     } catch (e) {
       alert(e instanceof Error ? e.message : 'No se pudo subir el archivo. Probá de nuevo.')
@@ -277,31 +331,42 @@ export default function Facturas() {
 
   // ---- Cuenta corriente: facturas pendientes de pago, agrupadas por proveedor ----
   const cuentaCorriente = useMemo(() => {
-    const porProveedor = new Map<string, { nombre: string; total: number; facturas: { pedido: PedidoSemanal; factura: FacturaProveedor }[] }>()
+    const porProveedor = new Map<string, { nombre: string; total: number; facturas: FacturaEntry[] }>()
     let totalPendiente = 0
+    const agregar = (entry: FacturaEntry) => {
+      const f = entry.factura
+      if (f.pago !== 'cuenta_corriente' || f.pagado) return
+      totalPendiente += f.monto
+      const g = porProveedor.get(f.supplierId) ?? { nombre: f.supplierName, total: 0, facturas: [] }
+      g.total += f.monto
+      g.facturas.push(entry)
+      porProveedor.set(f.supplierId, g)
+    }
     // Las deudas en cuenta corriente siguen vigentes aunque el pedido se haya borrado.
     for (const p of pedidos) {
-      for (const f of p.facturas ?? []) {
-        if (f.pago !== 'cuenta_corriente' || f.pagado) continue
-        totalPendiente += f.monto
-        const g = porProveedor.get(f.supplierId) ?? { nombre: f.supplierName, total: 0, facturas: [] }
-        g.total += f.monto
-        g.facturas.push({ pedido: p, factura: f })
-        porProveedor.set(f.supplierId, g)
-      }
+      for (const f of p.facturas ?? []) agregar({ pedido: p, factura: f })
     }
+    for (const f of facturasManuales) agregar({ manual: f, factura: f })
     // Orden por vencimiento (lo que vence antes primero); sin vencimiento al final.
     const vKey = (f: FacturaProveedor) => f.vencimiento || f.fecha || '9999-99-99'
     const grupos = Array.from(porProveedor.values())
       .map(g => ({ ...g, facturas: g.facturas.sort((a, b) => vKey(a.factura).localeCompare(vKey(b.factura))) }))
       .sort((a, b) => b.total - a.total)
     return { totalPendiente, grupos }
-  }, [pedidos])
+  }, [pedidos, facturasManuales])
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-navy-800 mb-2">Facturas de Proveedores</h2>
-      <p className="text-sm text-navy-500 mb-4">Cargá la factura de cada distribuidora cuando llega la mercadería y mirá el gasto por mes.</p>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h2 className="text-xl font-bold text-navy-800">Facturas de Proveedores</h2>
+        <button
+          onClick={() => { setManualNombre(''); setManualPicker(true) }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 active:scale-95 transition-all shrink-0"
+        >
+          <PlusCircle size={14} /> Cargar boleta
+        </button>
+      </div>
+      <p className="text-sm text-navy-500 mb-4">Cargá la factura de cada distribuidora cuando llega la mercadería y mirá el gasto por mes. Con "Cargar boleta" podés cargar una boleta suelta, sin pedido asociado.</p>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 bg-navy-100 rounded-xl p-1">
@@ -326,7 +391,68 @@ export default function Facturas() {
 
       {/* ============ RECIBIDAS ============ */}
       {tab === 'recibidas' && (
-        recibidos.length === 0 ? (
+        <div className="space-y-4">
+          {/* Boletas sueltas (cargadas a mano, sin pedido asociado) */}
+          {manualesOrdenadas.length > 0 && (
+            <div className="rounded-xl border border-navy-100 bg-white p-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <Receipt size={14} className="text-navy-500" />
+                <p className="font-bold text-navy-800">Boletas sueltas</p>
+              </div>
+              <div className="space-y-2">
+                {manualesOrdenadas.map(f => (
+                  <div key={f.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-navy-100">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Package size={13} className="text-navy-500 shrink-0" />
+                        <span className="text-sm font-semibold text-navy-700 truncate">{f.supplierName}</span>
+                      </div>
+                      <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-xs">
+                        {f.tipoFactura && (
+                          <span className="px-1.5 py-0.5 rounded bg-navy-800 text-cream font-bold">{f.tipoFactura}</span>
+                        )}
+                        <span className="font-bold text-navy-800">{formatMontoCurrency(f.monto)}</span>
+                        {f.fecha && <span className="text-navy-400">· {shortDate(f.fecha)}</span>}
+                        {f.items?.length ? <span className="text-navy-400">· {f.items.length} reng.</span> : null}
+                        {f.pago === 'cuenta_corriente' && (
+                          f.pagado
+                            ? <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold">cta cte · pagada</span>
+                            : <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">cta cte · debe</span>
+                        )}
+                        {f.facturaUrl && (
+                          <a
+                            href={downloadUrl(f.facturaUrl, f.facturaNombre || 'boleta')}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5"
+                          >
+                            <FileText size={11} /> archivo
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => setManualTarget({ supplierId: f.supplierId, supplierName: f.supplierName, initial: f })}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-navy-700 border border-navy-200 hover:bg-navy-50 transition-colors"
+                      >
+                        <CheckCircle2 size={13} /> Editar
+                      </button>
+                      <button
+                        onClick={() => borrarManual(f)}
+                        title="Borrar boleta"
+                        className="p-1.5 rounded-lg text-navy-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recibidos.length === 0 ? (
           <div className="text-center py-16">
             <Package size={48} className="mx-auto text-navy-200 mb-3" />
             <p className="text-navy-400 font-medium">No hay pedidos recibidos</p>
@@ -401,7 +527,8 @@ export default function Facturas() {
               )
             })}
           </div>
-        )
+        )}
+        </div>
       )}
 
       {/* ============ RECEPCIÓN DIARIA ============ */}
@@ -587,7 +714,8 @@ export default function Facturas() {
                   <span className="text-base font-bold text-amber-700 shrink-0">{formatMontoCurrency(g.total)}</span>
                 </div>
                 <div className="space-y-1.5">
-                  {g.facturas.map(({ pedido, factura }, i) => {
+                  {g.facturas.map((entry, i) => {
+                    const factura = entry.factura
                     const vencida = factura.vencimiento && factura.vencimiento < hoyStr
                     return (
                       <div key={i} className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border ${vencida ? 'border-red-200 bg-red-50' : 'border-navy-100'}`}>
@@ -602,7 +730,7 @@ export default function Facturas() {
                           )}
                         </div>
                         <button
-                          onClick={() => marcarPagada(pedido, factura)}
+                          onClick={() => marcarPagada(entry)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"
                         >
                           <Check size={13} /> Marcar pagada
@@ -642,9 +770,10 @@ export default function Facturas() {
                   {m.entries.length} {m.entries.length === 1 ? 'factura A' : 'facturas A'} · Neto {formatMontoCurrency(m.neto)} · IVA {formatMontoCurrency(m.iva)} · Total {formatMontoCurrency(m.total)}
                 </p>
                 <div className="space-y-1.5">
-                  {m.entries.map(({ pedido, factura: f }, i) => {
+                  {m.entries.map((entry, i) => {
+                    const f = entry.factura
                     const d = desglosar(f)
-                    const key = `${pedido.id}:${f.supplierId}`
+                    const key = entryKey(entry)
                     return (
                       <div key={i} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-navy-100">
                         <div className="min-w-0 text-xs">
@@ -676,7 +805,7 @@ export default function Facturas() {
                               accept="image/*,application/pdf"
                               capture="environment"
                               disabled={attaching === key}
-                              onChange={e => { const file = e.target.files?.[0]; if (file) attachArchivo(pedido, f, file) }}
+                              onChange={e => { const file = e.target.files?.[0]; if (file) attachArchivo(entry, file) }}
                               className="hidden"
                             />
                           </label>
@@ -709,6 +838,70 @@ export default function Facturas() {
           initial={recepcionTarget.factura}
           onClose={() => setRecepcionTarget(null)}
           onSave={handleSaveBoleta}
+        />
+      )}
+
+      {/* Elegir proveedor para una boleta suelta */}
+      {manualPicker && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setManualPicker(false)}
+        >
+          <div
+            className="bg-white w-full sm:w-[420px] rounded-t-2xl sm:rounded-2xl p-5 max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="text-lg font-bold text-navy-800">¿De qué proveedor es la boleta?</h3>
+              <button onClick={() => setManualPicker(false)} className="p-1 rounded-lg hover:bg-navy-100 transition-colors shrink-0">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-xs text-navy-500 mb-4">Boleta suelta, sin pedido asociado. Elegí un proveedor o escribí otro.</p>
+            <div className="space-y-1.5 mb-4">
+              {suppliers.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => elegirProveedorManual(s.id, s.name)}
+                  className="w-full flex items-center gap-2 p-2.5 rounded-lg border border-navy-100 text-sm font-semibold text-navy-700 hover:bg-navy-50 transition-colors text-left"
+                >
+                  <Package size={13} className="text-navy-500 shrink-0" /> {s.name}
+                </button>
+              ))}
+            </div>
+            <label className="block text-xs font-semibold text-navy-500 mb-1">Otro proveedor / comercio</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={manualNombre}
+                onChange={e => setManualNombre(e.target.value)}
+                placeholder="Nombre del proveedor"
+                className="flex-1 min-w-0 px-3 py-2.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+              />
+              <button
+                onClick={() => {
+                  const nombre = manualNombre.trim()
+                  // id estable por nombre: dos boletas del mismo comercio agrupan juntas en cta cte.
+                  if (nombre) elegirProveedorManual(`manual:${nombre.toUpperCase()}`, nombre)
+                }}
+                disabled={!manualNombre.trim()}
+                className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-navy-800 text-cream hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+              >
+                Seguir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualTarget && (
+        <FacturaProveedorModal
+          supplierName={manualTarget.supplierName}
+          docLabel="Boleta"
+          subtitle="Boleta suelta (sin pedido asociado)"
+          initial={manualTarget.initial}
+          onClose={() => setManualTarget(null)}
+          onSave={handleSaveManual}
         />
       )}
 
