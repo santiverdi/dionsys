@@ -149,11 +149,25 @@ export interface FacturaProveedor {
   cargadoAt?: string
 }
 
+// Referencia al egreso de la caja de recepción con el que se pagó una boleta
+// suelta. Si está presente, esa plata YA está contada como gasto de la caja:
+// la boleta aporta el detalle (proveedor, renglones) pero no suma de nuevo.
+export interface CajaGastoRef {
+  cajaId: string
+  nroCaja: number
+  fechaHora: string         // fechaHora del egreso dentro de la caja
+  observacion: string
+  total: number
+}
+
 // Boleta/factura cargada A MANO, sin pedido asociado (compra directa o proveedor
 // fuera del circuito de pedidos). Vive en su propia colección; entra igual al
 // gasto mensual, la cuenta corriente y el reporte para la contadora.
 export interface FacturaManual extends FacturaProveedor {
   id: string
+  // Pagada con plata de la caja de recepción (asociada a ese egreso).
+  // Ausente = se pagó fuera de la caja (administración).
+  pagoCaja?: CajaGastoRef
 }
 
 export interface PedidoSemanal {

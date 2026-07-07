@@ -82,6 +82,7 @@ export function getDineroResumen(cajas: CajaParte[]): DineroResumen {
 
 // ===== Gastos de caja (egresos que NO son retiro de efectivo) =====
 export interface GastoItem {
+  cajaId: string
   nroCaja: number
   conserje: string
   turno?: Turno
@@ -96,6 +97,7 @@ export function getGastosCaja(cajas: CajaParte[]): GastoItem[] {
     for (const e of c.egresos) {
       if (esMovimientoInterno(e)) continue
       items.push({
+        cajaId: c.id,
         nroCaja: c.nroCaja,
         conserje: conserjeDeCaja(c),
         ...(c.turno ? { turno: c.turno } : {}),

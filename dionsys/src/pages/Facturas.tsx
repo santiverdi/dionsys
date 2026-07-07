@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw, ConciergeBell, X, Trash2 } from 'lucide-react'
+import { FileText, Receipt, Package, Clock, CheckCircle2, CalendarDays, PlusCircle, ChevronDown, ChevronUp, CreditCard, Check, Calculator, Copy, Camera, RotateCcw, ConciergeBell, X, Trash2, Wallet } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useOrders } from '../context/OrdersContext'
 import { useAuth } from '../context/AuthContext'
+import { useCajas } from '../context/CajaContext'
+import { getGastosCaja, type GastoItem } from '../lib/panorama'
 import { resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
 import { downloadUrl, uploadFactura } from '../lib/facturaStorage'
@@ -10,7 +12,7 @@ import { scanImageFile } from '../lib/scanDocument'
 import { fileToPdf } from '../lib/imageToPdf'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
 import { generateId } from '../utils/imageCompressor'
-import type { PedidoSemanal, FacturaProveedor, FacturaManual, DepositoSupplier, Order } from '../types'
+import type { PedidoSemanal, FacturaProveedor, FacturaManual, CajaGastoRef, DepositoSupplier, Order } from '../types'
 
 type Tab = 'recibidas' | 'gasto' | 'cuentacorriente' | 'contadora' | 'recepcion'
 
@@ -41,6 +43,13 @@ function mesLabel(yyyymm: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+// Día local YYYY-MM-DD de un ISO con hora (evita el corrimiento por UTC).
+function diaLocal(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function shortDate(iso: string) {
   // Fechas 'YYYY-MM-DD' (sin hora) se formatean a mano para evitar el corrimiento de
   // un día por zona horaria (new Date('YYYY-MM-DD') se interpreta como UTC).
@@ -54,15 +63,23 @@ function shortDate(iso: string) {
 export default function Facturas() {
   const { pedidos, items, suppliers, setFacturaProveedor, facturasManuales, saveFacturaManual, deleteFacturaManual } = useStock()
   const { orders, setOrderFactura } = useOrders()
+  const { cajas } = useCajas()
   const { employee } = useAuth()
   const [tab, setTab] = useState<Tab>('recibidas')
   const [target, setTarget] = useState<{ pedido: PedidoSemanal; supplier: DepositoSupplier; initial?: FacturaProveedor } | null>(null)
   // Pedido de recepción diaria al que se le está cargando la boleta.
   const [recepcionTarget, setRecepcionTarget] = useState<Order | null>(null)
-  // Boleta suelta (a mano): primero se elige el proveedor, después se abre el modal.
-  const [manualPicker, setManualPicker] = useState(false)
+  // Boleta suelta (a mano): paso 1 elegir proveedor, paso 2 cómo se pagó
+  // (de la caja de recepción → se asocia al egreso de esa caja / fuera de caja).
+  const [manualPicker, setManualPicker] = useState<null | { step: 'proveedor' } | { step: 'pago'; supplierId: string; supplierName: string }>(null)
   const [manualNombre, setManualNombre] = useState('')
-  const [manualTarget, setManualTarget] = useState<{ supplierId: string; supplierName: string; initial?: FacturaManual } | null>(null)
+  const [manualTarget, setManualTarget] = useState<{
+    supplierId: string
+    supplierName: string
+    initial?: FacturaManual
+    pagoCaja?: CajaGastoRef
+    prefill?: FacturaProveedor  // monto/fecha del egreso de caja elegido, para precargar el modal
+  } | null>(null)
 
   const recibidos = useMemo(
     () => pedidos
@@ -133,9 +150,43 @@ export default function Facturas() {
     [facturasManuales]
   )
 
+  // Gastos reales de caja (sin retiros ni movimientos internos), los más nuevos
+  // primero: candidatos para asociarle una boleta pagada desde la caja.
+  const gastosCajaRecientes = useMemo(
+    () => getGastosCaja(cajas)
+      .sort((a, b) => (b.fechaHora || '').localeCompare(a.fechaHora || ''))
+      .slice(0, 30),
+    [cajas]
+  )
+
+  // Gastos de caja que ya tienen una boleta asociada (para marcarlos en la lista).
+  const gastosConBoleta = useMemo(() => {
+    const set = new Set<string>()
+    for (const f of facturasManuales) {
+      if (f.pagoCaja) set.add(`${f.pagoCaja.cajaId}:${f.pagoCaja.fechaHora}:${f.pagoCaja.total}`)
+    }
+    return set
+  }, [facturasManuales])
+
   function elegirProveedorManual(supplierId: string, supplierName: string) {
-    setManualPicker(false)
-    setManualTarget({ supplierId, supplierName })
+    setManualPicker({ step: 'pago', supplierId, supplierName })
+  }
+
+  // Paso 2: se pagó de la caja (g = egreso elegido) o fuera de la caja (g = null).
+  function elegirPagoManual(g: GastoItem | null) {
+    if (manualPicker?.step !== 'pago') return
+    const { supplierId, supplierName } = manualPicker
+    setManualPicker(null)
+    if (g) {
+      const pagoCaja: CajaGastoRef = { cajaId: g.cajaId, nroCaja: g.nroCaja, fechaHora: g.fechaHora, observacion: g.observacion, total: g.total }
+      setManualTarget({
+        supplierId, supplierName, pagoCaja,
+        // Precarga el modal con el monto y la fecha del egreso de la caja.
+        prefill: { supplierId, supplierName, tipoFactura: '', monto: g.total, fecha: diaLocal(g.fechaHora) },
+      })
+    } else {
+      setManualTarget({ supplierId, supplierName })
+    }
   }
 
   function handleSaveManual(data: Pick<FacturaProveedor, 'tipoFactura' | 'monto' | 'fecha' | 'items' | 'pago' | 'vencimiento' | 'facturaUrl' | 'facturaNombre'>) {
@@ -147,6 +198,8 @@ export default function Facturas() {
       supplierId: manualTarget.supplierId,
       supplierName: manualTarget.supplierName,
       ...data,
+      // Al crear viene del paso 2 del selector; al editar se preserva la asociación.
+      pagoCaja: manualTarget.pagoCaja ?? prev?.pagoCaja,
       pagado: esCC ? (prev?.pagado ?? false) : undefined,
       fechaPago: esCC ? prev?.fechaPago : undefined,
       cargadoBy: employee.name,
@@ -172,18 +225,20 @@ export default function Facturas() {
   const gastoPorMes = useMemo(() => {
     interface MesAgg {
       total: number
+      deCaja: number   // parte del total pagada desde la caja de recepción (ya contada como gasto de caja)
       tipos: Record<string, number>
       proveedores: Map<string, number>
       productos: Map<string, { display: string; total: number }>
       impuestos: Map<string, { display: string; total: number }>
     }
     const meses = new Map<string, MesAgg>()
-    const agregar = (f: FacturaProveedor, fechaFallback?: string) => {
+    const agregar = (f: FacturaProveedor, fechaFallback?: string, deCaja = false) => {
       const mes = (f.fecha || fechaFallback || '').slice(0, 7)
       if (!mes) return
-      if (!meses.has(mes)) meses.set(mes, { total: 0, tipos: {}, proveedores: new Map(), productos: new Map(), impuestos: new Map() })
+      if (!meses.has(mes)) meses.set(mes, { total: 0, deCaja: 0, tipos: {}, proveedores: new Map(), productos: new Map(), impuestos: new Map() })
       const m = meses.get(mes)!
       m.total += f.monto
+      if (deCaja) m.deCaja += f.monto
       const t = f.tipoFactura || 'Otra'
       m.tipos[t] = (m.tipos[t] ?? 0) + f.monto
       m.proveedores.set(f.supplierName, (m.proveedores.get(f.supplierName) ?? 0) + f.monto)
@@ -200,13 +255,15 @@ export default function Facturas() {
     for (const p of pedidos) {
       for (const f of p.facturas ?? []) agregar(f, p.recibidoAt?.slice(0, 10))
     }
-    // Las boletas sueltas cuentan igual que las de pedidos.
-    for (const f of facturasManuales) agregar(f)
+    // Las boletas sueltas cuentan igual que las de pedidos; las pagadas desde la
+    // caja se marcan aparte para avisar que esa plata ya figura en la caja.
+    for (const f of facturasManuales) agregar(f, undefined, !!f.pagoCaja)
     return Array.from(meses.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mes, d]) => ({
         mes,
         total: d.total,
+        deCaja: d.deCaja,
         tipos: d.tipos,
         proveedores: Array.from(d.proveedores.entries()).sort((a, b) => b[1] - a[1]),
         productos: Array.from(d.productos.values()).sort((a, b) => b.total - a.total),
@@ -360,7 +417,7 @@ export default function Facturas() {
       <div className="flex items-center justify-between gap-2 mb-2">
         <h2 className="text-xl font-bold text-navy-800">Facturas de Proveedores</h2>
         <button
-          onClick={() => { setManualNombre(''); setManualPicker(true) }}
+          onClick={() => { setManualNombre(''); setManualPicker({ step: 'proveedor' }) }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-gold-400 text-navy-900 hover:bg-gold-500 active:scale-95 transition-all shrink-0"
         >
           <PlusCircle size={14} /> Cargar boleta
@@ -414,6 +471,14 @@ export default function Facturas() {
                         <span className="font-bold text-navy-800">{formatMontoCurrency(f.monto)}</span>
                         {f.fecha && <span className="text-navy-400">· {shortDate(f.fecha)}</span>}
                         {f.items?.length ? <span className="text-navy-400">· {f.items.length} reng.</span> : null}
+                        {f.pagoCaja && (
+                          <span
+                            className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 font-semibold flex items-center gap-0.5"
+                            title={`Pagada con plata de la caja N°${f.pagoCaja.nroCaja} (egreso "${f.pagoCaja.observacion}" por ${formatMontoCurrency(f.pagoCaja.total)}). Ya cuenta como gasto de esa caja.`}
+                          >
+                            <Wallet size={10} /> de caja N°{f.pagoCaja.nroCaja}
+                          </span>
+                        )}
                         {f.pago === 'cuenta_corriente' && (
                           f.pagado
                             ? <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold">cta cte · pagada</span>
@@ -636,6 +701,14 @@ export default function Facturas() {
                         <span className="font-bold">{t === 'Otra' ? 'Otras' : `Factura ${t}`}:</span> {formatMontoCurrency(v)}
                       </span>
                     ))}
+                    {m.deCaja > 0 && (
+                      <span
+                        className="text-xs px-2 py-1 rounded-full bg-sky-100 text-sky-700 flex items-center gap-1"
+                        title="Boletas pagadas con plata de la caja de recepción: esa plata ya figura como gasto de la caja, no se cuenta dos veces."
+                      >
+                        <Wallet size={11} /> <span className="font-bold">Pagado desde caja:</span> {formatMontoCurrency(m.deCaja)}
+                      </span>
+                    )}
                   </div>
 
                   {open && (
@@ -841,55 +914,106 @@ export default function Facturas() {
         />
       )}
 
-      {/* Elegir proveedor para una boleta suelta */}
+      {/* Boleta suelta — paso 1: proveedor · paso 2: cómo se pagó */}
       {manualPicker && (
         <div
           className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setManualPicker(false)}
+          onClick={() => setManualPicker(null)}
         >
           <div
             className="bg-white w-full sm:w-[420px] rounded-t-2xl sm:rounded-2xl p-5 max-h-[85vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between mb-1">
-              <h3 className="text-lg font-bold text-navy-800">¿De qué proveedor es la boleta?</h3>
-              <button onClick={() => setManualPicker(false)} className="p-1 rounded-lg hover:bg-navy-100 transition-colors shrink-0">
-                <X size={20} />
-              </button>
-            </div>
-            <p className="text-xs text-navy-500 mb-4">Boleta suelta, sin pedido asociado. Elegí un proveedor o escribí otro.</p>
-            <div className="space-y-1.5 mb-4">
-              {suppliers.map(s => (
+            {manualPicker.step === 'proveedor' ? (
+              <>
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-lg font-bold text-navy-800">¿De qué proveedor es la boleta?</h3>
+                  <button onClick={() => setManualPicker(null)} className="p-1 rounded-lg hover:bg-navy-100 transition-colors shrink-0">
+                    <X size={20} />
+                  </button>
+                </div>
+                <p className="text-xs text-navy-500 mb-4">Boleta suelta, sin pedido asociado. Elegí un proveedor o escribí otro.</p>
+                <div className="space-y-1.5 mb-4">
+                  {suppliers.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => elegirProveedorManual(s.id, s.name)}
+                      className="w-full flex items-center gap-2 p-2.5 rounded-lg border border-navy-100 text-sm font-semibold text-navy-700 hover:bg-navy-50 transition-colors text-left"
+                    >
+                      <Package size={13} className="text-navy-500 shrink-0" /> {s.name}
+                    </button>
+                  ))}
+                </div>
+                <label className="block text-xs font-semibold text-navy-500 mb-1">Otro proveedor / comercio</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualNombre}
+                    onChange={e => setManualNombre(e.target.value)}
+                    placeholder="Nombre del proveedor"
+                    className="flex-1 min-w-0 px-3 py-2.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
+                  />
+                  <button
+                    onClick={() => {
+                      const nombre = manualNombre.trim()
+                      // id estable por nombre: dos boletas del mismo comercio agrupan juntas en cta cte.
+                      if (nombre) elegirProveedorManual(`manual:${nombre.toUpperCase()}`, nombre)
+                    }}
+                    disabled={!manualNombre.trim()}
+                    className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-navy-800 text-cream hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                  >
+                    Seguir
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-lg font-bold text-navy-800">¿Se pagó con plata de la caja?</h3>
+                  <button onClick={() => setManualPicker(null)} className="p-1 rounded-lg hover:bg-navy-100 transition-colors shrink-0">
+                    <X size={20} />
+                  </button>
+                </div>
+                <p className="text-xs text-navy-500 mb-4">
+                  {manualPicker.supplierName} — Si los chicos la pagaron de la caja de recepción, tocá el gasto de esa caja:
+                  la boleta queda asociada y la plata no se cuenta dos veces.
+                </p>
                 <button
-                  key={s.id}
-                  onClick={() => elegirProveedorManual(s.id, s.name)}
-                  className="w-full flex items-center gap-2 p-2.5 rounded-lg border border-navy-100 text-sm font-semibold text-navy-700 hover:bg-navy-50 transition-colors text-left"
+                  onClick={() => elegirPagoManual(null)}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-navy-200 text-sm font-semibold text-navy-700 hover:bg-navy-50 transition-colors mb-4"
                 >
-                  <Package size={13} className="text-navy-500 shrink-0" /> {s.name}
+                  No, se pagó fuera de la caja
                 </button>
-              ))}
-            </div>
-            <label className="block text-xs font-semibold text-navy-500 mb-1">Otro proveedor / comercio</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={manualNombre}
-                onChange={e => setManualNombre(e.target.value)}
-                placeholder="Nombre del proveedor"
-                className="flex-1 min-w-0 px-3 py-2.5 rounded-lg border border-navy-200 text-sm focus:outline-none focus:border-gold-400"
-              />
-              <button
-                onClick={() => {
-                  const nombre = manualNombre.trim()
-                  // id estable por nombre: dos boletas del mismo comercio agrupan juntas en cta cte.
-                  if (nombre) elegirProveedorManual(`manual:${nombre.toUpperCase()}`, nombre)
-                }}
-                disabled={!manualNombre.trim()}
-                className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-navy-800 text-cream hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-              >
-                Seguir
-              </button>
-            </div>
+                <label className="block text-xs font-semibold text-navy-500 mb-1.5">Gastos de caja recientes</label>
+                {gastosCajaRecientes.length === 0 ? (
+                  <p className="text-xs text-navy-400">No hay gastos de caja cargados todavía (se cargan al importar las cajas del PMS).</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {gastosCajaRecientes.map((g, i) => {
+                      const yaAsociado = gastosConBoleta.has(`${g.cajaId}:${g.fechaHora}:${g.total}`)
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => elegirPagoManual(g)}
+                          className={`w-full flex items-center justify-between gap-2 p-2.5 rounded-lg border text-left transition-colors ${
+                            yaAsociado ? 'border-navy-100 bg-navy-50 opacity-60' : 'border-navy-100 hover:bg-sky-50 hover:border-sky-200'
+                          }`}
+                        >
+                          <div className="min-w-0 text-xs">
+                            <span className="font-semibold text-navy-800 block truncate">{g.observacion}</span>
+                            <span className="text-navy-400">
+                              {shortDate(g.fechaHora)} · Caja N°{g.nroCaja} · {g.conserje}
+                              {yaAsociado ? ' · ya tiene boleta' : ''}
+                            </span>
+                          </div>
+                          <span className="text-sm font-bold text-navy-800 shrink-0">{formatMontoCurrency(g.total)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -898,8 +1022,10 @@ export default function Facturas() {
         <FacturaProveedorModal
           supplierName={manualTarget.supplierName}
           docLabel="Boleta"
-          subtitle="Boleta suelta (sin pedido asociado)"
-          initial={manualTarget.initial}
+          subtitle={(manualTarget.pagoCaja ?? manualTarget.initial?.pagoCaja)
+            ? `Pagada desde la caja N°${(manualTarget.pagoCaja ?? manualTarget.initial?.pagoCaja)!.nroCaja} (${formatMontoCurrency((manualTarget.pagoCaja ?? manualTarget.initial?.pagoCaja)!.total)})`
+            : 'Boleta suelta (sin pedido asociado)'}
+          initial={manualTarget.initial ?? manualTarget.prefill}
           onClose={() => setManualTarget(null)}
           onSave={handleSaveManual}
         />
