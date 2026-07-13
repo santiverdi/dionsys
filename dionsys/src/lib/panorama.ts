@@ -5,7 +5,7 @@
 import type { CajaParte, ParteHabitaciones, Turno, CajaMovimiento } from '../types'
 import {
   getCajaResumen, getCajaFlags, anteriorPorNro, gapCircular, nrosEntre,
-  fechaConfiable, MAX_SALTO_NROS,
+  fechaConfiable, MAX_SALTO_NROS, esAnulacionPago, ingresosNetos,
 } from './cajaControl'
 import { getParteResumen, getCheckouts, getEstadiasOcultas, parteAnteriorDe } from './parteControl'
 import { getTarifaFlags, type TarifaPeriodo } from './tarifas'
@@ -28,16 +28,18 @@ export function conserjeDeParte(p: ParteHabitaciones): string {
 }
 
 // Un egreso de caja NO es gasto cuando es un movimiento INTERNO de plata: retiro
-// a la caja fuerte/oficina, cierre de lote de tarjeta, o transferencia a otra caja
-// ("egreso de caja 100", "C-100"). Solo el resto (compras, pagos a proveedores…)
-// es gasto real. Patrones confirmados contra cajas reales del PMS.
+// a la caja fuerte/oficina, cierre de lote de tarjeta, transferencia a otra caja
+// ("egreso de caja 100", "C-100"), o la anulación de un cobro mal cargado
+// (esAnulacionPago). Solo el resto (compras, pagos a proveedores…) es gasto real.
+// Patrones confirmados contra cajas reales del PMS.
 const NO_ES_GASTO = [
   /retiro\s+efectivo/i,         // a la caja fuerte / oficina
   /cierre\s+de\s+lote/i,        // liquidación de tarjeta al cerrar
   /egreso\s+(de|a|al)\s+caja/i, // transferencia a otra caja
   /\bc\s*-\s*\d+\b/i,           // referencia a otra caja ("C-100")
 ]
-const esMovimientoInterno = (m: CajaMovimiento) => NO_ES_GASTO.some(re => re.test(m.observacion))
+const esMovimientoInterno = (m: CajaMovimiento) =>
+  esAnulacionPago(m) || NO_ES_GASTO.some(re => re.test(m.observacion))
 const esRetiroEfectivo = (m: CajaMovimiento) => /retiro\s+efectivo/i.test(m.observacion)
 
 // ===== Dinero / cobranzas =====
@@ -58,7 +60,8 @@ export interface DineroResumen {
 }
 
 export function getDineroResumen(cajas: CajaParte[]): DineroResumen {
-  const ingresos = cajas.flatMap(c => c.ingresos)
+  // ingresosNetos: los cobros anulados por el PMS no son plata cobrada.
+  const ingresos = cajas.flatMap(c => ingresosNetos(c))
   const efectivo = sum(ingresos.map(m => m.efectivo))
   const tarjetas = sum(ingresos.map(m => m.tarjetas))
   const cheques = sum(ingresos.map(m => m.cheques))
@@ -143,7 +146,7 @@ function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: Parte
   // atribuyen a quien cargó ESTA caja: es quien guardó salteando la numeración.
   const gap = anterior ? gapCircular(anterior.nroCaja, caja.nroCaja) : 0
   i.huecos = gap > 1 && gap <= MAX_SALTO_NROS ? gap - 1 : 0
-  i.tarjetaSinFB = caja.ingresos.filter(m => m.tarjetas > 0 && !m.facturaB).length
+  i.tarjetaSinFB = ingresosNetos(caja).filter(m => m.tarjetas > 0 && !m.facturaB).length
   // Solo los warn cuentan como imperfección (los info son descuentos a confirmar).
   i.tarifasFuera = getTarifaFlags(caja, partes, tarifas).filter(f => f.level === 'warn').length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
@@ -212,8 +215,9 @@ export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[]
     s.cantIngresos += r.cantIngresos
     acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas, partes, tarifas))
     const f = fb.get(s.conserje) ?? { tarjeta: 0, conFB: 0 }
-    f.tarjeta += c.ingresos.filter(m => m.tarjetas > 0).length
-    f.conFB += c.ingresos.filter(m => m.tarjetas > 0 && m.facturaB).length
+    const netos = ingresosNetos(c)
+    f.tarjeta += netos.filter(m => m.tarjetas > 0).length
+    f.conFB += netos.filter(m => m.tarjetas > 0 && m.facturaB).length
     fb.set(s.conserje, f)
   }
   for (const p of partes) {

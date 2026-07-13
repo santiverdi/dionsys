@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { getCajaFlags, faltantesAntesDe, fmtFaltantes } from '../../src/lib/cajaControl'
-import type { CajaParte } from '../../src/types'
+import { getCajaFlags, faltantesAntesDe, fmtFaltantes, getCajaResumen, ingresosNetos } from '../../src/lib/cajaControl'
+import type { CajaParte, CajaMovimiento } from '../../src/types'
+
+function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
+  return {
+    fechaHora: '2026-07-12T00:49:00.000Z', usuario: 'X', comp: '', habitacion: '', observacion: '',
+    efectivo: 0, tarjetas: 0, cheques: 0, transferencia: 0, otros: 0, total: 0, ...p,
+  }
+}
 
 function mkCaja(p: Partial<CajaParte>): CajaParte {
   return {
@@ -59,6 +66,47 @@ describe('fmtFaltantes', () => {
     expect(fmtFaltantes([31])).toBe('Nº 31')
     expect(fmtFaltantes([31, 32])).toBe('Nº 31, Nº 32')
     expect(fmtFaltantes([31, 32, 33, 34, 35])).toBe('5 cajas (Nº 31 a Nº 35)')
+  })
+})
+
+describe('ingresosNetos + getCajaResumen — anulación de pago', () => {
+  // Caso real (caja 66): cobro tipeado $5.817.583 en vez de $58.175,83, anulado
+  // al minuto por el PMS ("Egreso por anulación de pago") y vuelto a cargar bien.
+  const caja = mkCaja({
+    nroCaja: 66,
+    ingresos: [
+      mov({ observacion: 'Pago Reserva 678 / #305. C66.', efectivo: 63000, total: 63000 }),
+      mov({ observacion: 'Pago Reserva 682 / #702. C66', efectivo: 5817583, total: 5817583 }), // mal tipeado
+      mov({ observacion: 'Pago Reserva 682 / #702. C66', tarjetas: 58175.83, total: 58175.83 }), // el correcto
+    ],
+    egresos: [
+      mov({ observacion: 'Egreso por anulación de pago en', efectivo: 5817583, total: 5817583 }),
+    ],
+  })
+
+  it('descarta el cobro anulado (mismo monto que la anulación)', () => {
+    const netos = ingresosNetos(caja)
+    expect(netos).toHaveLength(2)
+    expect(netos.some(m => m.total === 5817583)).toBe(false)
+    expect(netos.some(m => m.total === 58175.83)).toBe(true) // el re-cargado queda
+  })
+
+  it('el resumen no cuenta el cobro anulado ni la anulación como retiro', () => {
+    const r = getCajaResumen(caja)
+    expect(r.totalCobrado).toBeCloseTo(63000 + 58175.83)
+    expect(r.cantIngresos).toBe(2)
+    expect(r.totalRetiros).toBe(0) // la anulación no es plata que salió
+  })
+
+  it('sin anulaciones devuelve los ingresos tal cual', () => {
+    const simple = mkCaja({ nroCaja: 1, ingresos: [mov({ total: 1000 })], egresos: [mov({ observacion: 'verduleria', total: 200 })] })
+    expect(ingresosNetos(simple)).toBe(simple.ingresos)
+  })
+
+  it('anulación sin cobro que matchee en la caja (anulación cruzada) no descarta nada', () => {
+    const cruzada = mkCaja({ nroCaja: 2, ingresos: [mov({ total: 1000 })],
+      egresos: [mov({ observacion: 'Egreso por anulación de pago en', total: 999999 })] })
+    expect(ingresosNetos(cruzada)).toHaveLength(1)
   })
 })
 

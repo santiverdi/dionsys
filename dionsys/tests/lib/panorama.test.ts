@@ -87,6 +87,22 @@ describe('getGastosCaja', () => {
     const g = getGastosCaja(cajas)
     expect(g.map(x => x.observacion)).toEqual(['verduleria']) // solo el gasto real
   })
+
+  it('la anulación de un cobro mal cargado no es gasto ni cobro (caso real caja 66)', () => {
+    const cajas = [mkCaja({ nroCaja: 66, conserje: 'Gaston',
+      ingresos: [
+        mov({ observacion: 'Pago Reserva 682 / #702. C66', efectivo: 5817583, total: 5817583 }), // mal tipeado
+        mov({ observacion: 'Pago Reserva 682 / #702. C66', efectivo: 58175.83, total: 58175.83 }), // el correcto
+      ],
+      egresos: [
+        mov({ observacion: 'Egreso por anulación de pago en', efectivo: 5817583, total: 5817583 }),
+      ] })]
+    expect(getGastosCaja(cajas)).toEqual([]) // no aparece como gasto
+    const r = getDineroResumen(cajas)
+    expect(r.totalGastosCaja).toBe(0)
+    expect(r.totalCobrado).toBeCloseTo(58175.83) // el cobro anulado tampoco suma
+    expect(r.cantIngresos).toBe(1)
+  })
 })
 
 describe('getImperfeccionesGlobal + getConserjeStats', () => {

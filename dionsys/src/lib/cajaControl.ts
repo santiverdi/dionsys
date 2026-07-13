@@ -2,7 +2,7 @@
 // (y opcionalmente la caja anterior) devuelve las "imperfecciones" a revisar y
 // un resumen por medio de pago. Pura función, sin estado.
 
-import type { CajaParte } from '../types'
+import type { CajaParte, CajaMovimiento } from '../types'
 
 export type FlagLevel = 'error' | 'warn' | 'info'
 
@@ -26,8 +26,29 @@ export interface CajaResumen {
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 
+// Un "Egreso por anulación de pago" del PMS revierte un cobro mal cargado (visto
+// en caja real: cobro tipeado $5.817.583 en vez de $58.175,83, anulado al minuto
+// y vuelto a cargar bien). No es gasto ni retiro: es la contracara de un ingreso
+// que tampoco es cobro real.
+export const esAnulacionPago = (m: CajaMovimiento): boolean =>
+  /anulaci[oó]n\s+de\s+pago/i.test(m.observacion)
+
+// Ingresos REALES de la caja: por cada anulación en egresos, descarta el cobro
+// del mismo monto que fue revertido. Si el cobro anulado quedó en otra caja
+// (anulación cruzada) no hay match y no se descarta nada: best-effort.
+export function ingresosNetos(caja: CajaParte): CajaMovimiento[] {
+  const anulados = caja.egresos.filter(esAnulacionPago).map(e => e.total)
+  if (!anulados.length) return caja.ingresos
+  const netos = [...caja.ingresos]
+  for (const monto of anulados) {
+    const i = netos.findIndex(m => Math.abs(m.total - monto) < 0.01)
+    if (i >= 0) netos.splice(i, 1)
+  }
+  return netos
+}
+
 export function getCajaResumen(caja: CajaParte): CajaResumen {
-  const i = caja.ingresos
+  const i = ingresosNetos(caja)
   const efectivo = sum(i.map(m => m.efectivo))
   const tarjetas = sum(i.map(m => m.tarjetas))
   const cheques = sum(i.map(m => m.cheques))
@@ -38,7 +59,7 @@ export function getCajaResumen(caja: CajaParte): CajaResumen {
     totalCobrado: efectivo + tarjetas + cheques + transferencia + otros,
     cantIngresos: i.length,
     cantFacturasB: i.filter(m => m.facturaB).length,
-    totalRetiros: sum(caja.egresos.map(m => m.total)),
+    totalRetiros: sum(caja.egresos.filter(m => !esAnulacionPago(m)).map(m => m.total)),
   }
 }
 
@@ -159,8 +180,8 @@ export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFla
     flags.push({ level: 'warn', tipo: 'sin_cierre', mensaje: 'La caja todavía no está cerrada.' })
   }
 
-  // 3) Cobros con tarjeta sin Factura B asociada.
-  const tarjetaSinFB = caja.ingresos.filter(m => m.tarjetas > 0 && !m.facturaB)
+  // 3) Cobros con tarjeta sin Factura B asociada (los cobros anulados no cuentan).
+  const tarjetaSinFB = ingresosNetos(caja).filter(m => m.tarjetas > 0 && !m.facturaB)
   if (tarjetaSinFB.length) {
     flags.push({
       level: 'warn',

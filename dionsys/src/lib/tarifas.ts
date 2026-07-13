@@ -8,7 +8,7 @@
 // descuento por pagar en efectivo. Un cobro que cuadra = n noches × tarifa.
 
 import type { CajaParte, ParteHabitaciones, CajaMovimiento } from '../types'
-import { fechaConfiable, type CajaFlag } from './cajaControl'
+import { fechaConfiable, ingresosNetos, type CajaFlag } from './cajaControl'
 
 export interface TarifaPeriodo {
   desde: string   // YYYY-MM-DD inclusive
@@ -104,7 +104,8 @@ export function getTarifaFlags(
 ): CajaFlag[] {
   const flags: CajaFlag[] = []
 
-  for (const m of caja.ingresos) {
+  // ingresosNetos: un cobro anulado por el PMS no se controla contra tarifa.
+  for (const m of ingresosNetos(caja)) {
     if (m.total <= 0) continue
     const plazas = plazasDe(m, partes)
     if (!plazas) continue
