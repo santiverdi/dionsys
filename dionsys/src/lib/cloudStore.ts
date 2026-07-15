@@ -41,6 +41,7 @@ export const SYNCED_KEYS = [
   'dionsys_partes',
   'dionsys_checkout_docs',
   'dionsys_tarifas',
+  'dionsys_prisma_tarjetas',
 ] as const
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number]

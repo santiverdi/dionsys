@@ -370,6 +370,35 @@ export function getCobertura(cajas: CajaParte[], partes: ParteHabitaciones[], ah
   }
 }
 
+// ===== Seguimiento por turno (habitaciones al cierre de cada turno) =====
+export interface TurnoHabitaciones {
+  nroCaja: number
+  fecha: string          // fecha confiable del parte (ISO)
+  turno?: Turno
+  conserje: string
+  ocupadas: number
+  libres: number
+  sucias: number
+  limpias: number
+  mantenimiento: number
+}
+
+export function getSeguimientoTurnos(partes: ParteHabitaciones[]): TurnoHabitaciones[] {
+  return partes
+    .map(p => ({
+      nroCaja: p.nroCaja,
+      fecha: fechaConfiable(p.fechaCaja, p.importedAt),
+      ...(p.turno ? { turno: p.turno } : {}),
+      conserje: conserjeDeParte(p),
+      ocupadas: p.totalOcupadas,
+      libres: p.totalLibres,
+      sucias: p.sucias,
+      limpias: p.limpias,
+      mantenimiento: p.mantenimiento,
+    }))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+}
+
 // ===== Serie diaria (evolución) =====
 export interface SerieDia {
   fecha: string        // YYYY-MM-DD
@@ -410,6 +439,7 @@ export interface Panorama {
   cobertura: Cobertura
   gastos: GastoItem[]
   serie: SerieDia[]
+  turnos: TurnoHabitaciones[]
 }
 
 export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date(), tarifas?: TarifaPeriodo[]): Panorama {
@@ -421,5 +451,6 @@ export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], aho
     cobertura: getCobertura(cajas, partes, ahora),
     gastos: getGastosCaja(cajas),
     serie: getSerieDiaria(cajas, partes),
+    turnos: getSeguimientoTurnos(partes),
   }
 }

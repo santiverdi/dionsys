@@ -9,6 +9,7 @@ import { useTarifas } from '../context/TarifasContext'
 import { getPanorama, type ConserjeStats, type ImperfeccionesCount } from '../lib/panorama'
 import { mesesSinTarifa } from '../lib/tarifas'
 import { formatMontoCurrency } from '../utils/validators'
+import { TURNO_LABELS } from '../context/OccupancyContext'
 
 function fmtFechaCorta(s: string): string {
   if (!s) return '—'
@@ -142,7 +143,7 @@ export default function Panorama() {
     )
   }
 
-  const { dinero, imperfecciones, conserjes, ocupacion, cobertura, gastos, serie } = p
+  const { dinero, imperfecciones, conserjes, ocupacion, cobertura, gastos, serie, turnos } = p
   const maxCobradoConserje = Math.max(...conserjes.map(c => c.totalCobrado), 1)
   const medios = [
     { label: 'Efectivo', v: dinero.efectivo, Icon: Banknote },
@@ -280,6 +281,42 @@ export default function Panorama() {
           ))}
         </div>
       </Section>
+
+      {/* Seguimiento por turno: habitaciones al cierre de cada turno */}
+      {turnos.length > 0 && (
+        <Section icon={BedDouble} title="Seguimiento por turno">
+          <p className="text-[11px] text-navy-400 mb-2">Al cierre de cada turno, según el parte de habitaciones que cargó el conserje.</p>
+          <div className="overflow-x-auto -mx-4 px-4">
+            <table className="w-full text-xs min-w-[520px]">
+              <thead>
+                <tr className="text-navy-500 border-b border-navy-100">
+                  <th className="text-left py-1.5 pr-2">Fecha</th>
+                  <th className="text-left px-2">Turno</th>
+                  <th className="text-left px-2">Conserje</th>
+                  <th className="text-center px-2">Ocupadas</th>
+                  <th className="text-center px-2">Libres</th>
+                  <th className="text-center pl-2">Sucias</th>
+                </tr>
+              </thead>
+              <tbody>
+                {turnos.slice(0, 12).map(t => (
+                  <tr key={`${t.nroCaja}-${t.fecha}`} className="border-b border-navy-50 last:border-0">
+                    <td className="py-1.5 pr-2 text-navy-500 whitespace-nowrap">{fmtFechaCorta(t.fecha)}</td>
+                    <td className="px-2 text-navy-700 whitespace-nowrap">{t.turno ? TURNO_LABELS[t.turno] : `Caja ${t.nroCaja}`}</td>
+                    <td className="px-2 text-navy-600">{t.conserje}</td>
+                    <td className="px-2 text-center font-semibold text-navy-800">{t.ocupadas}</td>
+                    <td className="px-2 text-center text-navy-700">{t.libres}</td>
+                    <td className={`pl-2 text-center font-semibold ${t.sucias ? 'text-amber-700' : 'text-green-600'}`}>{t.sucias}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {turnos.length > 12 && (
+            <p className="text-[11px] text-navy-400 mt-1.5">Últimos 12 turnos (hay {turnos.length} partes cargados).</p>
+          )}
+        </Section>
+      )}
 
       {/* Evolución diaria */}
       {serieReciente.length > 0 && (

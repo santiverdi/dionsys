@@ -14,6 +14,7 @@ import { TurnosProvider } from './context/TurnosContext'
 import { ImpuestosProvider } from './context/ImpuestosContext'
 import { SueldosProvider } from './context/SueldosContext'
 import { TarifasProvider } from './context/TarifasContext'
+import { PrismaProvider } from './context/PrismaContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -140,7 +141,9 @@ export default function App() {
                   <ImpuestosProvider>
                     <SueldosProvider>
                       <TarifasProvider>
-                        <AppRoutes />
+                        <PrismaProvider>
+                          <AppRoutes />
+                        </PrismaProvider>
                       </TarifasProvider>
                     </SueldosProvider>
                   </ImpuestosProvider>

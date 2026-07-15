@@ -10,6 +10,7 @@ import { useTarifas } from '../context/TarifasContext'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { getTarifaFlags } from '../lib/tarifas'
 import TarifasEditor from '../components/TarifasEditor'
+import PrismaConciliacion from '../components/PrismaConciliacion'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS, type Turno } from '../context/OccupancyContext'
 import PartePanel from '../components/PartePanel'
@@ -215,6 +216,9 @@ export default function ControlCaja() {
 
       {/* Tarifas pactadas (editable por el admin; el control cruza los cobros contra esto) */}
       {employee?.role === 'admin' && <TarifasEditor />}
+
+      {/* Conciliación mensual de tarjetas: sistema vs resumen Prisma (solo admin) */}
+      {employee?.role === 'admin' && <PrismaConciliacion />}
 
       {/* Listado */}
       {cajas.length === 0 ? (

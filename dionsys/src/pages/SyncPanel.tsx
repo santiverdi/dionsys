@@ -24,6 +24,7 @@ const LABELS: Record<SyncedKey, string> = {
   dionsys_partes: 'Parte de habitaciones',
   dionsys_checkout_docs: 'Hojas de checkout',
   dionsys_tarifas: 'Tarifas pactadas',
+  dionsys_prisma_tarjetas: 'Conciliación Prisma (tarjetas)',
 }
 
 function fmtDate(iso: string | null): string {
