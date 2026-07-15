@@ -3,8 +3,27 @@ import type { ParteHabitaciones } from '../types'
 import { persist, useCloudSync } from '../lib/cloudStore'
 import { parteAnteriorDe } from '../lib/parteControl'
 import { fechaConfiable } from '../lib/cajaControl'
+import { usuarioLimpio, turnoDeApertura, conserjeFrom } from '../lib/parseCaja'
 
 const LS_PARTES = 'dionsys_partes'
+
+// Migración idempotente: partes viejos guardados con el "usuario" roto (el
+// parser pegaba la fecha del encabezado: "Fecha caja: 22/06/2026 06:46…" —
+// cada uno aparecía como un "conserje" fantasma en el ranking). Se limpia el
+// usuario y se re-derivan turno/conserje de lo que quede.
+function migratePartes(list: ParteHabitaciones[]): ParteHabitaciones[] {
+  let changed = false
+  const next = list.map(p => {
+    const limpio = usuarioLimpio(p.usuario ?? '')
+    if (limpio === (p.usuario ?? '')) return p
+    changed = true
+    const turno = p.turno ?? turnoDeApertura(limpio, p.fechaCaja)
+    const conserje = p.conserje ?? conserjeFrom(limpio)
+    return { ...p, usuario: limpio, ...(turno ? { turno } : {}), ...(conserje ? { conserje } : {}) }
+  })
+  if (changed) localStorage.setItem(LS_PARTES, JSON.stringify(next))
+  return next
+}
 
 // Mismo Nº con fechas a menos de esto = el mismo parte (re-import). El contador
 // del PMS da la vuelta en 100 (~33 días a 3 turnos/día): un mismo Nº de otro
@@ -26,10 +45,12 @@ const ParteContext = createContext<ParteContextType | null>(null)
 export function ParteProvider({ children }: { children: ReactNode }) {
   const [partes, setPartes] = useState<ParteHabitaciones[]>(() => {
     const saved = localStorage.getItem(LS_PARTES)
-    return saved ? JSON.parse(saved) : []
+    return migratePartes(saved ? JSON.parse(saved) : [])
   })
 
-  useCloudSync<ParteHabitaciones[]>(LS_PARTES, setPartes)
+  // Los cambios remotos también pasan por la migración (otro dispositivo puede
+  // tener guardados los partes con el usuario roto).
+  useCloudSync<ParteHabitaciones[]>(LS_PARTES, remote => setPartes(migratePartes(remote)))
 
   const addParte = useCallback((parte: ParteHabitaciones) => {
     setPartes(prev => {

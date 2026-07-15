@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getDineroResumen, getImperfeccionesGlobal, getConserjeStats,
-  getOcupacionResumen, getCobertura, getGastosCaja, getPanorama,
+  getOcupacionResumen, getCobertura, getGastosCaja, getPanorama, conserjeDeParte,
 } from '../../src/lib/panorama'
 import type { CajaParte, CajaMovimiento, ParteHabitaciones, EstadoHabitacion } from '../../src/types'
 
@@ -242,6 +242,42 @@ describe('getCobertura', () => {
     const c = getCobertura([], [], new Date('2026-06-21T17:00:00.000Z'))
     expect(c.horasSinCarga).toBeNull()
     expect(c.ultimaCajaNro).toBeNull()
+  })
+})
+
+describe('conserjeDeParte (usuario roto por el encabezado del PDF)', () => {
+  const JUNK = 'Fecha caja: 22/06/2026 06:46: Fecha/hora emisión : Jun 22, 2026 06:48'
+
+  it('no inventa un conserje con la fecha pegada en usuario', () => {
+    expect(conserjeDeParte(mkParte({ nroCaja: 40, usuario: JUNK }))).toBe('—')
+  })
+
+  it('sin usuario legible, toma el conserje de la caja del mismo turno (mismo Nº)', () => {
+    const parte = mkParte({ nroCaja: 40, usuario: JUNK })
+    const caja = mkCaja({ nroCaja: 40, conserje: 'Leandro' })
+    expect(conserjeDeParte(parte, [caja])).toBe('Leandro')
+  })
+
+  it('la caja homónima de OTRO ciclo (a más de 15 días) no presta su conserje', () => {
+    const parte = mkParte({ nroCaja: 40, usuario: JUNK, fechaCaja: '2026-06-20T07:00:00.000Z' })
+    const caja = mkCaja({ nroCaja: 40, conserje: 'Leandro',
+      aperturaAt: '2026-04-01T07:00:00.000Z', importedAt: '2026-04-01T08:00:00.000Z' })
+    expect(conserjeDeParte(parte, [caja])).toBe('—')
+  })
+
+  it('un usuario real del PMS que no es conserje conocido se muestra tal cual', () => {
+    expect(conserjeDeParte(mkParte({ nroCaja: 41, usuario: 'Diego Armando' }))).toBe('Diego Armando')
+  })
+
+  it('en el ranking, los partes rotos no generan una fila por parte', () => {
+    const partes = [
+      mkParte({ nroCaja: 50, usuario: JUNK }),
+      mkParte({ nroCaja: 51, usuario: 'Fecha caja: 05/07/2026 06:48: Fecha/hora emisión : Jul 5, 2026 06:50' }),
+    ]
+    const stats = getConserjeStats([], partes)
+    expect(stats).toHaveLength(1)
+    expect(stats[0].conserje).toBe('—')
+    expect(stats[0].partes).toBe(2)
   })
 })
 

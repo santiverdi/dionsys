@@ -92,6 +92,21 @@ export function conserjeFrom(usuario: string): string | undefined {
   return CONSERJE_NAMES.find(n => u.includes(norm(n)))
 }
 
+// Un "usuario" leído del PDF/foto de un parte a veces viene con la basura del
+// encabezado pegada ("Fecha caja: 22/06/2026 06:46: Fecha/hora emisión…").
+// Corta esa cola y, si lo que queda parece una fecha/hora y no un nombre, lo
+// descarta (mejor sin usuario que un usuario-fecha que rompe el ranking).
+export function usuarioLimpio(raw: string): string {
+  const s = raw
+    .replace(/fecha\s*\/?\s*hora\s+emisi[oó]n.*$/i, '')
+    .replace(/fecha\s+caja.*$/i, '')
+    .replace(/[\s:·.,|-]+$/, '')
+    .trim()
+  if (!s) return ''
+  if (/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s) || /\d{1,2}:\d{2}/.test(s)) return ''
+  return s
+}
+
 // Turno fijo de cada conserje titular (inverso de DEFAULT_SHIFTS de TurnosContext).
 // Los cubridores (Valentin/Franquero) no tienen turno fijo → se cae a la hora.
 // Santiago no tiene turno fijo real (mayormente tarde, pero también cubre otros) →

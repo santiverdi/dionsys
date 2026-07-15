@@ -48,6 +48,47 @@ describe('parseParteItems (Parte Diario PDF)', () => {
   })
 })
 
+describe('parseParteItems — encabezado con etiqueta pegada al valor', () => {
+  // Algunos PDFs emiten "Fecha caja: 22/06/2026 06:46" como UN solo ítem de
+  // texto. Con el match exacto viejo, el corte por x fallaba y el usuario se
+  // llevaba pegada toda la fecha (aparecía como conserje fantasma en el ranking).
+  const base = (extra: PdfTextItem[]): PdfTextItem[] => [
+    { x: 10, y: 10, str: 'Parte Diario' },
+    { x: 120, y: 10, str: 'Caja 93' },
+    ...extra,
+    { x: 10, y: 30, str: 'Habitación' },
+    { x: 10, y: 50, str: 'Total habitaciones ocupadas' },
+    { x: 200, y: 50, str: '0' },
+    { x: 10, y: 55, str: 'Total plazas ocupadas' },
+    { x: 200, y: 55, str: '0' },
+    { x: 10, y: 60, str: 'Total habitaciones libres' },
+    { x: 200, y: 60, str: '0' },
+  ]
+
+  it('no pega la fecha del encabezado en el usuario (queda vacío, no basura)', () => {
+    const p = parseParteItems(base([
+      { x: 200, y: 10, str: 'Usuario:' },
+      { x: 260, y: 10, str: 'Fecha caja: 22/06/2026 06:46' },
+      { x: 500, y: 10, str: 'Fecha/hora emisión : Jun 22, 2026 06:48' },
+    ]), 'Test')
+    expect(p.usuario).toBe('')
+    expect(p.conserje).toBeUndefined()
+    // La fecha igual se lee del ítem combinado, y el turno sale de la hora.
+    expect(new Date(p.fechaCaja).getFullYear()).toBe(2026)
+    expect(p.turno).toBe('manana')
+  })
+
+  it('lee el usuario aunque venga pegado a la etiqueta ("Usuario: Gaston")', () => {
+    const p = parseParteItems(base([
+      { x: 200, y: 10, str: 'Usuario: Gaston' },
+      { x: 400, y: 10, str: 'Fecha caja: 22/06/2026 22:46' },
+    ]), 'Test')
+    expect(p.usuario).toBe('Gaston')
+    expect(p.conserje).toBe('Gaston')
+    expect(p.turno).toBe('noche')
+  })
+})
+
 describe('getParteResumen', () => {
   const parte = parseParteItems(ITEMS, 'Test')
   it('calcula el % de ocupación', () => {
@@ -88,6 +129,16 @@ describe('parteFromExtracted (lectura por IA)', () => {
 
   it('tira error si la IA no leyó el Nro. de Caja', () => {
     expect(() => parteFromExtracted({ ...ex, nroCaja: '' }, 'Test')).toThrow(/Nro\. de Caja/)
+  })
+
+  it('descarta el usuario basura que a veces devuelve la IA (fecha del encabezado)', () => {
+    const p = parteFromExtracted({
+      ...ex,
+      usuario: 'Fecha caja: 05/07/2026 06:48: Fecha/hora emisión : Jul 5, 2026 06:50',
+    }, 'Test')
+    expect(p.usuario).toBe('')
+    expect(p.conserje).toBeUndefined()
+    expect(p.turno).toBe('manana') // derivado de la hora de fechaCaja
   })
 })
 

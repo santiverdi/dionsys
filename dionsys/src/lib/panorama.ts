@@ -9,6 +9,7 @@ import {
 } from './cajaControl'
 import { getParteResumen, getCheckouts, getEstadiasOcultas, parteAnteriorDe } from './parteControl'
 import { getTarifaFlags, type TarifaPeriodo } from './tarifas'
+import { usuarioLimpio } from './parseCaja'
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 
@@ -23,8 +24,26 @@ function diaLocal(iso: string): string {
 export function conserjeDeCaja(c: CajaParte): string {
   return c.conserje || c.usuarioApertura || '—'
 }
-export function conserjeDeParte(p: ParteHabitaciones): string {
-  return p.conserje || p.usuario || '—'
+
+// Mismo criterio de ciclo que ParteContext: el contador del PMS da la vuelta en
+// 100; un Nº repetido a más de 15 días es OTRO turno.
+const MISMO_CICLO_MS = 15 * 24 * 3_600_000
+
+export function conserjeDeParte(p: ParteHabitaciones, cajas?: CajaParte[]): string {
+  if (p.conserje) return p.conserje
+  // usuarioLimpio: partes viejos guardados con la fecha del encabezado pegada
+  // en "usuario" no deben aparecer como conserjes fantasma.
+  const u = usuarioLimpio(p.usuario || '')
+  if (u) return u
+  // Parte sin usuario legible: el conserje lo dice la caja del mismo turno
+  // (mismo Nº dentro del ciclo).
+  if (cajas) {
+    const f = new Date(fechaConfiable(p.fechaCaja, p.importedAt)).getTime()
+    const caja = cajas.find(c => c.nroCaja === p.nroCaja
+      && Math.abs(new Date(fechaConfiable(c.aperturaAt, c.importedAt)).getTime() - f) <= MISMO_CICLO_MS)
+    if (caja) return conserjeDeCaja(caja)
+  }
+  return '—'
 }
 
 // Un egreso de caja NO es gasto cuando es un movimiento INTERNO de plata: retiro
@@ -221,7 +240,7 @@ export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[]
     fb.set(s.conserje, f)
   }
   for (const p of partes) {
-    const s = get(conserjeDeParte(p))
+    const s = get(conserjeDeParte(p, cajas))
     s.partes += 1
     acumular(s.imperfecciones, imperfeccionesDeParte(p, partes, cajas))
   }
@@ -383,13 +402,13 @@ export interface TurnoHabitaciones {
   mantenimiento: number
 }
 
-export function getSeguimientoTurnos(partes: ParteHabitaciones[]): TurnoHabitaciones[] {
+export function getSeguimientoTurnos(partes: ParteHabitaciones[], cajas?: CajaParte[]): TurnoHabitaciones[] {
   return partes
     .map(p => ({
       nroCaja: p.nroCaja,
       fecha: fechaConfiable(p.fechaCaja, p.importedAt),
       ...(p.turno ? { turno: p.turno } : {}),
-      conserje: conserjeDeParte(p),
+      conserje: conserjeDeParte(p, cajas),
       ocupadas: p.totalOcupadas,
       libres: p.totalLibres,
       sucias: p.sucias,
@@ -451,6 +470,6 @@ export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], aho
     cobertura: getCobertura(cajas, partes, ahora),
     gastos: getGastosCaja(cajas),
     serie: getSerieDiaria(cajas, partes),
-    turnos: getSeguimientoTurnos(partes),
+    turnos: getSeguimientoTurnos(partes, cajas),
   }
 }

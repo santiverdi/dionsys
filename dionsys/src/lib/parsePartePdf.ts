@@ -17,7 +17,7 @@
 // Best-effort: si falta algo, devuelve lo que pudo y no rompe.
 
 import { generateId } from '../utils/imageCompressor'
-import { turnoDeApertura, conserjeFrom } from './parseCaja'
+import { turnoDeApertura, conserjeFrom, usuarioLimpio } from './parseCaja'
 import type { ExtractedParte } from './invoiceExtract'
 import type { ParteHabitaciones, HabitacionOcupada, HabitacionLibre, EstadoHabitacion } from '../types'
 
@@ -87,11 +87,18 @@ function numberRightOf(rows: Row[], label: string): number | undefined {
   return undefined
 }
 
-// Texto a la derecha de una etiqueta, cortando antes de otra etiqueta si se pasa su x.
-function textRightOf(rows: Row[], label: string, beforeX = Infinity): string {
+// Valor de una etiqueta del encabezado. La etiqueta puede venir como ítem solo
+// ("Usuario:" y el valor a la derecha) o pegada a su valor en un MISMO ítem
+// ("Fecha caja: 22/06/2026 06:46") — en ese caso el valor es el resto del ítem.
+// Con la versión anterior (match exacto), el ítem combinado no matcheaba y el
+// corte por x fallaba: el usuario se llevaba pegada la fecha del encabezado.
+function headerValue(rows: Row[], label: string, beforeX = Infinity): string {
+  const l = norm(label)
   for (const r of rows) {
-    const li = r.items.find(i => norm(i.str) === norm(label))
+    const li = r.items.find(i => norm(i.str) === l || norm(i.str).startsWith(l))
     if (!li) continue
+    const inline = norm(li.str) === l ? '' : li.str.trim().slice(label.length).replace(/^[:\s]+/, '').trim()
+    if (inline) return inline
     return r.items
       .filter(i => i.x > li.x && i.x < beforeX && i.str.trim())
       .map(i => i.str.trim())
@@ -119,9 +126,11 @@ function findNroCaja(items: PdfTextItem[], rows: Row[]): number {
   return 0
 }
 
+// x de una etiqueta; matchea también si viene pegada a su valor en un mismo ítem.
 function xOfLabel(rows: Row[], label: string): number | undefined {
+  const l = norm(label)
   for (const r of rows) {
-    const li = r.items.find(i => norm(i.str) === norm(label))
+    const li = r.items.find(i => norm(i.str) === l || norm(i.str).startsWith(l))
     if (li) return li.x
   }
   return undefined
@@ -150,9 +159,10 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
   if (!nroCaja) {
     throw new Error('No se pudo leer el Nro. de Caja del Parte Diario. Revisá el PDF.')
   }
-  const fechaCajaLabelX = xOfLabel(rows, 'Fecha caja:') ?? xOfLabel(rows, 'Fecha caja') ?? Infinity
-  const usuario = textRightOf(rows, 'Usuario:', fechaCajaLabelX) || textRightOf(rows, 'Usuario', fechaCajaLabelX)
-  const fechaCajaStr = textRightOf(rows, 'Fecha caja:') || textRightOf(rows, 'Fecha caja')
+  const fechaCajaLabelX = xOfLabel(rows, 'Fecha caja') ?? Infinity
+  const usuario = usuarioLimpio(
+    headerValue(rows, 'Usuario:', fechaCajaLabelX) || headerValue(rows, 'Usuario', fechaCajaLabelX))
+  const fechaCajaStr = headerValue(rows, 'Fecha caja:') || headerValue(rows, 'Fecha caja')
   const fechaCaja = toISO(fechaCajaStr)
 
   // --- Columnas: detecto los inicios por los encabezados "Habitación" ---
@@ -273,6 +283,7 @@ export function parteFromExtracted(ex: ExtractedParte, importedBy: string, fileN
     throw new Error('La IA no pudo leer el Nro. de Caja del parte. Probá con una foto más nítida.')
   }
   const fechaCaja = toISO(ex.fechaCaja)
+  const usuario = usuarioLimpio(ex.usuario ?? '')
   const num = (s: string) => parseInt(s, 10) || 0
 
   const ocupadas: HabitacionOcupada[] = (ex.ocupadas ?? [])
@@ -290,10 +301,10 @@ export function parteFromExtracted(ex: ExtractedParte, importedBy: string, fileN
   return {
     id: generateId(),
     nroCaja,
-    usuario: (ex.usuario ?? '').trim(),
+    usuario,
     fechaCaja,
-    ...(turnoDeApertura(ex.usuario ?? '', fechaCaja) ? { turno: turnoDeApertura(ex.usuario ?? '', fechaCaja) } : {}),
-    ...(conserjeFrom(ex.usuario ?? '') ? { conserje: conserjeFrom(ex.usuario ?? '') } : {}),
+    ...(turnoDeApertura(usuario, fechaCaja) ? { turno: turnoDeApertura(usuario, fechaCaja) } : {}),
+    ...(conserjeFrom(usuario) ? { conserje: conserjeFrom(usuario) } : {}),
     ocupadas,
     libres,
     totalOcupadas: num(ex.totalOcupadas) || ocupadas.length,
