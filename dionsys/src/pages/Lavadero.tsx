@@ -40,15 +40,22 @@ export default function Lavadero() {
   const esAdmin = employee?.role === 'admin'
 
   // --- Form de remito (movimiento de ropa) ---
+  // El remito real es MANUSCRITO (con lapicera): la carga tiene que ser copiarlo
+  // de forma simple — la lista de prendas ya está armada y solo se ponen los
+  // números al lado, como en el papel.
   const [tipo, setTipo] = useState<TipoMovLavadero>('envio_sucia')
   const [fecha, setFecha] = useState(hoyStr())
   const [remito, setRemito] = useState('')
-  const [filas, setFilas] = useState<FilaPrenda[]>([{ prenda: '', cantidad: '' }])
+  const [cants, setCants] = useState<Record<string, string>>({})
+  const [extras, setExtras] = useState<FilaPrenda[]>([])
   const [saved, setSaved] = useState(false)
 
-  const prendasValidas: LavaderoPrenda[] = filas
-    .map(f => ({ prenda: f.prenda.trim(), cantidad: Math.max(0, Math.round(Number(f.cantidad) || 0)) }))
-    .filter(p => p.prenda && p.cantidad > 0)
+  const prendasValidas: LavaderoPrenda[] = [
+    ...PRENDAS_SUGERIDAS
+      .map(p => ({ prenda: p, cantidad: Math.max(0, Math.round(Number(cants[p]) || 0)) })),
+    ...extras
+      .map(f => ({ prenda: f.prenda.trim(), cantidad: Math.max(0, Math.round(Number(f.cantidad) || 0)) })),
+  ].filter(p => p.prenda && p.cantidad > 0)
   const valido = !!fecha && prendasValidas.length > 0
 
   function guardar() {
@@ -58,14 +65,15 @@ export default function Lavadero() {
       ...(remito.trim() ? { remito: remito.trim() } : {}),
       createdBy: employee?.name ?? '',
     })
-    setFilas([{ prenda: '', cantidad: '' }])
+    setCants({})
+    setExtras([])
     setRemito('')
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }
 
-  function editFila(i: number, patch: Partial<FilaPrenda>) {
-    setFilas(f => f.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+  function editExtra(i: number, patch: Partial<FilaPrenda>) {
+    setExtras(f => f.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   }
 
   // --- Form de liquidación quincenal (solo admin) ---
@@ -178,33 +186,45 @@ export default function Lavadero() {
             placeholder="Nº de remito" className={inputCls}
           />
         </div>
-        <datalist id="prendas-sugeridas">
-          {PRENDAS_SUGERIDAS.map(p => <option key={p} value={p} />)}
-        </datalist>
-        <div className="space-y-1.5 mb-2">
-          {filas.map((f, i) => (
-            <div key={i} className="flex items-center gap-2">
+        {/* Lista fija de prendas: se copian los números del remito de papel */}
+        <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 mb-2">
+          {PRENDAS_SUGERIDAS.map(p => (
+            <label key={p} className="flex items-center justify-between gap-2 py-0.5">
+              <span className="text-sm text-navy-700">{p}</span>
               <input
-                type="text" list="prendas-sugeridas" value={f.prenda}
-                onChange={e => editFila(i, { prenda: e.target.value })}
-                placeholder="Prenda (sábana, funda, pie de baño…)" className={inputCls}
+                type="number" min={0} inputMode="numeric" value={cants[p] ?? ''}
+                onChange={e => setCants(c => ({ ...c, [p]: e.target.value }))}
+                placeholder="0"
+                className="w-20 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 text-center focus:outline-none focus:border-gold-400"
               />
-              <input
-                type="number" min={1} value={f.cantidad}
-                onChange={e => editFila(i, { cantidad: e.target.value })}
-                placeholder="Cant." className="w-24 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 focus:outline-none focus:border-gold-400"
-              />
-              {filas.length > 1 && (
-                <button onClick={() => setFilas(fs => fs.filter((_, j) => j !== i))} className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 shrink-0">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+            </label>
           ))}
         </div>
+        {/* Prendas que no están en la lista */}
+        {extras.length > 0 && (
+          <div className="space-y-1.5 mb-2">
+            {extras.map((f, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="text" value={f.prenda}
+                  onChange={e => editExtra(i, { prenda: e.target.value })}
+                  placeholder="Otra prenda" className={inputCls}
+                />
+                <input
+                  type="number" min={1} inputMode="numeric" value={f.cantidad}
+                  onChange={e => editExtra(i, { cantidad: e.target.value })}
+                  placeholder="Cant." className="w-20 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 text-center focus:outline-none focus:border-gold-400"
+                />
+                <button onClick={() => setExtras(fs => fs.filter((_, j) => j !== i))} className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setFilas(f => [...f, { prenda: '', cantidad: '' }])}
+            onClick={() => setExtras(f => [...f, { prenda: '', cantidad: '' }])}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-navy-200 text-xs font-semibold text-navy-600 hover:bg-navy-50"
           >
             <Plus size={14} /> Otra prenda
