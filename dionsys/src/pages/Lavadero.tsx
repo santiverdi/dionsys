@@ -112,11 +112,19 @@ export default function Lavadero() {
   return (
     <div>
       <h2 className="text-xl font-bold text-navy-800 mb-1">Lavadero</h2>
-      <p className="text-sm text-navy-500 mb-4">
-        La ropa blanca es alquilada al lavadero (cuenta corriente). Cargá acá la <strong>copia de cada
-        remito</strong> que guarda la gobernanta; cuando llega la liquidación de la quincena, el sistema
-        cruza los remitos facturados contra las copias.
-      </p>
+      {esAdmin ? (
+        <p className="text-sm text-navy-500 mb-4">
+          La ropa la carga la gobernanta con cada remito. Acá manejás la parte de plata: cuando llega
+          la liquidación de la quincena, el sistema cruza los remitos facturados contra las copias
+          cargadas, y queda como deuda hasta marcarla pagada.
+        </p>
+      ) : (
+        <p className="text-sm text-navy-500 mb-4">
+          Cargá la <strong>copia de cada remito</strong>: qué ropa sucia salió y qué ropa limpia volvió.
+          Con eso el sistema controla que el lavadero devuelva todo y que la liquidación de la quincena
+          coincida con las copias.
+        </p>
+      )}
 
       {/* Resumen arriba */}
       <div className="grid grid-cols-3 gap-2 mb-4">
@@ -130,11 +138,19 @@ export default function Lavadero() {
           <p className="text-sm font-bold text-navy-800">{mesActual.enviadas} <span className="font-normal text-navy-400">salieron</span></p>
           <p className="text-sm font-bold text-navy-800">{mesActual.recibidas} <span className="font-normal text-navy-400">volvieron</span></p>
         </div>
-        <div className={`rounded-xl border p-3 ${deuda.total > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-navy-100'}`}>
-          <p className={`text-[10px] uppercase ${deuda.total > 0 ? 'text-amber-700' : 'text-navy-500'}`}>Deuda con el lavadero</p>
-          <p className={`text-sm font-bold ${deuda.total > 0 ? 'text-amber-800' : 'text-navy-800'}`}>{formatMontoCurrency(deuda.total)}</p>
-          <p className="text-[10px] text-navy-400">{deuda.liquidaciones} liquidación(es) sin pagar</p>
-        </div>
+        {esAdmin ? (
+          <div className={`rounded-xl border p-3 ${deuda.total > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-navy-100'}`}>
+            <p className={`text-[10px] uppercase ${deuda.total > 0 ? 'text-amber-700' : 'text-navy-500'}`}>Deuda con el lavadero</p>
+            <p className={`text-sm font-bold ${deuda.total > 0 ? 'text-amber-800' : 'text-navy-800'}`}>{formatMontoCurrency(deuda.total)}</p>
+            <p className="text-[10px] text-navy-400">{deuda.liquidaciones} liquidación(es) sin pagar</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-navy-100 p-3">
+            <p className="text-[10px] uppercase text-navy-500">Remitos este mes</p>
+            <p className="text-lg font-bold text-navy-800">{mesActual.movimientos}</p>
+            <p className="text-[10px] text-navy-400">cargados</p>
+          </div>
+        )}
       </div>
 
       {/* Carga de remito */}
@@ -243,7 +259,9 @@ export default function Lavadero() {
         </div>
       )}
 
-      {/* Liquidaciones quincenales */}
+      {/* Liquidaciones quincenales — la parte de PLATA es solo del admin (Charo).
+          La gobernanta solo carga ropa: ni ve montos ni liquidaciones. */}
+      {esAdmin && (
       <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
         <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-1 flex items-center gap-1.5">
           <Wallet size={13} className="text-gold-600" /> Liquidaciones quincenales
@@ -255,8 +273,7 @@ export default function Lavadero() {
           mes — no lo cargues además como factura de proveedor.
         </p>
 
-        {esAdmin && (
-          <div className="rounded-lg border border-navy-100 p-2.5 mb-3">
+        <div className="rounded-lg border border-navy-100 p-2.5 mb-3">
             <div className="flex items-center gap-2 mb-2">
               <input type="date" value={liqDesde} onChange={e => setLiqDesde(e.target.value)} className={inputCls} />
               <span className="text-xs text-navy-400 shrink-0">al</span>
@@ -293,8 +310,7 @@ export default function Lavadero() {
               </button>
               {liqSaved && <span className="flex items-center gap-1 text-xs text-green-600 font-semibold"><CheckCircle2 size={14} /> Guardada</span>}
             </div>
-          </div>
-        )}
+        </div>
 
         {liquidaciones.length === 0 ? (
           <p className="text-xs text-navy-400">Sin liquidaciones cargadas todavía.</p>
@@ -340,22 +356,16 @@ export default function Lavadero() {
                         </span>
                       )}
                     </span>
-                    {esAdmin ? (
-                      <button
-                        onClick={() => togglePagada(liq.id)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg font-semibold shrink-0 ${
-                          liq.pagada ? 'text-green-700 bg-green-50 hover:bg-green-100' : 'text-amber-700 bg-amber-100 hover:bg-amber-200'
-                        }`}
-                        title={liq.pagada ? 'Marcar como impaga' : 'Marcar pagada (efectivo de caja fuerte)'}
-                      >
-                        {liq.pagada ? <CheckCircle2 size={13} /> : <Circle size={13} />}
-                        {liq.pagada ? `Pagada${liq.fechaPago ? ` ${fmtFecha(liq.fechaPago)}` : ''}` : 'Pendiente de pago'}
-                      </button>
-                    ) : (
-                      <span className={`font-semibold shrink-0 ${liq.pagada ? 'text-green-700' : 'text-amber-700'}`}>
-                        {liq.pagada ? 'Pagada' : 'Pendiente'}
-                      </span>
-                    )}
+                    <button
+                      onClick={() => togglePagada(liq.id)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg font-semibold shrink-0 ${
+                        liq.pagada ? 'text-green-700 bg-green-50 hover:bg-green-100' : 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                      }`}
+                      title={liq.pagada ? 'Marcar como impaga' : 'Marcar pagada (efectivo de caja fuerte)'}
+                    >
+                      {liq.pagada ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                      {liq.pagada ? `Pagada${liq.fechaPago ? ` ${fmtFecha(liq.fechaPago)}` : ''}` : 'Pendiente de pago'}
+                    </button>
                   </div>
                 </li>
               )
@@ -363,6 +373,7 @@ export default function Lavadero() {
           </ul>
         )}
       </div>
+      )}
 
       {/* Últimos movimientos */}
       <div className="bg-white rounded-xl border border-navy-100 p-3">
