@@ -4,15 +4,17 @@ import {
   Truck, CalendarClock, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
 } from 'lucide-react'
 import { useCajas } from '../context/CajaContext'
+import { usePartes } from '../context/ParteContext'
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
 import { useImpuestos } from '../context/ImpuestosContext'
 import { useSueldos } from '../context/SueldosContext'
 import { useOccupancy } from '../context/OccupancyContext'
+import { useLavadero } from '../context/LavaderoContext'
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
-  getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle,
+  getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle, getCostoHabitacion,
 } from '../lib/negocio'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { exportMonthlyReport } from '../utils/monthlyExport'
@@ -40,6 +42,7 @@ function fmtVto(s?: string): string {
 
 export default function Negocio() {
   const { cajas } = useCajas()
+  const { partes } = usePartes()
   const { orders } = useOrders()
   const { pedidos, movements } = useStock()
   const { tasks } = useMaintenance()
@@ -48,15 +51,20 @@ export default function Negocio() {
   // suman 0 en los gastos (comportamiento correcto, ver ADMIN_ONLY_KEYS).
   const { pagos: pagosSueldos } = useSueldos()
   const { records } = useOccupancy()
+  const { liquidaciones: lavaderoLiqs } = useLavadero()
 
   const cur = useMemo(() => getCurrentMonth(), [])
   const prev = useMemo(() => getPreviousMonth(cur.year, cur.month), [cur])
 
-  const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos), [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos])
-  const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos), [prev, cajas, orders, pedidos, tasks, pagos, pagosSueldos])
+  const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs), [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
+  const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs), [prev, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
   const ingresos = useMemo(() => getIngresosMes(cur.year, cur.month, cajas), [cur, cajas])
   const expenses = useMemo(() => getMonthlyExpenses(cur.year, cur.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios), [cur, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
-  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, new Date(), pagosSueldos), [cajas, orders, pedidos, tasks, pagos, pagosSueldos])
+  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, new Date(), pagosSueldos, lavaderoLiqs), [cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
+  const costoHab = useMemo(
+    () => getCostoHabitacion(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs),
+    [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs],
+  )
   const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
@@ -74,6 +82,7 @@ export default function Negocio() {
     { label: 'Recepción diaria', v: expenses.pedidosDistribuidor },
     { label: 'Mantenimiento', v: expenses.mantenimiento },
     { label: 'Gastos de caja', v: resultado.gastosCaja },
+    { label: 'Lavadero (ropa)', v: resultado.lavadero },
   ].filter(c => c.v > 0).sort((a, b) => b.v - a.v)
 
   const sinDatos = ingresos.total === 0 && resultado.egresos === 0
@@ -205,6 +214,47 @@ export default function Negocio() {
           </ul>
         )}
         <p className="text-[10px] text-navy-400 mt-2">No incluye los retiros a la caja fuerte (no son gasto).</p>
+      </Section>
+
+      {/* Costo por habitación ocupada */}
+      <Section icon={BedDouble} title="Costo por habitación (mes)">
+        {(!costoHab.sueldosCargados || !costoHab.lavaderoCargado) && (
+          <div className="flex items-start gap-2 rounded-lg border-2 border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 mb-3">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <span>
+              <strong>El costo da incompleto:</strong> falta cargar
+              {!costoHab.sueldosCargados ? ' los sueldos del mes' : ''}
+              {!costoHab.sueldosCargados && !costoHab.lavaderoCargado ? ' y' : ''}
+              {!costoHab.lavaderoCargado ? ' la liquidación del lavadero' : ''}.
+            </span>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-navy-800 rounded-lg p-3">
+            <p className="text-[10px] uppercase text-gold-300">Costo por habitación/noche</p>
+            <p className="text-lg font-bold text-cream">{costoHab.costoPorHabNoche > 0 ? formatMontoCurrency(costoHab.costoPorHabNoche) : '—'}</p>
+            <p className="text-[10px] text-cream/60">
+              {costoHab.noches.fuente === 'sin datos'
+                ? 'sin partes ni ocupación cargados'
+                : `${costoHab.nochesEstimadas} noches-hab (${costoHab.noches.dias} día(s) con dato, ${costoHab.noches.fuente === 'partes' ? 'de los partes' : 'de ocupación manual'})`}
+            </p>
+          </div>
+          <div className="bg-navy-50 rounded-lg p-3">
+            <p className="text-[10px] uppercase text-navy-500">Costos totales del mes</p>
+            <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(costoHab.costoTotal)}</p>
+            <p className="text-[10px] text-navy-400">vs ingreso por hab/noche: {formatMontoCurrency(revenue.ingresoPorHabitacion)}</p>
+          </div>
+        </div>
+        {costoHab.desglose.length > 0 && (
+          <div className="space-y-1 text-xs">
+            {costoHab.desglose.map(d => (
+              <div key={d.label} className="flex items-center justify-between">
+                <span className="text-navy-600">{d.label}</span>
+                <span className="font-semibold text-navy-800">{formatMontoCurrency(d.monto)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </Section>
 
       {/* Revenue por ocupación */}

@@ -7,12 +7,16 @@
 // la caja fuerte/oficina, sigue siendo del hotel. Por eso los egresos del resultado
 // salen de getMonthlyExpenses (compras/impuestos/mant), nunca de los retiros.
 
-import type { CajaParte, Order, PedidoSemanal, MaintenanceTask, PagoMensual, PagoSueldo, FacturaProveedor } from '../types'
+import type {
+  CajaParte, Order, PedidoSemanal, MaintenanceTask, PagoMensual, PagoSueldo, FacturaProveedor,
+  ParteHabitaciones, LavaderoLiquidacion, ImpuestoServicio,
+} from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
-import { getCajaResumen } from './cajaControl'
+import { getCajaResumen, fechaConfiable } from './cajaControl'
 import { getGastosCaja, type GastoItem } from './panorama'
+import { costoLavaderoMes } from './lavadero'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
-import { isInMonth, getPreviousMonth, monthLabel } from '../utils/dateRange'
+import { isInMonth, getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
 
 // ===== Ingresos del mes (de las cajas) =====
 export interface IngresosMes {
@@ -55,9 +59,10 @@ export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte
 // ===== Resultado del mes (ingresos − egresos) =====
 export interface ResultadoMes {
   ingresos: number
-  egresos: number       // compras/impuestos/sueldos/mant + gastos pagados de la caja
+  egresos: number       // compras/impuestos/sueldos/mant + gastos de caja + lavadero
   gastosCompras: number // sueldos/proveedores/pedidos/mantenimiento/impuestos (getMonthlyExpenses)
   gastosCaja: number    // egresos de caja (sin retiros)
+  lavadero: number      // costo mensual del lavadero (0 si no está cargado)
   resultado: number
   margenPct: number     // resultado / ingresos
 }
@@ -66,16 +71,18 @@ export function getResultadoMes(
   year: number, month: number,
   cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
   pagosSueldos: PagoSueldo[] = [],
+  liquidacionesLavadero: LavaderoLiquidacion[] = [],
 ): ResultadoMes {
   const ingresos = getIngresosMes(year, month, cajas).total
   // Los sueldos SÍ son un egreso del mes. Solo llegan con un admin logueado
   // (ADMIN_ONLY_KEYS); para no-admin la lista viene vacía y suman 0, que es lo correcto.
   const gastosCompras = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos, pagosSueldos).total
   const gastosCaja = getGastosDeCajaMes(year, month, cajas)
-  const egresos = gastosCompras + gastosCaja
+  const lavadero = costoLavaderoMes(year, month, liquidacionesLavadero) ?? 0
+  const egresos = gastosCompras + gastosCaja + lavadero
   const resultado = ingresos - egresos
   return {
-    ingresos, egresos, gastosCompras, gastosCaja, resultado,
+    ingresos, egresos, gastosCompras, gastosCaja, lavadero, resultado,
     margenPct: ingresos > 0 ? Math.round((resultado / ingresos) * 100) : 0,
   }
 }
@@ -95,12 +102,13 @@ export function getTendencia(
   cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
   hoy: Date = new Date(),
   pagosSueldos: PagoSueldo[] = [],
+  liquidacionesLavadero: LavaderoLiquidacion[] = [],
 ): TendenciaMes[] {
   const out: TendenciaMes[] = []
   let y = hoy.getFullYear()
   let m = hoy.getMonth() + 1
   for (let i = 0; i < meses; i++) {
-    const res = getResultadoMes(y, m, cajas, orders, pedidos, tasks, pagos, pagosSueldos)
+    const res = getResultadoMes(y, m, cajas, orders, pedidos, tasks, pagos, pagosSueldos, liquidacionesLavadero)
     out.unshift({ year: y, month: m, label: monthLabel(y, m), ingresos: res.ingresos, egresos: res.egresos, resultado: res.resultado })
     const prev = getPreviousMonth(y, m)
     y = prev.year; m = prev.month
@@ -212,6 +220,106 @@ export interface RevenueOcupacion {
   ingresoPorHuesped: number
   ingresoPorHabitacion: number
   diasConDatos: number
+}
+
+// ===== Noches-habitación del mes (para costo por habitación) =====
+// Fuente primaria: los PARTES del turno NOCHE (el parte noche dice qué habitaciones
+// durmieron ocupadas esa noche — sin doble carga). Un parte noche por día; si hay
+// más de uno se queda el más nuevo. Fallback: los OccupancyRecord cargados a mano.
+export interface NochesHabitacion {
+  noches: number          // suma de habitaciones ocupadas por noche en el mes
+  dias: number            // días del mes con dato
+  fuente: 'partes' | 'ocupacion' | 'sin datos'
+}
+
+export function getNochesHabitacion(
+  year: number, month: number,
+  partes: ParteHabitaciones[], records: OccupancyRecord[] = [],
+): NochesHabitacion {
+  const porDia = new Map<string, ParteHabitaciones>()
+  for (const p of partes) {
+    if (p.turno !== 'noche') continue
+    const f = fechaConfiable(p.fechaCaja, p.importedAt)
+    if (!isInMonth(f, year, month)) continue
+    const dia = f.slice(0, 10)
+    const prev = porDia.get(dia)
+    if (!prev || f > fechaConfiable(prev.fechaCaja, prev.importedAt)) porDia.set(dia, p)
+  }
+  if (porDia.size > 0) {
+    const noches = [...porDia.values()].reduce((s, p) => s + p.totalOcupadas, 0)
+    return { noches, dias: porDia.size, fuente: 'partes' }
+  }
+  // Fallback: ocupación cargada a mano (dedup por día, el último registro).
+  const recPorDia = new Map<string, OccupancyRecord>()
+  for (const r of records) {
+    const [y, m] = r.date.split('-').map(Number)
+    if (y !== year || m !== month) continue
+    const prev = recPorDia.get(r.date)
+    if (!prev || new Date(r.createdAt) > new Date(prev.createdAt)) recPorDia.set(r.date, r)
+  }
+  if (recPorDia.size > 0) {
+    const noches = [...recPorDia.values()].reduce((s, r) => s + r.rooms, 0)
+    return { noches, dias: recPorDia.size, fuente: 'ocupacion' }
+  }
+  return { noches: 0, dias: 0, fuente: 'sin datos' }
+}
+
+// ===== Costo por habitación ocupada del mes =====
+// TODOS los costos del mes (sueldos, impuestos, servicios, compras, mantenimiento,
+// gastos de caja, lavadero) repartidos sobre las noches-habitación ocupadas.
+// Para que el número sea real tienen que estar cargados los sueldos y el costo
+// del lavadero del mes: si faltan, se avisa (el costo daría de menos).
+export interface CostoHabitacion {
+  costoTotal: number
+  noches: NochesHabitacion
+  // El costo es del MES entero pero puede haber días sin parte: se estima el
+  // total de noches del período con el promedio de los días que sí tienen dato.
+  nochesEstimadas: number
+  costoPorHabNoche: number      // costoTotal / nochesEstimadas (0 sin datos)
+  desglose: { label: string; monto: number }[]
+  sueldosCargados: boolean      // hay pagos de sueldos en el mes
+  lavaderoCargado: boolean      // hay costo de lavadero cargado para el mes
+}
+
+export function getCostoHabitacion(
+  year: number, month: number,
+  cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
+  pagosSueldos: PagoSueldo[], servicios: ImpuestoServicio[],
+  partes: ParteHabitaciones[], records: OccupancyRecord[],
+  liquidacionesLavadero: LavaderoLiquidacion[],
+  hoy: Date = new Date(),
+): CostoHabitacion {
+  const exp = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos, pagosSueldos, servicios)
+  const gastosCaja = getGastosDeCajaMes(year, month, cajas)
+  const lavadero = costoLavaderoMes(year, month, liquidacionesLavadero)
+  const desglose = [
+    { label: 'Sueldos', monto: exp.sueldos },
+    { label: 'Impuestos y cargas', monto: exp.impuestosPagado },
+    { label: 'Servicios (luz/gas/agua…)', monto: exp.serviciosPagado },
+    { label: 'Profesionales y abonos', monto: exp.profesionalesPagado },
+    { label: 'Compras (pedido semanal)', monto: exp.pedidosSemanales },
+    { label: 'Compras (recepción diaria)', monto: exp.pedidosDistribuidor },
+    { label: 'Mantenimiento', monto: exp.mantenimiento },
+    { label: 'Gastos de caja', monto: gastosCaja },
+    { label: 'Lavadero (ropa)', monto: lavadero ?? 0 },
+  ].filter(d => d.monto > 0).sort((a, b) => b.monto - a.monto)
+  const costoTotal = exp.total + gastosCaja + (lavadero ?? 0)
+  const noches = getNochesHabitacion(year, month, partes, records)
+  // Días del período: el mes completo si ya pasó; los transcurridos si es el actual.
+  const esMesActual = hoy.getFullYear() === year && hoy.getMonth() + 1 === month
+  const diasPeriodo = esMesActual ? hoy.getDate() : new Date(year, month, 0).getDate()
+  const promedio = noches.dias > 0 ? noches.noches / noches.dias : 0
+  const nochesEstimadas = Math.round(promedio * diasPeriodo)
+  const mKey = monthKey(year, month)
+  return {
+    costoTotal,
+    noches,
+    nochesEstimadas,
+    costoPorHabNoche: nochesEstimadas > 0 ? Math.round(costoTotal / nochesEstimadas) : 0,
+    desglose,
+    sueldosCargados: pagosSueldos.some(p => p.mes === mKey),
+    lavaderoCargado: lavadero != null,
+  }
 }
 
 // Usa los OccupancyRecord (dedup por día, el último de cada fecha) del mes para

@@ -1,0 +1,161 @@
+import { describe, it, expect } from 'vitest'
+import {
+  getBalanceRopa, conciliarLiquidacion, getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
+} from '../../src/lib/lavadero'
+import { getCostoHabitacion, getNochesHabitacion } from '../../src/lib/negocio'
+import { getAnalisisMes } from '../../src/lib/analisisMes'
+import type { LavaderoMovimiento, LavaderoLiquidacion, ParteHabitaciones, PagoSueldo } from '../../src/types'
+
+let seq = 0
+function mov(p: Partial<LavaderoMovimiento>): LavaderoMovimiento {
+  return {
+    id: `m${++seq}`, fecha: '2026-06-05', tipo: 'envio_sucia',
+    prendas: [], createdBy: 'Roxy', createdAt: '2026-06-05T10:00:00.000Z', ...p,
+  }
+}
+function liq(p: Partial<LavaderoLiquidacion>): LavaderoLiquidacion {
+  return {
+    id: `l${++seq}`, desde: '2026-06-01', hasta: '2026-06-15', total: 100000,
+    remitos: [], pagada: false, createdBy: 'Charo', createdAt: '2026-06-16T10:00:00.000Z', ...p,
+  }
+}
+function mkParte(p: Partial<ParteHabitaciones>): ParteHabitaciones {
+  return {
+    id: `p${++seq}`, nroCaja: p.nroCaja ?? 1, usuario: 'Gaston', fechaCaja: '2026-06-20T23:30:00.000Z',
+    ocupadas: [], libres: [], totalOcupadas: 0, totalPlazas: 0, totalLibres: 0,
+    sucias: 0, limpias: 0, mantenimiento: 0, importedBy: 'X', importedAt: '2026-06-21T07:00:00.000Z', ...p,
+  }
+}
+
+describe('getBalanceRopa', () => {
+  it('calcula por prenda cuánto tiene el lavadero (salió - volvió)', () => {
+    const movs = [
+      mov({ tipo: 'envio_sucia', prendas: [{ prenda: 'Sábana', cantidad: 40 }, { prenda: 'Toalla', cantidad: 20 }] }),
+      mov({ tipo: 'recibo_limpia', prendas: [{ prenda: 'Sábana', cantidad: 30 }] }),
+    ]
+    const b = getBalanceRopa(movs)
+    expect(b.find(x => x.prenda === 'Sábana')).toMatchObject({ enviadas: 40, recibidas: 30, enLavadero: 10 })
+    expect(b.find(x => x.prenda === 'Toalla')).toMatchObject({ enviadas: 20, recibidas: 0, enLavadero: 20 })
+  })
+})
+
+describe('conciliarLiquidacion', () => {
+  const movs = [
+    mov({ fecha: '2026-06-03', remito: '0001-100', prendas: [{ prenda: 'Sábana', cantidad: 10 }] }),
+    mov({ fecha: '2026-06-10', remito: '0001-101', prendas: [{ prenda: 'Sábana', cantidad: 10 }] }),
+    mov({ fecha: '2026-06-20', remito: '0001-200', prendas: [{ prenda: 'Sábana', cantidad: 10 }] }), // fuera del período
+  ]
+
+  it('marca los remitos facturados sin copia y las copias sin liquidar', () => {
+    const c = conciliarLiquidacion(liq({ desde: '2026-06-01', hasta: '2026-06-15', remitos: ['0001-100', '0001-999'] }), movs)
+    expect(c.remitosSinCopia).toEqual(['0001-999'])   // lo facturan pero no hay copia
+    expect(c.copiasSinLiquidar).toEqual(['0001-101']) // copia del período que no liquidaron
+  })
+
+  it('cuando todo coincide no hay avisos (tolerante a espacios/mayúsculas)', () => {
+    const c = conciliarLiquidacion(liq({ remitos: [' 0001-100 ', '0001-101'] }), movs)
+    expect(c.remitosSinCopia).toEqual([])
+    expect(c.copiasSinLiquidar).toEqual([])
+  })
+})
+
+describe('deuda y costo mensual', () => {
+  const liqs = [
+    liq({ hasta: '2026-06-15', total: 100000, pagada: true }),
+    liq({ desde: '2026-06-16', hasta: '2026-06-30', total: 120000 }),
+    liq({ desde: '2026-07-01', hasta: '2026-07-15', total: 130000 }),
+  ]
+
+  it('la deuda son las liquidaciones sin pagar (se pueden juntar dos quincenas)', () => {
+    expect(getDeudaLavadero(liqs)).toEqual({ total: 250000, liquidaciones: 2 })
+  })
+
+  it('el costo del mes junta las quincenas que TERMINAN en ese mes', () => {
+    expect(costoLavaderoMes(2026, 6, liqs)).toBe(220000)
+    expect(costoLavaderoMes(2026, 7, liqs)).toBe(130000)
+    expect(costoLavaderoMes(2026, 5, liqs)).toBeNull() // sin liquidación = null (no 0)
+  })
+
+  it('getLavaderoMes suma prendas del mes y trae el costo', () => {
+    const movs = [
+      mov({ fecha: '2026-06-05', tipo: 'envio_sucia', prendas: [{ prenda: 'Sábana', cantidad: 40 }] }),
+      mov({ fecha: '2026-06-20', tipo: 'recibo_limpia', prendas: [{ prenda: 'Sábana', cantidad: 35 }] }),
+      mov({ fecha: '2026-07-02', tipo: 'envio_sucia', prendas: [{ prenda: 'Sábana', cantidad: 99 }] }),
+    ]
+    const r = getLavaderoMes(2026, 6, movs, liqs)
+    expect(r.enviadas).toBe(40)
+    expect(r.recibidas).toBe(35)
+    expect(r.costo).toBe(220000)
+  })
+})
+
+describe('getNochesHabitacion + getCostoHabitacion', () => {
+  const partes = [
+    mkParte({ nroCaja: 10, turno: 'noche', fechaCaja: '2026-06-10T23:30:00.000Z', totalOcupadas: 10 }),
+    mkParte({ nroCaja: 13, turno: 'noche', fechaCaja: '2026-06-11T23:30:00.000Z', totalOcupadas: 20 }),
+    mkParte({ nroCaja: 12, turno: 'manana', fechaCaja: '2026-06-11T07:00:00.000Z', totalOcupadas: 99 }), // no es noche: no cuenta
+  ]
+  const sueldos: PagoSueldo[] = [{
+    id: 's1', empleadoId: 'e1', empleadoNombre: 'Ana', mes: '2026-06', tipo: 'sueldo',
+    monto: 900000, fecha: '2026-06-05', medio: 'efectivo',
+  }]
+  const liqs = [liq({ desde: '2026-06-16', hasta: '2026-06-30', total: 90000 })]
+
+  it('cuenta las noches-habitación con los partes del turno noche', () => {
+    const n = getNochesHabitacion(2026, 6, partes)
+    expect(n).toEqual({ noches: 30, dias: 2, fuente: 'partes' })
+  })
+
+  it('calcula el costo por hab/noche con sueldos + lavadero, extrapolando al mes', () => {
+    const c = getCostoHabitacion(2026, 6, [], [], [], [], [], sueldos, [], partes, [], liqs, new Date('2026-07-15T12:00:00'))
+    // promedio 15 hab/noche × 30 días de junio = 450 noches; (900000 + 90000) / 450 = 2200
+    expect(c.costoTotal).toBe(990000)
+    expect(c.nochesEstimadas).toBe(450)
+    expect(c.costoPorHabNoche).toBe(2200)
+    expect(c.sueldosCargados).toBe(true)
+    expect(c.lavaderoCargado).toBe(true)
+    expect(c.desglose.find(d => d.label === 'Lavadero (ropa)')?.monto).toBe(90000)
+  })
+
+  it('avisa cuando faltan sueldos o liquidación del lavadero', () => {
+    const c = getCostoHabitacion(2026, 6, [], [], [], [], [], [], [], partes, [], [], new Date('2026-07-15T12:00:00'))
+    expect(c.sueldosCargados).toBe(false)
+    expect(c.lavaderoCargado).toBe(false)
+  })
+})
+
+describe('getAnalisisMes', () => {
+  it('arma los deltas mes contra mes sin romper con datos vacíos', () => {
+    const a = getAnalisisMes(2026, 6, {
+      cajas: [], orders: [], pedidos: [], tasks: [], pagos: [], pagosSueldos: [], servicios: [],
+      movements: [], partes: [], records: [], lavaderoMovs: [], lavaderoLiqs: [],
+    })
+    expect(a.mes).toBe('2026-06')
+    expect(a.ingresos.actual).toBe(0)
+    expect(a.egresosPorRubro).toEqual([])
+    expect(a.stockPorItem).toEqual([])
+  })
+
+  it('detecta qué subió: consumo de stock por item y el rubro lavadero', () => {
+    const a = getAnalisisMes(2026, 7, {
+      cajas: [], orders: [], pedidos: [], tasks: [], pagos: [], pagosSueldos: [], servicios: [],
+      movements: [
+        { id: '1', itemId: 'i1', itemName: 'Harina', type: 'salida', quantity: 10, date: '2026-06-10T10:00:00.000Z', createdBy: 'x', notes: '' },
+        { id: '2', itemId: 'i1', itemName: 'Harina', type: 'salida', quantity: 25, date: '2026-07-10T10:00:00.000Z', createdBy: 'x', notes: '' },
+      ],
+      partes: [], records: [], lavaderoMovs: [],
+      lavaderoLiqs: [
+        liq({ desde: '2026-06-16', hasta: '2026-06-30', total: 100000 }),
+        liq({ desde: '2026-07-01', hasta: '2026-07-15', total: 150000 }),
+      ],
+    })
+    const harina = a.stockPorItem.find(s => s.item === 'Harina')
+    expect(harina?.salidas).toBe(25)
+    expect(harina?.salidasAnterior).toBe(10)
+    expect(harina?.delta.direction).toBe('up')
+    const lav = a.egresosPorRubro.find(r => r.rubro === 'Lavadero (ropa)')
+    expect(lav?.actual).toBe(150000)
+    expect(lav?.anterior).toBe(100000)
+    expect(lav?.delta.pct).toBe(50)
+  })
+})

@@ -411,3 +411,45 @@ export const TIPO_PAGO_SUELDO_LABELS: Record<TipoPagoSueldo, string> = {
   aguinaldo: 'Aguinaldo',
   extra: 'Extra',
 }
+
+// --- Lavadero (ropa blanca ALQUILADA, lavado tercerizado) ---
+// La ropa no es del hotel: el lavadero alquila sábanas/fundas/pie de baño y la
+// lava, en CUENTA CORRIENTE. Cada pedido/entrega va con REMITO: el original se
+// lo queda el lavadero y la COPIA la gobernanta (eso es lo que se carga acá).
+// A fin de quincena el lavadero manda la LIQUIDACIÓN de los remitos originales,
+// que debe coincidir con las copias. Se paga en efectivo de la caja fuerte
+// (a veces dos quincenas juntas, a 30 días).
+
+export type TipoMovLavadero = 'envio_sucia' | 'recibo_limpia'
+
+export interface LavaderoPrenda {
+  prenda: string            // "Sábana", "Funda de almohada", "Pie de baño"…
+  cantidad: number
+}
+
+// Un remito del lavadero (la copia de la gobernanta).
+export interface LavaderoMovimiento {
+  id: string
+  fecha: string             // YYYY-MM-DD
+  tipo: TipoMovLavadero
+  prendas: LavaderoPrenda[]
+  remito?: string           // nro de remito (clave para cruzar con la liquidación)
+  notas?: string
+  createdBy: string
+  createdAt: string         // ISO
+}
+
+// Liquidación quincenal del lavadero: lista los remitos ORIGINALES del período
+// y el total a pagar. Queda en cuenta corriente hasta marcarla pagada.
+export interface LavaderoLiquidacion {
+  id: string
+  desde: string             // YYYY-MM-DD (inicio de la quincena)
+  hasta: string             // YYYY-MM-DD (fin de la quincena)
+  total: number
+  remitos: string[]         // nros de remito que lista la liquidación
+  pagada: boolean
+  fechaPago?: string        // YYYY-MM-DD (sale en efectivo de la caja fuerte)
+  notas?: string
+  createdBy: string
+  createdAt: string         // ISO
+}

@@ -15,6 +15,7 @@ import { ImpuestosProvider } from './context/ImpuestosContext'
 import { SueldosProvider } from './context/SueldosContext'
 import { TarifasProvider } from './context/TarifasContext'
 import { PrismaProvider } from './context/PrismaContext'
+import { LavaderoProvider } from './context/LavaderoContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -30,6 +31,7 @@ import Administracion from './pages/Administracion'
 import Facturas from './pages/Facturas'
 import ControlCaja from './pages/ControlCaja'
 import CerrarTurno from './pages/CerrarTurno'
+import Lavadero from './pages/Lavadero'
 import SyncPanel from './pages/SyncPanel'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -76,6 +78,7 @@ function AppRoutes() {
         <Route path="facturas-proveedores" element={<RoleRoute path="/facturas-proveedores"><Facturas /></RoleRoute>} />
         <Route path="control-caja" element={<RoleRoute path="/control-caja"><ControlCaja /></RoleRoute>} />
         <Route path="cerrar-turno" element={<RoleRoute path="/cerrar-turno"><CerrarTurno /></RoleRoute>} />
+        <Route path="lavadero" element={<RoleRoute path="/lavadero"><Lavadero /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Solo admin. */}
@@ -142,7 +145,9 @@ export default function App() {
                     <SueldosProvider>
                       <TarifasProvider>
                         <PrismaProvider>
-                          <AppRoutes />
+                          <LavaderoProvider>
+                            <AppRoutes />
+                          </LavaderoProvider>
                         </PrismaProvider>
                       </TarifasProvider>
                     </SueldosProvider>
