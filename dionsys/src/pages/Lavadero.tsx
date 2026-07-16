@@ -36,7 +36,10 @@ interface FilaPrenda { prenda: string; cantidad: string }
 
 export default function Lavadero() {
   const { employee } = useAuth()
-  const { movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada } = useLavadero()
+  const {
+    movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada,
+    prendasOcultas, ocultarPrenda, mostrarPrenda,
+  } = useLavadero()
   const esAdmin = employee?.role === 'admin'
 
   // --- Form de remito (movimiento de ropa) ---
@@ -50,8 +53,10 @@ export default function Lavadero() {
   const [extras, setExtras] = useState<FilaPrenda[]>([])
   const [saved, setSaved] = useState(false)
 
+  const prendasVisibles = PRENDAS_SUGERIDAS.filter(p => !prendasOcultas.includes(p))
+
   const prendasValidas: LavaderoPrenda[] = [
-    ...PRENDAS_SUGERIDAS
+    ...prendasVisibles
       .map(p => ({ prenda: p, cantidad: Math.max(0, Math.round(Number(cants[p]) || 0)) })),
     ...extras
       .map(f => ({ prenda: f.prenda.trim(), cantidad: Math.max(0, Math.round(Number(f.cantidad) || 0)) })),
@@ -188,18 +193,42 @@ export default function Lavadero() {
         </div>
         {/* Lista fija de prendas: se copian los números del remito de papel */}
         <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 mb-2">
-          {PRENDAS_SUGERIDAS.map(p => (
-            <label key={p} className="flex items-center justify-between gap-2 py-0.5">
+          {prendasVisibles.map(p => (
+            <div key={p} className="flex items-center justify-between gap-2 py-0.5">
               <span className="text-sm text-navy-700">{p}</span>
-              <input
-                type="number" min={0} inputMode="numeric" value={cants[p] ?? ''}
-                onChange={e => setCants(c => ({ ...c, [p]: e.target.value }))}
-                placeholder="0"
-                className="w-20 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 text-center focus:outline-none focus:border-gold-400"
-              />
-            </label>
+              <span className="flex items-center gap-1 shrink-0">
+                <input
+                  type="number" min={0} inputMode="numeric" value={cants[p] ?? ''}
+                  onChange={e => setCants(c => ({ ...c, [p]: e.target.value }))}
+                  placeholder="0"
+                  className="w-20 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 text-center focus:outline-none focus:border-gold-400"
+                />
+                <button
+                  onClick={() => ocultarPrenda(p)}
+                  className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 shrink-0"
+                  title={`Sacar "${p}" de la lista`}
+                >
+                  <X size={14} />
+                </button>
+              </span>
+            </div>
           ))}
         </div>
+        {prendasOcultas.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            <span className="text-[11px] text-navy-400">Sacadas de la lista:</span>
+            {prendasOcultas.map(p => (
+              <button
+                key={p}
+                onClick={() => mostrarPrenda(p)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-navy-200 text-[11px] text-navy-500 hover:bg-navy-50"
+                title={`Volver a mostrar "${p}"`}
+              >
+                {p} <Plus size={10} />
+              </button>
+            ))}
+          </div>
+        )}
         {/* Prendas que no están en la lista */}
         {extras.length > 0 && (
           <div className="space-y-1.5 mb-2">

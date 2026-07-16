@@ -44,6 +44,7 @@ export const SYNCED_KEYS = [
   'dionsys_prisma_tarjetas',
   'dionsys_lavadero_movs',
   'dionsys_lavadero_liqs',
+  'dionsys_lavadero_prendas_ocultas',
 ] as const
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number]

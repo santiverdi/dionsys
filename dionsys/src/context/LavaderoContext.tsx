@@ -5,6 +5,7 @@ import { generateId } from '../utils/imageCompressor'
 
 const LS_MOVS = 'dionsys_lavadero_movs'
 const LS_LIQS = 'dionsys_lavadero_liqs'
+const LS_PRENDAS_OCULTAS = 'dionsys_lavadero_prendas_ocultas'
 
 interface LavaderoContextType {
   movimientos: LavaderoMovimiento[]
@@ -15,6 +16,11 @@ interface LavaderoContextType {
   deleteLiquidacion: (id: string) => void
   // Marca pagada/impaga (el pago sale en efectivo de la caja fuerte).
   togglePagada: (id: string) => void
+  // Prendas sugeridas que este hotel no usa: se sacan de la lista fija del
+  // formulario (se puede volver a mostrar si hace falta).
+  prendasOcultas: string[]
+  ocultarPrenda: (prenda: string) => void
+  mostrarPrenda: (prenda: string) => void
 }
 
 const LavaderoContext = createContext<LavaderoContextType | null>(null)
@@ -30,9 +36,14 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem(LS_LIQS)
     return saved ? JSON.parse(saved) : []
   })
+  const [prendasOcultas, setPrendasOcultas] = useState<string[]>(() => {
+    const saved = localStorage.getItem(LS_PRENDAS_OCULTAS)
+    return saved ? JSON.parse(saved) : []
+  })
 
   useCloudSync<LavaderoMovimiento[]>(LS_MOVS, setMovimientos)
   useCloudSync<LavaderoLiquidacion[]>(LS_LIQS, setLiquidaciones)
+  useCloudSync<string[]>(LS_PRENDAS_OCULTAS, setPrendasOcultas)
 
   const addMovimiento = useCallback((data: Omit<LavaderoMovimiento, 'id' | 'createdAt'>) => {
     setMovimientos(prev => {
@@ -82,8 +93,28 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const ocultarPrenda = useCallback((prenda: string) => {
+    setPrendasOcultas(prev => {
+      if (prev.includes(prenda)) return prev
+      const next = [...prev, prenda]
+      persist(LS_PRENDAS_OCULTAS, next)
+      return next
+    })
+  }, [])
+
+  const mostrarPrenda = useCallback((prenda: string) => {
+    setPrendasOcultas(prev => {
+      const next = prev.filter(p => p !== prenda)
+      persist(LS_PRENDAS_OCULTAS, next)
+      return next
+    })
+  }, [])
+
   return (
-    <LavaderoContext.Provider value={{ movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada }}>
+    <LavaderoContext.Provider value={{
+      movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada,
+      prendasOcultas, ocultarPrenda, mostrarPrenda,
+    }}>
       {children}
     </LavaderoContext.Provider>
   )
