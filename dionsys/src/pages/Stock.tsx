@@ -851,6 +851,11 @@ export default function Stock() {
                               {pedido.recibidoBy ? ` por ${pedido.recibidoBy}` : ''}
                             </p>
                           )}
+                          {isRecibido && pedido.cerradoSinStock && (
+                            <p className="text-xs text-amber-700 mt-0.5">
+                              Cerrado sin sumar stock (cargado a mano)
+                            </p>
+                          )}
                           {isBorrado && pedido.deletedAt && (
                             <p className="text-xs text-red-500 mt-0.5">
                               Borrado {new Date(pedido.deletedAt).toLocaleDateString('es-AR', {

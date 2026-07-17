@@ -183,6 +183,7 @@ export interface PedidoSemanal {
   deletedBy?: string
   recibidoAt?: string
   recibidoBy?: string
+  cerradoSinStock?: boolean  // cerrado como recibido SIN sumar stock (la mercadería ya se había cargado a mano)
   monto?: number
   montoCargadoBy?: string
   montoCargadoAt?: string

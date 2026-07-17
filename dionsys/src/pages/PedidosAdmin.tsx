@@ -15,7 +15,7 @@ function formatDate(iso: string) {
   })
 }
 
-function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onDeletePedido, onRemoveSupplier }: { pedido: PedidoSemanal; isAdmin: boolean; onRecibir: () => void; onMarcarPedido: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void }) {
+function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onCerrarSinStock, onDeletePedido, onRemoveSupplier }: { pedido: PedidoSemanal; isAdmin: boolean; onRecibir: () => void; onMarcarPedido: () => void; onCerrarSinStock: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void }) {
   const { items, suppliers } = useStock()
   const isArmado = pedido.status === 'armado'
   const isPedido = pedido.status === 'pedido'
@@ -79,6 +79,11 @@ function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onDeletePedido
               <CheckCircle2 size={11} />
               Recibido {new Date(pedido.recibidoAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
               {pedido.recibidoBy ? ` por ${pedido.recibidoBy}` : ''}
+            </p>
+          )}
+          {isRecibido && pedido.cerradoSinStock && (
+            <p className="text-xs text-amber-700 mt-0.5">
+              Cerrado sin sumar stock (la mercadería se cargó a mano en el depósito)
             </p>
           )}
         </div>
@@ -187,6 +192,14 @@ function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onDeletePedido
           Marcar como recibido y sumar al depósito
         </button>
       )}
+      {isAdmin && (isArmado || isPedido) && (
+        <button
+          onClick={onCerrarSinStock}
+          className="w-full mt-2 py-2 rounded-xl text-xs font-semibold text-navy-500 border border-navy-200 hover:bg-navy-50 transition-colors"
+        >
+          Ya se pidió y la mercadería se cargó a mano — cerrar sin sumar stock
+        </button>
+      )}
     </div>
   )
 }
@@ -194,10 +207,11 @@ function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onDeletePedido
 export default function PedidosAdmin() {
   const { employee } = useAuth()
   const {
-    pedidos, recibirPedido, marcarPedido, deletePedido, removeSupplierFromPedido,
+    pedidos, recibirPedido, marcarPedido, cerrarPedidoSinStock, deletePedido, removeSupplierFromPedido,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
   } = useStock()
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
+  const [cerrarSinStockTarget, setCerrarSinStockTarget] = useState<PedidoSemanal | null>(null)
   const [deletePedidoTarget, setDeletePedidoTarget] = useState<PedidoSemanal | null>(null)
   const [removeSupplierTarget, setRemoveSupplierTarget] = useState<{ pedidoId: string; supplierId: string; supplierName: string } | null>(null)
   // Distribuidoras: undefined = panel cerrado-modal cerrado; modal target separado
@@ -227,6 +241,12 @@ export default function PedidosAdmin() {
   function handleMarcarPedido(pedido: PedidoSemanal) {
     if (!employee) return
     marcarPedido(pedido.id, employee.name)
+  }
+
+  function confirmCerrarSinStock() {
+    if (!cerrarSinStockTarget || !employee) return
+    cerrarPedidoSinStock(cerrarSinStockTarget.id, employee.name)
+    setCerrarSinStockTarget(null)
   }
 
   function confirmDeletePedido() {
@@ -332,6 +352,7 @@ export default function PedidosAdmin() {
                   isAdmin={isAdmin}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
+                  onCerrarSinStock={() => setCerrarSinStockTarget(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
                   onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
                 />
@@ -351,6 +372,7 @@ export default function PedidosAdmin() {
                   isAdmin={isAdmin}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
+                  onCerrarSinStock={() => setCerrarSinStockTarget(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
                   onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
                 />
@@ -370,6 +392,7 @@ export default function PedidosAdmin() {
                   isAdmin={isAdmin}
                   onRecibir={() => setRecibirTarget(pedido)}
                   onMarcarPedido={() => handleMarcarPedido(pedido)}
+                  onCerrarSinStock={() => setCerrarSinStockTarget(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
                   onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
                 />
@@ -395,6 +418,15 @@ export default function PedidosAdmin() {
           onDelete={handleDeleteSupplier}
         />
       )}
+
+      <ConfirmDialog
+        open={cerrarSinStockTarget !== null}
+        title="Cerrar pedido sin sumar stock"
+        message="Usá esto solo si la mercadería ya fue pedida por afuera y las cantidades ya se sumaron a mano en el depósito. El pedido pasa a recibido pero NO se suma nada al stock (evita duplicar). Las facturas se cargan igual que siempre."
+        confirmLabel="Cerrar sin sumar"
+        onConfirm={confirmCerrarSinStock}
+        onCancel={() => setCerrarSinStockTarget(null)}
+      />
 
       <ConfirmDialog
         open={deletePedidoTarget !== null}

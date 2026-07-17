@@ -117,6 +117,7 @@ interface StockContextType {
   addMovement: (itemId: string, type: 'entrada' | 'salida', quantity: number, createdBy: string, notes?: string, pedidoId?: string) => void
   savePedido: (createdBy: string, pedidoItems: PedidoSemanalItem[]) => PedidoSemanal
   marcarPedido: (pedidoId: string, by: string) => void
+  cerrarPedidoSinStock: (pedidoId: string, by: string) => void
   deletePedido: (id: string, deletedBy: string) => void
   removeSupplierFromPedido: (pedidoId: string, supplierId: string, by: string) => void
   setFacturaProveedor: (pedidoId: string, factura: FacturaProveedor) => void
@@ -245,6 +246,27 @@ export function StockProvider({ children }: { children: ReactNode }) {
       const updated = prev.map(p =>
         p.id === pedidoId && p.status === 'armado'
           ? { ...p, status: 'pedido' as const, pedidoAt: new Date().toISOString(), pedidoBy: by }
+          : p
+      )
+      persist(LS_PEDIDOS, updated)
+      return updated
+    })
+  }, [])
+
+  // Cierra un pedido colgado (armado/pedido) como recibido SIN tocar el stock ni
+  // crear movimientos: la mercadería ya se pidió por afuera y se sumó a mano en
+  // el depósito. Las facturas se cargan igual que en cualquier pedido recibido.
+  const cerrarPedidoSinStock = useCallback((pedidoId: string, by: string) => {
+    setPedidos(prev => {
+      const updated = prev.map(p =>
+        p.id === pedidoId && (p.status === 'armado' || p.status === 'pedido')
+          ? {
+              ...p,
+              status: 'recibido' as const,
+              recibidoAt: new Date().toISOString(),
+              recibidoBy: by,
+              cerradoSinStock: true,
+            }
           : p
       )
       persist(LS_PEDIDOS, updated)
@@ -476,7 +498,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos, suppliers, facturasManuales,
-      addMovement, savePedido, marcarPedido, deletePedido, removeSupplierFromPedido, setFacturaProveedor, saveFacturaManual, deleteFacturaManual, setPedidoMonto, recibirPedido,
+      addMovement, savePedido, marcarPedido, cerrarPedidoSinStock, deletePedido, removeSupplierFromPedido, setFacturaProveedor, saveFacturaManual, deleteFacturaManual, setPedidoMonto, recibirPedido,
       addItem, updateItem, deleteItem,
       addSupplier, updateSupplier, deleteSupplier, clearAllStock, resetStock,
     }}>
