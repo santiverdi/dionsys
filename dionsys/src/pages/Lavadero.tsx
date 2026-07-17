@@ -56,7 +56,7 @@ function destinoPrenda(prenda: string, visibles: string[]): string | null {
 export default function Lavadero() {
   const { employee } = useAuth()
   const {
-    movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada,
+    movimientos, liquidaciones, addMovimiento, deleteMovimiento, setRemitoNro, addLiquidacion, deleteLiquidacion, togglePagada,
     prendasOcultas, ocultarPrenda, mostrarPrenda, base, setBasePrenda,
   } = useLavadero()
   const esAdmin = employee?.role === 'admin'
@@ -241,6 +241,17 @@ export default function Lavadero() {
     setLiqCants({})
     setLiqSaved(true)
     setTimeout(() => setLiqSaved(false), 2500)
+  }
+
+  // --- Agregar Nº de remito a un movimiento que quedó sin número (solo admin) ---
+  const [editRemitoId, setEditRemitoId] = useState<string | null>(null)
+  const [editRemitoVal, setEditRemitoVal] = useState('')
+
+  function guardarRemitoNro(movId: string) {
+    if (!editRemitoVal.trim()) return
+    setRemitoNro(movId, editRemitoVal)
+    setEditRemitoId(null)
+    setEditRemitoVal('')
   }
 
   // --- Resúmenes ---
@@ -824,7 +835,17 @@ export default function Lavadero() {
                     {m.remito
                       ? <span className="font-normal text-navy-400"> · remito {m.remito}</span>
                       : m.tipo === 'envio_sucia'
-                        ? <span className="font-normal text-amber-600"> · sin remito</span>
+                        ? esAdmin && editRemitoId !== m.id
+                          ? (
+                            <button
+                              onClick={() => { setEditRemitoId(m.id); setEditRemitoVal('') }}
+                              className="font-normal text-amber-600 underline decoration-dotted ml-1"
+                              title="Agregar el Nº de remito que faltó cargar"
+                            >
+                              sin remito — agregar Nº
+                            </button>
+                          )
+                          : <span className="font-normal text-amber-600"> · sin remito</span>
                         : null}
                   </span>
                   <span className="flex items-center gap-2 shrink-0">
@@ -836,6 +857,28 @@ export default function Lavadero() {
                     )}
                   </span>
                 </div>
+                {esAdmin && editRemitoId === m.id && !m.remito && (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <input
+                      type="text" value={editRemitoVal} autoFocus
+                      onChange={e => setEditRemitoVal(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') guardarRemitoNro(m.id) }}
+                      placeholder="Nº de remito" className={inputCls}
+                    />
+                    <button
+                      onClick={() => guardarRemitoNro(m.id)}
+                      disabled={!editRemitoVal.trim()}
+                      className={`px-3 py-1.5 rounded-lg font-bold shrink-0 ${
+                        editRemitoVal.trim() ? 'bg-navy-800 text-cream hover:bg-navy-700' : 'bg-navy-100 text-navy-400 cursor-not-allowed'
+                      }`}
+                    >
+                      Guardar
+                    </button>
+                    <button onClick={() => setEditRemitoId(null)} className="p-1.5 rounded-lg text-navy-400 hover:bg-navy-50 shrink-0">
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
                 <p className="text-navy-600 mt-0.5">
                   {m.prendas.map(p => `${p.cantidad} ${p.prenda.toLowerCase()}`).join(' · ')}
                 </p>

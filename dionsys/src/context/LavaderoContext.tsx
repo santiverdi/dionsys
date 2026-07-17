@@ -13,6 +13,9 @@ interface LavaderoContextType {
   liquidaciones: LavaderoLiquidacion[]
   addMovimiento: (data: Omit<LavaderoMovimiento, 'id' | 'createdAt'>) => void
   deleteMovimiento: (id: string) => void
+  // Agrega el nro de remito a un movimiento que quedó cargado sin número
+  // (solo admin desde la UI). Si es un retiro, propaga a sus devoluciones.
+  setRemitoNro: (id: string, remito: string) => void
   addLiquidacion: (data: Omit<LavaderoLiquidacion, 'id' | 'createdAt'>) => void
   deleteLiquidacion: (id: string) => void
   // Marca pagada/impaga (el pago sale en efectivo de la caja fuerte).
@@ -84,6 +87,18 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setRemitoNro = useCallback((id: string, remito: string) => {
+    const r = remito.trim()
+    if (!r) return
+    setMovimientos(prev => {
+      const next = prev.map(m =>
+        m.id === id || m.retiroId === id ? { ...m, remito: r } : m
+      )
+      persist(LS_MOVS, next)
+      return next
+    })
+  }, [])
+
   const addLiquidacion = useCallback((data: Omit<LavaderoLiquidacion, 'id' | 'createdAt'>) => {
     setLiquidaciones(prev => {
       const liq: LavaderoLiquidacion = { ...data, id: generateId(), createdAt: new Date().toISOString() }
@@ -146,7 +161,7 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
 
   return (
     <LavaderoContext.Provider value={{
-      movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada,
+      movimientos, liquidaciones, addMovimiento, deleteMovimiento, setRemitoNro, addLiquidacion, deleteLiquidacion, togglePagada,
       prendasOcultas, ocultarPrenda, mostrarPrenda,
       base, setBasePrenda,
     }}>
