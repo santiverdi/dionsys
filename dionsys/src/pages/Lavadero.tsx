@@ -254,6 +254,13 @@ export default function Lavadero() {
     setEditRemitoVal('')
   }
 
+  // --- Lista de remitos: del más nuevo al más viejo, expandible para checkear ---
+  const [movAbierto, setMovAbierto] = useState<string | null>(null)
+  const movsOrdenados = useMemo(
+    () => [...movimientos].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.createdAt.localeCompare(a.createdAt)),
+    [movimientos],
+  )
+
   // --- Resúmenes ---
   // Stock: base alquilada por prenda + dónde está la ropa ahora.
   const [editBase, setEditBase] = useState(false)
@@ -823,8 +830,11 @@ export default function Lavadero() {
           </div>
         ) : (
           <ul className="space-y-1.5">
-            {movimientos.slice(0, 30).map(m => (
-              <li key={m.id} className={`rounded-lg border p-2.5 text-xs ${
+            {movsOrdenados.slice(0, 30).map(m => (
+              <li
+                key={m.id}
+                onClick={() => setMovAbierto(v => (v === m.id ? null : m.id))}
+                className={`rounded-lg border p-2.5 text-xs cursor-pointer ${
                 m.tipo === 'envio_sucia' ? 'border-amber-100 bg-amber-50/50'
                   : m.tipo === 'recibo_limpia' ? 'border-green-100 bg-green-50/50'
                   : 'border-blue-100 bg-blue-50/50'
@@ -838,7 +848,7 @@ export default function Lavadero() {
                         ? esAdmin && editRemitoId !== m.id
                           ? (
                             <button
-                              onClick={() => { setEditRemitoId(m.id); setEditRemitoVal('') }}
+                              onClick={e => { e.stopPropagation(); setEditRemitoId(m.id); setEditRemitoVal('') }}
                               className="font-normal text-amber-600 underline decoration-dotted ml-1"
                               title="Agregar el Nº de remito que faltó cargar"
                             >
@@ -851,14 +861,17 @@ export default function Lavadero() {
                   <span className="flex items-center gap-2 shrink-0">
                     <span className="text-navy-500">{m.createdBy}</span>
                     {esAdmin && (
-                      <button onClick={() => deleteMovimiento(m.id)} className="p-1 rounded text-navy-400 hover:text-red-500 hover:bg-red-50" title="Borrar remito">
+                      <button onClick={e => { e.stopPropagation(); deleteMovimiento(m.id) }} className="p-1 rounded text-navy-400 hover:text-red-500 hover:bg-red-50" title="Borrar remito">
                         <Trash2 size={13} />
                       </button>
                     )}
+                    {movAbierto === m.id
+                      ? <ChevronUp size={14} className="text-navy-400" />
+                      : <ChevronDown size={14} className="text-navy-400" />}
                   </span>
                 </div>
                 {esAdmin && editRemitoId === m.id && !m.remito && (
-                  <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex items-center gap-2 mt-1.5" onClick={e => e.stopPropagation()}>
                     <input
                       type="text" value={editRemitoVal} autoFocus
                       onChange={e => setEditRemitoVal(e.target.value)}
@@ -879,9 +892,30 @@ export default function Lavadero() {
                     </button>
                   </div>
                 )}
-                <p className="text-navy-600 mt-0.5">
-                  {m.prendas.map(p => `${p.cantidad} ${p.prenda.toLowerCase()}`).join(' · ')}
-                </p>
+                {movAbierto === m.id ? (
+                  /* Vista grande para checkear contra el papel: una prenda por
+                     renglón, cantidades al lado como en el remito. */
+                  <div className="mt-2 bg-white rounded-lg border border-navy-100 px-3 py-1.5">
+                    <ul className="divide-y divide-navy-50">
+                      {m.prendas.map(p => (
+                        <li key={p.prenda} className="flex items-center justify-between py-2 text-sm">
+                          <span className="text-navy-700">{p.prenda}</span>
+                          <span className="font-bold text-navy-900 text-lg tabular-nums">{p.cantidad}</span>
+                        </li>
+                      ))}
+                      <li className="flex items-center justify-between py-2 text-sm">
+                        <span className="font-semibold text-navy-500 uppercase text-[11px] tracking-wide">Total prendas</span>
+                        <span className="font-bold text-navy-900 text-lg tabular-nums">
+                          {m.prendas.reduce((s, p) => s + p.cantidad, 0)}
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-navy-600 mt-0.5">
+                    {m.prendas.map(p => `${p.cantidad} ${p.prenda.toLowerCase()}`).join(' · ')}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
