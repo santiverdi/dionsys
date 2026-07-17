@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import {
-  Shirt, ArrowUpCircle, ArrowDownCircle, Plus, Save, Trash2, X, CheckCircle2,
+  Shirt, Plus, Save, Trash2, X, CheckCircle2,
   Wallet, AlertTriangle, FileText, Circle, Camera, Loader2,
+  PackageCheck, Repeat, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
-import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION } from '../lib/lavadero'
+import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, getRetirosPendientes, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION, type RetiroPendiente } from '../lib/lavadero'
 import { extractRemitoLavadero } from '../lib/invoiceExtract'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
@@ -28,11 +29,13 @@ function fmtFecha(yyyyMmDd: string): string {
   return isNaN(d.getTime()) ? yyyyMmDd : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
 }
 
-// Como dice el papel: el remito de RETIRO documenta la sucia que se llevan;
-// la limpia llega con su propio remito de entrega.
+// Solo el RETIRO tiene remito. La limpia vuelve sin papel: Roxana la cuenta al
+// recibir y "tilda" el retiro (recibo_limpia enlazado por retiroId). El cambio
+// es canje 1 a 1 de ropa dañada del hotel por nueva.
 const TIPO_LABEL: Record<TipoMovLavadero, string> = {
-  envio_sucia: 'Retiro (se llevan sucia)',
-  recibo_limpia: 'Entrega (traen limpia)',
+  envio_sucia: 'Retiro (se llevó sucia)',
+  recibo_limpia: 'Volvió limpia',
+  cambio: 'Cambio por rotura/mancha',
 }
 
 interface FilaPrenda { prenda: string; cantidad: string }
@@ -58,11 +61,10 @@ export default function Lavadero() {
   } = useLavadero()
   const esAdmin = employee?.role === 'admin'
 
-  // --- Form de remito (movimiento de ropa) ---
+  // --- Form de remito de RETIRO (único papel que existe) ---
   // El remito real es MANUSCRITO (con lapicera): la carga tiene que ser copiarlo
   // de forma simple — la lista de prendas ya está armada y solo se ponen los
   // números al lado, como en el papel.
-  const [tipo, setTipo] = useState<TipoMovLavadero>('envio_sucia')
   const [fecha, setFecha] = useState(hoyStr())
   const [remito, setRemito] = useState('')
   const [cants, setCants] = useState<Record<string, string>>({})
@@ -81,8 +83,6 @@ export default function Lavadero() {
     setErrorFoto('')
     try {
       const r = await extractRemitoLavadero(file)
-      if (r.tipo === 'retiro') setTipo('envio_sucia')
-      else if (r.tipo === 'entrega') setTipo('recibo_limpia')
       if (/^\d{4}-\d{2}-\d{2}$/.test(r.fecha)) setFecha(r.fecha)
       if (r.nro) setRemito(r.nro)
       const nuevasCants: Record<string, string> = {}
@@ -118,7 +118,7 @@ export default function Lavadero() {
   function guardar() {
     if (!valido) return
     addMovimiento({
-      fecha, tipo, prendas: prendasValidas,
+      fecha, tipo: 'envio_sucia', prendas: prendasValidas,
       ...(remito.trim() ? { remito: remito.trim() } : {}),
       createdBy: employee?.name ?? '',
     })
@@ -131,6 +131,65 @@ export default function Lavadero() {
 
   function editExtra(i: number, patch: Partial<FilaPrenda>) {
     setExtras(f => f.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+  }
+
+  // --- Recepción de ropa lavada (no hay remito de limpia) ---
+  // La misma ropa del retiro vuelve lavada: Roxana la cuenta al recibir y
+  // tilda el retiro. Precargamos lo pendiente; si falta algo, corrige el
+  // número y el resto queda pendiente en el mismo retiro.
+  const retirosPendientes = useMemo(() => getRetirosPendientes(movimientos), [movimientos])
+  const [recibirRetiroId, setRecibirRetiroId] = useState<string | null>(null)
+  const [recibCants, setRecibCants] = useState<Record<string, string>>({})
+
+  function toggleRecepcion(rp: RetiroPendiente) {
+    if (recibirRetiroId === rp.retiro.id) { setRecibirRetiroId(null); return }
+    setRecibirRetiroId(rp.retiro.id)
+    const pre: Record<string, string> = {}
+    for (const p of rp.prendas) if (p.pendiente > 0) pre[p.prenda] = String(p.pendiente)
+    setRecibCants(pre)
+  }
+
+  function confirmarRecepcion(rp: RetiroPendiente) {
+    const prendas = rp.prendas
+      .filter(p => p.pendiente > 0)
+      .map(p => ({
+        prenda: p.prenda,
+        cantidad: Math.max(0, Math.min(p.pendiente, Math.round(Number(recibCants[p.prenda]) || 0))),
+      }))
+      .filter(p => p.cantidad > 0)
+    if (prendas.length === 0) return
+    addMovimiento({
+      fecha: hoyStr(), tipo: 'recibo_limpia', prendas,
+      retiroId: rp.retiro.id,
+      ...(rp.retiro.remito ? { remito: rp.retiro.remito } : {}),
+      createdBy: employee?.name ?? '',
+    })
+    setRecibirRetiroId(null)
+  }
+
+  // --- Cambio por rotura/mancha (canje 1 a 1, no altera el balance) ---
+  const [showCambio, setShowCambio] = useState(false)
+  const [cambioFecha, setCambioFecha] = useState(hoyStr())
+  const [cambioFilas, setCambioFilas] = useState<FilaPrenda[]>([{ prenda: '', cantidad: '' }])
+  const [cambioSaved, setCambioSaved] = useState(false)
+
+  const cambioValidas = cambioFilas
+    .map(f => ({ prenda: f.prenda.trim(), cantidad: Math.max(0, Math.round(Number(f.cantidad) || 0)) }))
+    .filter(p => p.prenda && p.cantidad > 0)
+
+  function guardarCambio() {
+    if (!cambioFecha || cambioValidas.length === 0) return
+    addMovimiento({
+      fecha: cambioFecha, tipo: 'cambio', prendas: cambioValidas,
+      createdBy: employee?.name ?? '',
+    })
+    setCambioFilas([{ prenda: '', cantidad: '' }])
+    setCambioSaved(true)
+    setTimeout(() => setCambioSaved(false), 2500)
+  }
+
+  function editCambioFila(i: number, patch: Partial<FilaPrenda>) {
+    setCambioFilas(f => f.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   }
 
   // --- Form de liquidación quincenal (solo admin) ---
@@ -158,9 +217,11 @@ export default function Lavadero() {
   const liqValida = liqDesde && liqHasta && liqDesde <= liqHasta && Number(liqTotal.replace(',', '.')) > 0
 
   function copiasDelPeriodo(): string[] {
-    return movimientos
-      .filter(m => m.remito?.trim() && m.fecha >= liqDesde && m.fecha <= liqHasta)
-      .map(m => m.remito!.trim())
+    return [...new Set(
+      movimientos
+        .filter(m => m.tipo === 'envio_sucia' && m.remito?.trim() && m.fecha >= liqDesde && m.fecha <= liqHasta)
+        .map(m => m.remito!.trim()),
+    )]
   }
 
   function guardarLiquidacion() {
@@ -202,9 +263,9 @@ export default function Lavadero() {
         </p>
       ) : (
         <p className="text-sm text-navy-500 mb-4">
-          Cargá la <strong>copia de cada remito</strong>: qué ropa sucia salió y qué ropa limpia volvió.
-          Con eso el sistema controla que el lavadero devuelva todo y que la liquidación de la quincena
-          coincida con las copias.
+          Cargá la <strong>copia de cada remito de retiro</strong> (la sucia que se llevan). Cuando
+          la ropa vuelve lavada, contala y tildá el retiro en "retiros sin devolver". Con eso el
+          sistema controla que el lavadero devuelva todo y que la liquidación coincida con las copias.
         </p>
       )}
 
@@ -237,7 +298,7 @@ export default function Lavadero() {
 
       {/* Carga de remito */}
       <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2">Cargar remito (copia de la gobernanta)</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2">Cargar remito de retiro (la sucia que se llevan)</p>
         <label className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold mb-2 transition-colors ${
           leyendoFoto
             ? 'border-navy-200 text-navy-400 cursor-wait'
@@ -262,21 +323,6 @@ export default function Lavadero() {
         <p className="text-[11px] text-navy-400 mb-2">
           La foto solo precarga el formulario: revisá los números contra el papel antes de guardar.
         </p>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          {([['envio_sucia', ArrowUpCircle], ['recibo_limpia', ArrowDownCircle]] as const).map(([t, Icon]) => (
-            <button
-              key={t}
-              onClick={() => setTipo(t)}
-              className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 text-sm font-semibold transition-colors ${
-                tipo === t
-                  ? t === 'envio_sucia' ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-green-400 bg-green-50 text-green-800'
-                  : 'border-navy-100 text-navy-500 hover:border-navy-200'
-              }`}
-            >
-              <Icon size={16} /> {TIPO_LABEL[t]}
-            </button>
-          ))}
-        </div>
         <div className="flex items-center gap-2 mb-2">
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className={inputCls} />
           <input
@@ -364,6 +410,135 @@ export default function Lavadero() {
         </div>
         {valido && !remito.trim() && (
           <p className="text-[11px] text-amber-600 mt-1.5">Sin Nº de remito no se puede cruzar contra la liquidación de la quincena.</p>
+        )}
+      </div>
+
+      {/* Retiros pendientes de devolución: la limpia vuelve SIN remito, se
+          cuenta al recibir y se tilda acá. */}
+      {retirosPendientes.length > 0 && (
+        <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-1 flex items-center gap-1.5">
+            <PackageCheck size={13} className="text-green-600" /> Ropa en el lavadero — retiros sin devolver ({retirosPendientes.length})
+          </p>
+          <p className="text-[11px] text-navy-400 mb-2">
+            Cuando traen la ropa lavada, contala y tildá el retiro. Si falta algo, poné lo que
+            realmente volvió: el resto queda pendiente en este mismo retiro.
+          </p>
+          <ul className="space-y-2">
+            {retirosPendientes.map(rp => {
+              const abierto = recibirRetiroId === rp.retiro.id
+              return (
+                <li key={rp.retiro.id} className="rounded-lg border border-amber-200 bg-amber-50/40 p-2.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-navy-800">
+                      Retiro del {fmtFecha(rp.retiro.fecha)}
+                      {rp.retiro.remito ? <span className="font-normal text-navy-400"> · remito {rp.retiro.remito}</span> : ''}
+                      <span className="font-normal text-amber-700"> · faltan volver {rp.totalPendiente}</span>
+                    </span>
+                    <button
+                      onClick={() => toggleRecepcion(rp)}
+                      className={`px-3 py-1.5 rounded-lg font-bold shrink-0 transition-colors ${
+                        abierto ? 'bg-navy-100 text-navy-600 hover:bg-navy-200' : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                    >
+                      {abierto ? 'Cancelar' : 'Volvió'}
+                    </button>
+                  </div>
+                  {!abierto && (
+                    <p className="text-navy-500 mt-1">
+                      {rp.prendas.filter(p => p.pendiente > 0).map(p => `${p.pendiente} ${p.prenda.toLowerCase()}`).join(' · ')}
+                    </p>
+                  )}
+                  {abierto && (
+                    <div className="mt-2">
+                      {rp.prendas.filter(p => p.pendiente > 0).map(p => (
+                        <div key={p.prenda} className="flex items-center justify-between gap-2 py-0.5">
+                          <span className="text-navy-700">
+                            {p.prenda}
+                            <span className="text-navy-400">
+                              {' '}(se llevaron {p.enviada}{p.recibida > 0 ? `, ya volvieron ${p.recibida}` : ''})
+                            </span>
+                          </span>
+                          <input
+                            type="number" min={0} max={p.pendiente} inputMode="numeric"
+                            value={recibCants[p.prenda] ?? ''}
+                            onChange={e => setRecibCants(c => ({ ...c, [p.prenda]: e.target.value }))}
+                            className="w-20 rounded-lg border border-navy-200 px-2 py-1 text-xs text-navy-800 text-center focus:outline-none focus:border-gold-400 shrink-0"
+                          />
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => confirmarRecepcion(rp)}
+                        className="w-full mt-2 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold bg-green-600 text-white hover:bg-green-700 transition-colors"
+                      >
+                        <CheckCircle2 size={14} /> Confirmar lo que volvió
+                      </button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* Cambio por rotura/mancha: canje 1 a 1 (dañada del hotel por nueva
+          del lavadero). No toca el balance, solo queda registrado. */}
+      <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
+        <button onClick={() => setShowCambio(v => !v)} className="w-full flex items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-navy-500 flex items-center gap-1.5">
+            <Repeat size={13} className="text-blue-600" /> Cambio por rotura o mancha
+          </span>
+          {showCambio ? <ChevronUp size={14} className="text-navy-400" /> : <ChevronDown size={14} className="text-navy-400" />}
+        </button>
+        {showCambio && (
+          <div className="mt-2">
+            <p className="text-[11px] text-navy-400 mb-2">
+              Cuando se entrega ropa del hotel manchada o rota y el lavadero la repone por nueva
+              (misma cantidad). No cambia el balance: queda anotado el canje.
+            </p>
+            <input type="date" value={cambioFecha} onChange={e => setCambioFecha(e.target.value)} className={`${inputCls} mb-2`} />
+            <div className="space-y-1.5 mb-2">
+              {cambioFilas.map((f, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={f.prenda}
+                    onChange={e => editCambioFila(i, { prenda: e.target.value })}
+                    className={inputCls}
+                  >
+                    <option value="">Prenda…</option>
+                    {PRENDAS_SUGERIDAS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <input
+                    type="number" min={1} inputMode="numeric" value={f.cantidad}
+                    onChange={e => editCambioFila(i, { cantidad: e.target.value })}
+                    placeholder="Cant." className="w-20 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 text-center focus:outline-none focus:border-gold-400 shrink-0"
+                  />
+                  <button onClick={() => setCambioFilas(fs => fs.length > 1 ? fs.filter((_, j) => j !== i) : fs)} className="p-1.5 rounded-lg text-navy-400 hover:text-red-500 hover:bg-red-50 shrink-0">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCambioFilas(f => [...f, { prenda: '', cantidad: '' }])}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-navy-200 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+              >
+                <Plus size={14} /> Otra prenda
+              </button>
+              <button
+                onClick={guardarCambio}
+                disabled={!cambioFecha || cambioValidas.length === 0}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold ${
+                  cambioFecha && cambioValidas.length > 0 ? 'bg-navy-800 text-cream hover:bg-navy-700' : 'bg-navy-100 text-navy-400 cursor-not-allowed'
+                }`}
+              >
+                <Save size={14} /> Guardar cambio
+              </button>
+              {cambioSaved && <span className="flex items-center gap-1 text-xs text-green-600 font-semibold"><CheckCircle2 size={14} /> Guardado</span>}
+            </div>
+          </div>
         )}
       </div>
 
@@ -590,12 +765,18 @@ export default function Lavadero() {
           <ul className="space-y-1.5">
             {movimientos.slice(0, 30).map(m => (
               <li key={m.id} className={`rounded-lg border p-2.5 text-xs ${
-                m.tipo === 'envio_sucia' ? 'border-amber-100 bg-amber-50/50' : 'border-green-100 bg-green-50/50'
+                m.tipo === 'envio_sucia' ? 'border-amber-100 bg-amber-50/50'
+                  : m.tipo === 'recibo_limpia' ? 'border-green-100 bg-green-50/50'
+                  : 'border-blue-100 bg-blue-50/50'
               }`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-navy-800">
                     {fmtFecha(m.fecha)} · {TIPO_LABEL[m.tipo]}
-                    {m.remito ? <span className="font-normal text-navy-400"> · remito {m.remito}</span> : <span className="font-normal text-amber-600"> · sin remito</span>}
+                    {m.remito
+                      ? <span className="font-normal text-navy-400"> · remito {m.remito}</span>
+                      : m.tipo === 'envio_sucia'
+                        ? <span className="font-normal text-amber-600"> · sin remito</span>
+                        : null}
                   </span>
                   <span className="flex items-center gap-2 shrink-0">
                     <span className="text-navy-500">{m.createdBy}</span>

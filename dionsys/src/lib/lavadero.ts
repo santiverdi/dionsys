@@ -50,13 +50,61 @@ export function getBalanceRopa(movs: LavaderoMovimiento[]): BalancePrenda[] {
       if (!key) continue
       const e = map.get(key) ?? { enviadas: 0, recibidas: 0 }
       if (m.tipo === 'envio_sucia') e.enviadas += p.cantidad
-      else e.recibidas += p.cantidad
+      else if (m.tipo === 'recibo_limpia') e.recibidas += p.cantidad
+      // 'cambio' es canje 1 a 1 (dañada por nueva): no altera el balance.
       map.set(key, e)
     }
   }
   return [...map.entries()]
     .map(([prenda, v]) => ({ prenda, ...v, enLavadero: v.enviadas - v.recibidas }))
     .sort((a, b) => b.enLavadero - a.enLavadero || a.prenda.localeCompare(b.prenda))
+}
+
+// ===== Retiros pendientes de devolución =====
+// No hay remito de limpia: el lavadero retira con remito y la misma ropa
+// vuelve lavada. Roxana la cuenta al recibir y "tilda" el retiro; lo que falta
+// queda pendiente. Un retiro puede devolverse en partes (varios recibos
+// enlazados por retiroId).
+export interface RetiroPendiente {
+  retiro: LavaderoMovimiento
+  prendas: {
+    prenda: string
+    enviada: number     // lo que se llevó el lavadero según el remito
+    recibida: number    // lo que ya volvió (suma de devoluciones enlazadas)
+    pendiente: number   // enviada - recibida (>0)
+  }[]
+  totalPendiente: number
+}
+
+export function getRetirosPendientes(movs: LavaderoMovimiento[]): RetiroPendiente[] {
+  // Suma de devoluciones por retiro, por prenda canónica.
+  const devueltoPorRetiro = new Map<string, Map<string, number>>()
+  for (const m of movs) {
+    if (m.tipo !== 'recibo_limpia' || !m.retiroId) continue
+    const porPrenda = devueltoPorRetiro.get(m.retiroId) ?? new Map<string, number>()
+    for (const p of m.prendas) {
+      const k = prendaCanonica(p.prenda)
+      if (!k) continue
+      porPrenda.set(k, (porPrenda.get(k) ?? 0) + p.cantidad)
+    }
+    devueltoPorRetiro.set(m.retiroId, porPrenda)
+  }
+
+  const pendientes: RetiroPendiente[] = []
+  for (const m of movs) {
+    if (m.tipo !== 'envio_sucia') continue
+    const devuelto = devueltoPorRetiro.get(m.id)
+    const prendas = m.prendas
+      .filter(p => p.prenda.trim() && p.cantidad > 0)
+      .map(p => {
+        const recibida = devuelto?.get(prendaCanonica(p.prenda)) ?? 0
+        return { prenda: p.prenda, enviada: p.cantidad, recibida, pendiente: Math.max(0, p.cantidad - recibida) }
+      })
+    const totalPendiente = prendas.reduce((s, p) => s + p.pendiente, 0)
+    if (totalPendiente > 0) pendientes.push({ retiro: m, prendas, totalPendiente })
+  }
+  // Más viejo primero: lo primero que retiraron es lo primero que debería volver.
+  return pendientes.sort((a, b) => a.retiro.fecha.localeCompare(b.retiro.fecha))
 }
 
 // ===== Conciliación de una liquidación contra las copias de remitos =====
@@ -73,17 +121,18 @@ export interface ConciliacionLiquidacion {
 }
 
 export function conciliarLiquidacion(liq: LavaderoLiquidacion, movs: LavaderoMovimiento[]): ConciliacionLiquidacion {
-  const copias = new Set(
-    movs
-      .filter(m => m.remito?.trim() && m.fecha >= liq.desde && m.fecha <= liq.hasta)
-      .map(m => normRemito(m.remito!)),
+  // Solo los RETIROS tienen remito propio (las devoluciones heredan el nro del
+  // retiro que devuelven): las copias a cruzar son los retiros del período.
+  const retiros = movs.filter(m =>
+    m.tipo === 'envio_sucia' && m.remito?.trim() && m.fecha >= liq.desde && m.fecha <= liq.hasta,
   )
+  const copias = new Set(retiros.map(m => normRemito(m.remito!)))
   const liquidados = new Set(liq.remitos.map(normRemito).filter(Boolean))
   return {
     remitosSinCopia: liq.remitos.filter(r => r.trim() && !copias.has(normRemito(r))),
-    copiasSinLiquidar: movs
-      .filter(m => m.remito?.trim() && m.fecha >= liq.desde && m.fecha <= liq.hasta && !liquidados.has(normRemito(m.remito!)))
-      .map(m => m.remito!.trim()),
+    copiasSinLiquidar: [...new Set(
+      retiros.filter(m => !liquidados.has(normRemito(m.remito!))).map(m => m.remito!.trim()),
+    )],
   }
 }
 
@@ -111,7 +160,7 @@ export function sumarPrendasPeriodo(
       if (!k) continue
       const e = map.get(k) ?? { retiradas: 0, entregadas: 0 }
       if (m.tipo === 'envio_sucia') e.retiradas += p.cantidad
-      else e.entregadas += p.cantidad
+      else if (m.tipo === 'recibo_limpia') e.entregadas += p.cantidad
       map.set(k, e)
     }
   }

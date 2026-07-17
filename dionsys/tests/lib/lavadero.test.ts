@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getBalanceRopa, conciliarLiquidacion, conciliarPrendas, prendaCanonica, sumarPrendasPeriodo,
-  getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
+  getRetirosPendientes, getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
 } from '../../src/lib/lavadero'
 import { getCostoHabitacion, getNochesHabitacion } from '../../src/lib/negocio'
 import { getAnalisisMes } from '../../src/lib/analisisMes'
@@ -37,6 +37,63 @@ describe('getBalanceRopa', () => {
     const b = getBalanceRopa(movs)
     expect(b.find(x => x.prenda === 'Sábana')).toMatchObject({ enviadas: 40, recibidas: 30, enLavadero: 10 })
     expect(b.find(x => x.prenda === 'Toalla')).toMatchObject({ enviadas: 20, recibidas: 0, enLavadero: 20 })
+  })
+
+  it('el cambio por rotura/mancha (canje 1 a 1) NO altera el balance', () => {
+    const movs = [
+      mov({ tipo: 'envio_sucia', prendas: [{ prenda: 'Toallas turcas', cantidad: 20 }] }),
+      mov({ tipo: 'cambio', prendas: [{ prenda: 'Toallas turcas', cantidad: 10 }] }),
+    ]
+    const b = getBalanceRopa(movs)
+    expect(b.find(x => x.prenda === 'Toallas turcas')).toMatchObject({ enviadas: 20, recibidas: 0, enLavadero: 20 })
+  })
+})
+
+describe('getRetirosPendientes', () => {
+  const retiro = mov({
+    id: 'ret1', fecha: '2026-07-10', tipo: 'envio_sucia', remito: '174775',
+    prendas: [{ prenda: 'Fundas', cantidad: 42 }, { prenda: 'Pie de baño', cantidad: 45 }],
+  })
+
+  it('un retiro sin devolución está pendiente completo', () => {
+    const [rp] = getRetirosPendientes([retiro])
+    expect(rp.totalPendiente).toBe(87)
+    expect(rp.prendas).toEqual([
+      { prenda: 'Fundas', enviada: 42, recibida: 0, pendiente: 42 },
+      { prenda: 'Pie de baño', enviada: 45, recibida: 0, pendiente: 45 },
+    ])
+  })
+
+  it('la devolución parcial enlazada por retiroId deja pendiente solo lo que falta', () => {
+    const devolucion = mov({
+      fecha: '2026-07-12', tipo: 'recibo_limpia', retiroId: 'ret1', remito: '174775',
+      prendas: [{ prenda: 'Fundas', cantidad: 42 }, { prenda: 'Pie de baño', cantidad: 40 }],
+    })
+    const [rp] = getRetirosPendientes([retiro, devolucion])
+    expect(rp.totalPendiente).toBe(5)
+    expect(rp.prendas.find(p => p.prenda === 'Fundas')).toMatchObject({ pendiente: 0 })
+    expect(rp.prendas.find(p => p.prenda === 'Pie de baño')).toMatchObject({ recibida: 40, pendiente: 5 })
+  })
+
+  it('devuelto todo, el retiro deja de estar pendiente', () => {
+    const devolucion = mov({
+      fecha: '2026-07-12', tipo: 'recibo_limpia', retiroId: 'ret1',
+      prendas: [{ prenda: 'Fundas', cantidad: 42 }, { prenda: 'Pie de baño', cantidad: 45 }],
+    })
+    expect(getRetirosPendientes([retiro, devolucion])).toEqual([])
+  })
+
+  it('las devoluciones heredan el remito del retiro sin duplicar la conciliación', () => {
+    const devolucion = mov({
+      fecha: '2026-07-12', tipo: 'recibo_limpia', retiroId: 'ret1', remito: '174775',
+      prendas: [{ prenda: 'Fundas', cantidad: 42 }],
+    })
+    const c = conciliarLiquidacion(
+      liq({ desde: '2026-07-01', hasta: '2026-07-15', remitos: ['174775'] }),
+      [retiro, devolucion],
+    )
+    expect(c.remitosSinCopia).toEqual([])
+    expect(c.copiasSinLiquidar).toEqual([])
   })
 })
 

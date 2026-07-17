@@ -421,7 +421,10 @@ export const TIPO_PAGO_SUELDO_LABELS: Record<TipoPagoSueldo, string> = {
 // que debe coincidir con las copias. Se paga en efectivo de la caja fuerte
 // (a veces dos quincenas juntas, a 30 días).
 
-export type TipoMovLavadero = 'envio_sucia' | 'recibo_limpia'
+// envio_sucia = retiro (remito) · recibo_limpia = la devolución de un retiro
+// (no hay remito de limpia: Roxana cuenta al recibir) · cambio = canje 1 a 1
+// de ropa manchada/rota del hotel por nueva del lavadero (no altera balance).
+export type TipoMovLavadero = 'envio_sucia' | 'recibo_limpia' | 'cambio'
 
 export interface LavaderoPrenda {
   prenda: string            // "Sábana", "Funda de almohada", "Pie de baño"…
@@ -435,6 +438,7 @@ export interface LavaderoMovimiento {
   tipo: TipoMovLavadero
   prendas: LavaderoPrenda[]
   remito?: string           // nro de remito (clave para cruzar con la liquidación)
+  retiroId?: string         // en recibo_limpia: id del retiro que se está devolviendo
   notas?: string
   createdBy: string
   createdAt: string         // ISO
