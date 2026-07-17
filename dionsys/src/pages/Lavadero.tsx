@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
-import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION } from '../lib/lavadero'
+import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION } from '../lib/lavadero'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import type { TipoMovLavadero, LavaderoPrenda } from '../types'
@@ -92,6 +92,14 @@ export default function Lavadero() {
   const [liqRemitos, setLiqRemitos] = useState('')
   const [liqCants, setLiqCants] = useState<Record<string, string>>({})
   const [liqSaved, setLiqSaved] = useState(false)
+
+  // Suma de las copias del período elegido, por prenda (lo que Charo sumaba a
+  // mano en su Excel): se muestra al lado de cada casillero para comparar en
+  // vivo contra lo que factura la liquidación.
+  const sumasPeriodo = useMemo(
+    () => sumarPrendasPeriodo(movimientos, liqDesde, liqHasta),
+    [movimientos, liqDesde, liqHasta],
+  )
 
   const remitosLiq = liqRemitos.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
   const detalleLiq: LavaderoPrenda[] = PRENDAS_LIQUIDACION
@@ -348,20 +356,34 @@ export default function Lavadero() {
               type="text" value={liqNro} onChange={e => setLiqNro(e.target.value)}
               placeholder="Nº de liquidación (ej. 0025355)" className={`${inputCls} mb-2`}
             />
-            {/* Cantidades por prenda como vienen impresas: con esto el sistema
-                cruza lo facturado contra la suma de las copias del período. */}
+            {/* Cantidades por prenda como vienen impresas. Al lado de cada una
+                se muestra la suma de las copias del período ("copias N"), que
+                es el subtotal que Charo armaba a mano en el Excel: si el número
+                tipeado no coincide, se marca al toque. */}
             <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 mb-2">
-              {PRENDAS_LIQUIDACION.map(p => (
-                <div key={p} className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-xs text-navy-600">{p}</span>
-                  <input
-                    type="number" min={0} inputMode="numeric" value={liqCants[p] ?? ''}
-                    onChange={e => setLiqCants(c => ({ ...c, [p]: e.target.value }))}
-                    placeholder="0"
-                    className="w-20 rounded-lg border border-navy-200 px-2 py-1 text-xs text-navy-800 text-center focus:outline-none focus:border-gold-400 shrink-0"
-                  />
-                </div>
-              ))}
+              {PRENDAS_LIQUIDACION.map(p => {
+                const copias = sumasPeriodo.get(prendaCanonica(p))?.retiradas ?? 0
+                const tipeado = liqCants[p]?.trim()
+                const coincide = tipeado ? Math.round(Number(tipeado) || 0) === copias : null
+                return (
+                  <div key={p} className="flex items-center justify-between gap-2 py-0.5">
+                    <span className="text-xs text-navy-600">
+                      {p}
+                      <span className={`ml-1.5 ${
+                        coincide === null ? 'text-navy-400' : coincide ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
+                      }`}>
+                        · copias {copias}{coincide === null ? '' : coincide ? ' ✓' : ' ≠'}
+                      </span>
+                    </span>
+                    <input
+                      type="number" min={0} inputMode="numeric" value={liqCants[p] ?? ''}
+                      onChange={e => setLiqCants(c => ({ ...c, [p]: e.target.value }))}
+                      placeholder="0"
+                      className="w-20 rounded-lg border border-navy-200 px-2 py-1 text-xs text-navy-800 text-center focus:outline-none focus:border-gold-400 shrink-0"
+                    />
+                  </div>
+                )
+              })}
             </div>
             <textarea
               value={liqRemitos}

@@ -14,12 +14,15 @@ import { isInMonth } from '../utils/dateRange'
 // como "Otra prenda" si algún día aparecen. (La prenda es texto libre igual.)
 export const PRENDAS_SUGERIDAS = [
   'Sábanas grandes (SG)', 'Sábanas chicas (SCH)', 'Fundas',
-  'Toallas de baño', 'Toallas turcas', 'Colchas', 'Pie de baño',
+  'Toallas de baño', 'Toallas turcas', 'Colchas', 'Cubres', 'Frazadas',
+  'Pie de baño', 'Pie de cama', 'Playeras', 'Juego de cuna',
 ]
 
-// Prendas como vienen IMPRESAS en la liquidación quincenal (sábanas juntas).
+// Prendas como factura la liquidación (sábanas juntas). Mismo set que el
+// control en Excel de Charo; las filas en 0 no se guardan.
 export const PRENDAS_LIQUIDACION = [
-  'Sábanas', 'Fundas', 'Toallas de baño', 'Toallas turcas', 'Colchas', 'Pie de baño',
+  'Sábanas', 'Fundas', 'Toallas de baño', 'Toallas turcas', 'Colchas',
+  'Cubres', 'Frazadas', 'Pie de baño', 'Pie de cama', 'Playeras', 'Juego de cuna',
 ]
 
 // Nombre canónico para cruzar prendas entre remitos y liquidación: minúsculas,
@@ -95,32 +98,38 @@ export interface ConciliacionPrenda {
   entregadas: number   // limpias que trajeron en el período (según copias)
 }
 
+// Suma las copias de remitos de un período, por prenda canónica y dirección.
+// Es el "subtotal de la quincena" que Charo armaba a mano en su Excel.
+export function sumarPrendasPeriodo(
+  movs: LavaderoMovimiento[], desde: string, hasta: string,
+): Map<string, { retiradas: number; entregadas: number }> {
+  const map = new Map<string, { retiradas: number; entregadas: number }>()
+  for (const m of movs) {
+    if (m.fecha < desde || m.fecha > hasta) continue
+    for (const p of m.prendas) {
+      const k = prendaCanonica(p.prenda)
+      if (!k) continue
+      const e = map.get(k) ?? { retiradas: 0, entregadas: 0 }
+      if (m.tipo === 'envio_sucia') e.retiradas += p.cantidad
+      else e.entregadas += p.cantidad
+      map.set(k, e)
+    }
+  }
+  return map
+}
+
 export function conciliarPrendas(liq: LavaderoLiquidacion, movs: LavaderoMovimiento[]): ConciliacionPrenda[] {
   if (!liq.detalle || liq.detalle.length === 0) return []
   const delPeriodo = movs.filter(m => m.fecha >= liq.desde && m.fecha <= liq.hasta)
-
-  const sumar = (tipo: LavaderoMovimiento['tipo']) => {
-    const map = new Map<string, number>()
-    for (const m of delPeriodo) {
-      if (m.tipo !== tipo) continue
-      for (const p of m.prendas) {
-        const k = prendaCanonica(p.prenda)
-        if (!k) continue
-        map.set(k, (map.get(k) ?? 0) + p.cantidad)
-      }
-    }
-    return map
-  }
-  const retiradas = sumar('envio_sucia')
-  const entregadas = sumar('recibo_limpia')
+  const sumas = sumarPrendasPeriodo(movs, liq.desde, liq.hasta)
 
   const filas: ConciliacionPrenda[] = liq.detalle
     .filter(d => d.prenda.trim())
     .map(d => ({
       prenda: d.prenda.trim(),
       facturadas: d.cantidad,
-      retiradas: retiradas.get(prendaCanonica(d.prenda)) ?? 0,
-      entregadas: entregadas.get(prendaCanonica(d.prenda)) ?? 0,
+      retiradas: sumas.get(prendaCanonica(d.prenda))?.retiradas ?? 0,
+      entregadas: sumas.get(prendaCanonica(d.prenda))?.entregadas ?? 0,
     }))
 
   // Prendas que las copias movieron pero la liquidación NO factura (cantidad 0).
@@ -133,8 +142,8 @@ export function conciliarPrendas(liq: LavaderoLiquidacion, movs: LavaderoMovimie
       extras.set(k, {
         prenda: p.prenda.trim(),
         facturadas: 0,
-        retiradas: retiradas.get(k) ?? 0,
-        entregadas: entregadas.get(k) ?? 0,
+        retiradas: sumas.get(k)?.retiradas ?? 0,
+        entregadas: sumas.get(k)?.entregadas ?? 0,
       })
     }
   }

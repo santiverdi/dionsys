@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  getBalanceRopa, conciliarLiquidacion, conciliarPrendas, prendaCanonica,
+  getBalanceRopa, conciliarLiquidacion, conciliarPrendas, prendaCanonica, sumarPrendasPeriodo,
   getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
 } from '../../src/lib/lavadero'
 import { getCostoHabitacion, getNochesHabitacion } from '../../src/lib/negocio'
@@ -115,6 +115,13 @@ describe('conciliarPrendas', () => {
 
   it('sin detalle cargado no hay filas (la conciliación por prenda es opcional)', () => {
     expect(conciliarPrendas(liq({}), movs)).toEqual([])
+  })
+
+  it('sumarPrendasPeriodo arma el subtotal del período como el Excel de Charo', () => {
+    const s = sumarPrendasPeriodo(movs, '2026-06-16', '2026-06-29')
+    expect(s.get('sábanas')).toEqual({ retiradas: 56, entregadas: 50 })
+    expect(s.get('fundas')).toEqual({ retiradas: 42, entregadas: 42 })  // el mov del 02/07 queda afuera
+    expect(s.get('frazadas')).toEqual({ retiradas: 3, entregadas: 0 })
   })
 })
 
