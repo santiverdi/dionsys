@@ -45,9 +45,21 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem(LS_PRENDAS_OCULTAS)
     return saved ? JSON.parse(saved) : []
   })
+  // Semilla de la base: inventario en papel de Roxana de JUNIO 2026 (columna
+  // "2026 JUNIO" de su planilla; BAÑOS = toallas de baño, ALFOMBRAS = pie de
+  // baño). Solo aplica si todavía no hay base guardada; después manda lo que
+  // se edite en la app.
+  const BASE_JUNIO_2026: Record<string, number> = {
+    'Sábanas grandes (SG)': 176,
+    'Sábanas chicas (SCH)': 316,
+    'Fundas': 305,
+    'Toallas de baño': 372,
+    'Toallas turcas': 359,
+    'Pie de baño': 174,
+  }
   const [base, setBase] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem(LS_BASE)
-    return saved ? JSON.parse(saved) : {}
+    return saved ? JSON.parse(saved) : BASE_JUNIO_2026
   })
 
   useCloudSync<LavaderoMovimiento[]>(LS_MOVS, setMovimientos)
