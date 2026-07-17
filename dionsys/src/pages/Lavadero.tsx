@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import {
   Shirt, ArrowUpCircle, ArrowDownCircle, Plus, Save, Trash2, X, CheckCircle2,
-  Wallet, AlertTriangle, FileText, Circle,
+  Wallet, AlertTriangle, FileText, Circle, Camera, Loader2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
 import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION } from '../lib/lavadero'
+import { extractRemitoLavadero } from '../lib/invoiceExtract'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import type { TipoMovLavadero, LavaderoPrenda } from '../types'
@@ -36,6 +37,19 @@ const TIPO_LABEL: Record<TipoMovLavadero, string> = {
 
 interface FilaPrenda { prenda: string; cantidad: string }
 
+// A qué fila del form va una prenda leída de la foto. Por nombre canónico,
+// salvo sábanas: canónicamente son todas "sábanas", así que grande/chica se
+// distingue por el texto (SG/SCH); un total sin desglose va como fila extra.
+function destinoPrenda(prenda: string, visibles: string[]): string | null {
+  if (prendaCanonica(prenda) === 'sábanas') {
+    const s = prenda.toLowerCase()
+    const target = /sch|chica/.test(s) ? 'Sábanas chicas (SCH)'
+      : /sg|grande/.test(s) ? 'Sábanas grandes (SG)' : null
+    return target && visibles.includes(target) ? target : null
+  }
+  return visibles.find(v => prendaCanonica(v) === prendaCanonica(prenda)) ?? null
+}
+
 export default function Lavadero() {
   const { employee } = useAuth()
   const {
@@ -54,8 +68,44 @@ export default function Lavadero() {
   const [cants, setCants] = useState<Record<string, string>>({})
   const [extras, setExtras] = useState<FilaPrenda[]>([])
   const [saved, setSaved] = useState(false)
+  const [leyendoFoto, setLeyendoFoto] = useState(false)
+  const [errorFoto, setErrorFoto] = useState('')
 
   const prendasVisibles = PRENDAS_SUGERIDAS.filter(p => !prendasOcultas.includes(p))
+
+  // Foto del remito → la IA precarga el form. Es un BORRADOR: la letra es
+  // manuscrita, siempre hay que revisar los números contra el papel antes
+  // de guardar.
+  async function leerFotoRemito(file: File) {
+    setLeyendoFoto(true)
+    setErrorFoto('')
+    try {
+      const r = await extractRemitoLavadero(file)
+      if (r.tipo === 'retiro') setTipo('envio_sucia')
+      else if (r.tipo === 'entrega') setTipo('recibo_limpia')
+      if (/^\d{4}-\d{2}-\d{2}$/.test(r.fecha)) setFecha(r.fecha)
+      if (r.nro) setRemito(r.nro)
+      const nuevasCants: Record<string, string> = {}
+      const nuevasExtras: FilaPrenda[] = []
+      for (const p of r.prendas) {
+        const cant = Math.max(0, Math.round(Number(p.cantidad) || 0))
+        if (!p.prenda.trim() || cant <= 0) continue
+        const destino = destinoPrenda(p.prenda, prendasVisibles)
+        if (destino) nuevasCants[destino] = String(cant)
+        else nuevasExtras.push({ prenda: p.prenda.trim(), cantidad: String(cant) })
+      }
+      if (Object.keys(nuevasCants).length === 0 && nuevasExtras.length === 0) {
+        setErrorFoto('No se pudo leer ninguna cantidad de la foto. Cargalo a mano.')
+      } else {
+        setCants(nuevasCants)
+        setExtras(nuevasExtras)
+      }
+    } catch (e) {
+      setErrorFoto(e instanceof Error ? e.message : 'No se pudo leer la foto.')
+    } finally {
+      setLeyendoFoto(false)
+    }
+  }
 
   const prendasValidas: LavaderoPrenda[] = [
     ...prendasVisibles
@@ -188,6 +238,30 @@ export default function Lavadero() {
       {/* Carga de remito */}
       <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
         <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2">Cargar remito (copia de la gobernanta)</p>
+        <label className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed text-sm font-semibold mb-2 transition-colors ${
+          leyendoFoto
+            ? 'border-navy-200 text-navy-400 cursor-wait'
+            : 'border-gold-300 bg-gold-50/50 text-gold-700 hover:bg-gold-50 cursor-pointer'
+        }`}>
+          {leyendoFoto ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+          {leyendoFoto ? 'Leyendo el remito…' : 'Sacar foto al remito (carga sola)'}
+          <input
+            type="file" accept="image/*" capture="environment" className="hidden" disabled={leyendoFoto}
+            onChange={e => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) leerFotoRemito(f)
+            }}
+          />
+        </label>
+        {errorFoto && (
+          <p className="flex items-start gap-1 text-[11px] text-red-600 mb-2">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {errorFoto}
+          </p>
+        )}
+        <p className="text-[11px] text-navy-400 mb-2">
+          La foto solo precarga el formulario: revisá los números contra el papel antes de guardar.
+        </p>
         <div className="grid grid-cols-2 gap-2 mb-2">
           {([['envio_sucia', ArrowUpCircle], ['recibo_limpia', ArrowDownCircle]] as const).map(([t, Icon]) => (
             <button

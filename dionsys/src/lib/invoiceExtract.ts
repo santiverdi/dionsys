@@ -125,7 +125,7 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
 }
 
 // Comprime/codifica el archivo y llama al endpoint con el modo indicado.
-async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo'): Promise<unknown> {
+async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo' | 'remito'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -170,6 +170,21 @@ export interface ExtractedRecibo {
   neto: string     // número con punto decimal, listo para validateMonto
   bruto: string
   items: ExtractedReciboItem[]
+}
+
+// Remito manuscrito del lavadero leído por IA desde una foto. Las cantidades
+// son letra de lapicera: SIEMPRE se precarga el form para revisar, nunca se
+// guarda directo.
+export interface ExtractedRemitoLavadero {
+  nro: string
+  fecha: string  // YYYY-MM-DD o ''
+  tipo: 'retiro' | 'entrega' | ''
+  prendas: { prenda: string; cantidad: string }[]
+}
+
+/** Lee un remito manuscrito del lavadero (foto del talonario). */
+export async function extractRemitoLavadero(file: File): Promise<ExtractedRemitoLavadero> {
+  return (await callExtract(file, 'remito')) as ExtractedRemitoLavadero
 }
 
 export async function extractInvoice(file: File): Promise<ExtractedInvoice> {

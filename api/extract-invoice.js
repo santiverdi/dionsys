@@ -180,6 +180,38 @@ const RESPONSE_SCHEMA_PARTE = {
   required: ['nroCaja', 'usuario', 'fechaCaja', 'ocupadas', 'libres', 'totalOcupadas', 'totalPlazas', 'totalLibres'],
 }
 
+// --- Modo "remito": remito MANUSCRITO del lavadero (talonario preimpreso) ---
+const PROMPT_REMITO = `Sos un asistente que lee REMITOS MANUSCRITOS de un lavadero industrial de ropa blanca hotelera. Es un talonario preimpreso: una columna CANTIDAD a la izquierda y renglones preimpresos de prendas (SÁBANAS, FUNDAS, TOALLAS DE BAÑO, TOALLAS TURCAS, COLCHAS, MANTELES, CUBRES, SERVILLETAS, DELANTALES, FRAZADAS, TENDILLOS P., REPASADORES, CRISTALES, TAPICES, PIE DE BAÑO, PLAYERAS). Las cantidades están escritas con lapicera. Extraé EXACTAMENTE estos campos:
+- nro: el número de remito impreso arriba (ej "00174775"). Solo los dígitos tal como figuran.
+- fecha: la fecha manuscrita en formato YYYY-MM-DD. Suele estar escrita como dd/mm/aa (ej "15/6/26" → "2026-06-15"). Si no se lee, "".
+- tipo: "retiro" si el remito documenta ropa SUCIA que el lavadero se lleva (suele decir "RETIRO" manuscrito cerca de las firmas de abajo); "entrega" si documenta ropa LIMPIA que el lavadero trae (suele decir "ENTREGA" o similar). Si no se distingue, "".
+- prendas: un renglón por cada prenda que tenga cantidad manuscrita mayor a 0. Para cada una:
+    * prenda: el nombre preimpreso del renglón (ej "Fundas", "Toallas de baño", "Pie de baño"). CASO ESPECIAL SÁBANAS: en el renglón de SÁBANAS suele haber un desglose manuscrito tipo "SG 34 SCH 22" (SG = sábanas grandes, SCH = sábanas chicas): en ese caso devolvé DOS renglones, "Sábanas grandes (SG)" con su cantidad y "Sábanas chicas (SCH)" con la suya. Si solo hay un número total, devolvé un renglón "Sábanas".
+    * cantidad: el número manuscrito, como texto (ej "42").
+  NO incluyas renglones sin cantidad. La letra es manuscrita: si un número es ilegible o muy dudoso NO lo inventes, directamente omití ese renglón.
+Si un dato no aparece en el documento, devolvé cadena vacía "" en ese campo. No inventes datos.`
+
+const RESPONSE_SCHEMA_REMITO = {
+  type: 'OBJECT',
+  properties: {
+    nro: { type: 'STRING' },
+    fecha: { type: 'STRING' },
+    tipo: { type: 'STRING' },
+    prendas: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          prenda: { type: 'STRING' },
+          cantidad: { type: 'STRING' },
+        },
+        required: ['prenda', 'cantidad'],
+      },
+    },
+  },
+  required: ['nro', 'fecha', 'tipo', 'prendas'],
+}
+
 // --- Modo "caja": Informe de caja del PMS (foto/escaneo del reporte impreso) ---
 const PROMPT_CAJA = `Sos un asistente que lee el "Informe de caja" de un hotel (sistema Todoalojamiento). Te paso una foto, escaneo o PDF del informe impreso. Extraé EXACTAMENTE estos campos:
 - nroCaja: el número que figura junto a "Nro. Caja". Solo el número.
@@ -256,7 +288,7 @@ module.exports = async (req, res) => {
   }
   const mimeType = body && body.mimeType
   const data = body && body.data
-  const mode = ['proveedor', 'parte', 'caja', 'recibo'].includes(body && body.mode) ? body.mode : 'servicio'
+  const mode = ['proveedor', 'parte', 'caja', 'recibo', 'remito'].includes(body && body.mode) ? body.mode : 'servicio'
   if (!mimeType || !data) {
     res.status(400).json({ error: 'Faltan datos del archivo (mimeType / data).' })
     return
@@ -267,8 +299,8 @@ module.exports = async (req, res) => {
     return
   }
 
-  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : mode === 'recibo' ? PROMPT_RECIBO : PROMPT
-  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : mode === 'recibo' ? RESPONSE_SCHEMA_RECIBO : RESPONSE_SCHEMA
+  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : mode === 'recibo' ? PROMPT_RECIBO : mode === 'remito' ? PROMPT_REMITO : PROMPT
+  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : mode === 'recibo' ? RESPONSE_SCHEMA_RECIBO : mode === 'remito' ? RESPONSE_SCHEMA_REMITO : RESPONSE_SCHEMA
 
   const payload = {
     contents: [
@@ -392,6 +424,23 @@ module.exports = async (req, res) => {
             totalOcupadas: str(parsed.totalOcupadas),
             totalPlazas: str(parsed.totalPlazas),
             totalLibres: str(parsed.totalLibres),
+          })
+          return
+        }
+        if (mode === 'remito') {
+          const str = v => String(v ?? '').trim()
+          const prendas = Array.isArray(parsed.prendas)
+            ? parsed.prendas.map(p => ({
+                prenda: str(p?.prenda),
+                cantidad: str(p?.cantidad),
+              })).filter(p => p.prenda && p.cantidad)
+            : []
+          const t = str(parsed.tipo).toLowerCase()
+          res.status(200).json({
+            nro: str(parsed.nro),
+            fecha: str(parsed.fecha),
+            tipo: t === 'retiro' ? 'retiro' : t === 'entrega' ? 'entrega' : '',
+            prendas,
           })
           return
         }
