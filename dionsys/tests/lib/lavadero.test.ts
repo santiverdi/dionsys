@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  getBalanceRopa, conciliarLiquidacion, getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
+  getBalanceRopa, conciliarLiquidacion, conciliarPrendas, prendaCanonica,
+  getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
 } from '../../src/lib/lavadero'
 import { getCostoHabitacion, getNochesHabitacion } from '../../src/lib/negocio'
 import { getAnalisisMes } from '../../src/lib/analisisMes'
@@ -56,6 +57,64 @@ describe('conciliarLiquidacion', () => {
     const c = conciliarLiquidacion(liq({ remitos: [' 0001-100 ', '0001-101'] }), movs)
     expect(c.remitosSinCopia).toEqual([])
     expect(c.copiasSinLiquidar).toEqual([])
+  })
+})
+
+describe('prendaCanonica', () => {
+  it('agrupa toda variante de sábana (el lavadero factura "Sábanas" juntas)', () => {
+    expect(prendaCanonica('Sábanas grandes (SG)')).toBe('sábanas')
+    expect(prendaCanonica('Sábanas chicas (SCH)')).toBe('sábanas')
+    expect(prendaCanonica('Sábanas')).toBe('sábanas')
+    expect(prendaCanonica('sabana ajustable')).toBe('sábanas')
+  })
+
+  it('ignora "de" y mayúsculas ("Pie Baño" de la liquidación ≡ "Pie de baño" del form)', () => {
+    expect(prendaCanonica('Pie Baño')).toBe(prendaCanonica('Pie de baño'))
+    expect(prendaCanonica('Toallas de Baño')).toBe(prendaCanonica('toallas baño'))
+    expect(prendaCanonica('Toallas turcas')).not.toBe(prendaCanonica('Toallas de baño'))
+  })
+})
+
+describe('conciliarPrendas', () => {
+  const movs = [
+    mov({ fecha: '2026-06-18', tipo: 'envio_sucia', prendas: [
+      { prenda: 'Sábanas grandes (SG)', cantidad: 34 },
+      { prenda: 'Sábanas chicas (SCH)', cantidad: 22 },
+      { prenda: 'Fundas', cantidad: 42 },
+      { prenda: 'Frazadas', cantidad: 3 },
+    ] }),
+    mov({ fecha: '2026-06-25', tipo: 'recibo_limpia', prendas: [
+      { prenda: 'Sábanas grandes (SG)', cantidad: 50 },
+      { prenda: 'Fundas', cantidad: 42 },
+    ] }),
+    mov({ fecha: '2026-07-02', tipo: 'envio_sucia', prendas: [{ prenda: 'Fundas', cantidad: 99 }] }), // fuera del período
+  ]
+  const liqDetalle = liq({
+    desde: '2026-06-16', hasta: '2026-06-29',
+    detalle: [
+      { prenda: 'Sábanas', cantidad: 56 },
+      { prenda: 'Fundas', cantidad: 42 },
+      { prenda: 'Pie Baño', cantidad: 10 },
+    ],
+  })
+
+  it('cruza lo facturado contra las copias del período (sábanas SG+SCH agrupan)', () => {
+    const c = conciliarPrendas(liqDetalle, movs)
+    expect(c.find(x => x.prenda === 'Sábanas')).toMatchObject({ facturadas: 56, retiradas: 56, entregadas: 50 })
+    expect(c.find(x => x.prenda === 'Fundas')).toMatchObject({ facturadas: 42, retiradas: 42, entregadas: 42 })
+    // Facturan pie de baño pero las copias no registran ninguno: queda a la vista.
+    expect(c.find(x => x.prenda === 'Pie Baño')).toMatchObject({ facturadas: 10, retiradas: 0, entregadas: 0 })
+  })
+
+  it('agrega las prendas movidas que la liquidación no factura', () => {
+    const c = conciliarPrendas(liqDetalle, movs)
+    expect(c.find(x => x.prenda === 'Frazadas')).toMatchObject({ facturadas: 0, retiradas: 3, entregadas: 0 })
+    // Los movimientos fuera del período no entran.
+    expect(c.find(x => x.prenda === 'Fundas')?.retiradas).toBe(42)
+  })
+
+  it('sin detalle cargado no hay filas (la conciliación por prenda es opcional)', () => {
+    expect(conciliarPrendas(liq({}), movs)).toEqual([])
   })
 })
 

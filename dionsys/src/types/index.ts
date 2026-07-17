@@ -444,10 +444,12 @@ export interface LavaderoMovimiento {
 // y el total a pagar. Queda en cuenta corriente hasta marcarla pagada.
 export interface LavaderoLiquidacion {
   id: string
-  desde: string             // YYYY-MM-DD (inicio de la quincena)
-  hasta: string             // YYYY-MM-DD (fin de la quincena)
+  nro?: string              // nro impreso de la liquidación (ej. "0025355")
+  desde: string             // YYYY-MM-DD (inicio del período que liquida el lavadero)
+  hasta: string             // YYYY-MM-DD (fin del período)
   total: number
   remitos: string[]         // nros de remito que lista la liquidación
+  detalle?: LavaderoPrenda[] // cantidades por prenda que factura (para cruzar contra las copias)
   pagada: boolean
   fechaPago?: string        // YYYY-MM-DD (sale en efectivo de la caja fuerte)
   notas?: string

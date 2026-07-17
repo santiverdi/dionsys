@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
-import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, PRENDAS_SUGERIDAS } from '../lib/lavadero'
+import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION } from '../lib/lavadero'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import type { TipoMovLavadero, LavaderoPrenda } from '../types'
@@ -27,9 +27,11 @@ function fmtFecha(yyyyMmDd: string): string {
   return isNaN(d.getTime()) ? yyyyMmDd : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
 }
 
+// Como dice el papel: el remito de RETIRO documenta la sucia que se llevan;
+// la limpia llega con su propio remito de entrega.
 const TIPO_LABEL: Record<TipoMovLavadero, string> = {
-  envio_sucia: 'Salió ropa sucia',
-  recibo_limpia: 'Volvió ropa limpia',
+  envio_sucia: 'Retiro (se llevan sucia)',
+  recibo_limpia: 'Entrega (traen limpia)',
 }
 
 interface FilaPrenda { prenda: string; cantidad: string }
@@ -85,11 +87,16 @@ export default function Lavadero() {
   const quincena = useMemo(() => quincenaAnterior(), [])
   const [liqDesde, setLiqDesde] = useState(quincena.desde)
   const [liqHasta, setLiqHasta] = useState(quincena.hasta)
+  const [liqNro, setLiqNro] = useState('')
   const [liqTotal, setLiqTotal] = useState('')
   const [liqRemitos, setLiqRemitos] = useState('')
+  const [liqCants, setLiqCants] = useState<Record<string, string>>({})
   const [liqSaved, setLiqSaved] = useState(false)
 
   const remitosLiq = liqRemitos.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
+  const detalleLiq: LavaderoPrenda[] = PRENDAS_LIQUIDACION
+    .map(p => ({ prenda: p, cantidad: Math.max(0, Math.round(Number(liqCants[p]) || 0)) }))
+    .filter(p => p.cantidad > 0)
   const liqValida = liqDesde && liqHasta && liqDesde <= liqHasta && Number(liqTotal.replace(',', '.')) > 0
 
   function copiasDelPeriodo(): string[] {
@@ -106,9 +113,13 @@ export default function Lavadero() {
       remitos: remitosLiq,
       pagada: false,
       createdBy: employee?.name ?? '',
+      ...(liqNro.trim() ? { nro: liqNro.trim() } : {}),
+      ...(detalleLiq.length > 0 ? { detalle: detalleLiq } : {}),
     })
+    setLiqNro('')
     setLiqTotal('')
     setLiqRemitos('')
+    setLiqCants({})
     setLiqSaved(true)
     setTimeout(() => setLiqSaved(false), 2500)
   }
@@ -333,6 +344,25 @@ export default function Lavadero() {
                 placeholder="Total $" className="w-32 rounded-lg border border-navy-200 px-2 py-1.5 text-sm text-navy-800 focus:outline-none focus:border-gold-400 shrink-0"
               />
             </div>
+            <input
+              type="text" value={liqNro} onChange={e => setLiqNro(e.target.value)}
+              placeholder="Nº de liquidación (ej. 0025355)" className={`${inputCls} mb-2`}
+            />
+            {/* Cantidades por prenda como vienen impresas: con esto el sistema
+                cruza lo facturado contra la suma de las copias del período. */}
+            <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 mb-2">
+              {PRENDAS_LIQUIDACION.map(p => (
+                <div key={p} className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="text-xs text-navy-600">{p}</span>
+                  <input
+                    type="number" min={0} inputMode="numeric" value={liqCants[p] ?? ''}
+                    onChange={e => setLiqCants(c => ({ ...c, [p]: e.target.value }))}
+                    placeholder="0"
+                    className="w-20 rounded-lg border border-navy-200 px-2 py-1 text-xs text-navy-800 text-center focus:outline-none focus:border-gold-400 shrink-0"
+                  />
+                </div>
+              ))}
+            </div>
             <textarea
               value={liqRemitos}
               onChange={e => setLiqRemitos(e.target.value)}
@@ -368,12 +398,15 @@ export default function Lavadero() {
             {liquidaciones.map(liq => {
               const conc = conciliarLiquidacion(liq, movimientos)
               const ok = conc.remitosSinCopia.length === 0 && conc.copiasSinLiquidar.length === 0
+              const concPrendas = conciliarPrendas(liq, movimientos)
               return (
                 <li key={liq.id} className={`rounded-lg border p-2.5 text-xs ${liq.pagada ? 'border-navy-100' : 'border-amber-200 bg-amber-50/40'}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="font-semibold text-navy-800">
-                      Quincena {fmtFecha(liq.desde)} al {fmtFecha(liq.hasta)}
-                      <span className="font-normal text-navy-400"> · {liq.remitos.length} remito(s)</span>
+                      Período {fmtFecha(liq.desde)} al {fmtFecha(liq.hasta)}
+                      <span className="font-normal text-navy-400">
+                        {liq.nro ? ` · Nº ${liq.nro}` : ''} · {liq.remitos.length} remito(s)
+                      </span>
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
                       <span className="font-bold text-navy-800">{formatMontoCurrency(liq.total)}</span>
@@ -384,6 +417,31 @@ export default function Lavadero() {
                       )}
                     </span>
                   </div>
+                  {concPrendas.length > 0 && (
+                    <table className="w-full my-1.5">
+                      <thead>
+                        <tr className="text-navy-400 border-b border-navy-100">
+                          <th className="text-left py-0.5 pr-2 font-normal">Prenda</th>
+                          <th className="text-center px-2 font-normal">Facturan</th>
+                          <th className="text-center px-2 font-normal">Retiradas</th>
+                          <th className="text-center pl-2 font-normal">Entregadas</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {concPrendas.map(cp => {
+                          const cuadra = cp.facturadas === cp.retiradas || cp.facturadas === cp.entregadas
+                          return (
+                            <tr key={cp.prenda} className="border-b border-navy-50 last:border-0">
+                              <td className="py-0.5 pr-2 text-navy-700">{cp.prenda}</td>
+                              <td className={`px-2 text-center font-bold ${cuadra ? 'text-navy-800' : 'text-red-600'}`}>{cp.facturadas}</td>
+                              <td className="px-2 text-center text-navy-600">{cp.retiradas}</td>
+                              <td className="pl-2 text-center text-navy-600">{cp.entregadas}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <span>
                       {ok ? (

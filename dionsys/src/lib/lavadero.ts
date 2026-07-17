@@ -7,11 +7,29 @@
 import type { LavaderoMovimiento, LavaderoLiquidacion } from '../types'
 import { isInMonth } from '../utils/dateRange'
 
-// Sugerencias para cargar rápido (la prenda es texto libre igual).
+// Lista fija del form de remitos, en el ORDEN del talonario preimpreso del
+// lavadero. Las sábanas van en una sola fila del papel pero se anotan como
+// "SG 34 SCH 22" (grandes/chicas), por eso acá van separadas. El resto de los
+// renglones del talonario (manteles, servilletas…) el hotel no los usa: van
+// como "Otra prenda" si algún día aparecen. (La prenda es texto libre igual.)
 export const PRENDAS_SUGERIDAS = [
-  'Sábana', 'Sábana ajustable', 'Funda de almohada', 'Pie de baño',
-  'Toalla', 'Toallón', 'Frazada', 'Acolchado', 'Cubrecama',
+  'Sábanas grandes (SG)', 'Sábanas chicas (SCH)', 'Fundas',
+  'Toallas de baño', 'Toallas turcas', 'Colchas', 'Pie de baño',
 ]
+
+// Prendas como vienen IMPRESAS en la liquidación quincenal (sábanas juntas).
+export const PRENDAS_LIQUIDACION = [
+  'Sábanas', 'Fundas', 'Toallas de baño', 'Toallas turcas', 'Colchas', 'Pie de baño',
+]
+
+// Nombre canónico para cruzar prendas entre remitos y liquidación: minúsculas,
+// sin "de" ("Pie Baño" ≡ "Pie de baño") y toda variante de sábana (SG/SCH/
+// grandes/chicas) agrupa en "sábanas", que es como factura el lavadero.
+export function prendaCanonica(p: string): string {
+  const s = p.trim().toLowerCase().replace(/\s+/g, ' ')
+  if (s.startsWith('sábana') || s.startsWith('sabana')) return 'sábanas'
+  return s.split(' ').filter(w => w !== 'de').join(' ')
+}
 
 // ===== Balance por prenda: cuánta ropa tiene el lavadero ahora =====
 export interface BalancePrenda {
@@ -64,6 +82,63 @@ export function conciliarLiquidacion(liq: LavaderoLiquidacion, movs: LavaderoMov
       .filter(m => m.remito?.trim() && m.fecha >= liq.desde && m.fecha <= liq.hasta && !liquidados.has(normRemito(m.remito!)))
       .map(m => m.remito!.trim()),
   }
+}
+
+// ===== Conciliación por PRENDA: cantidades facturadas vs copias =====
+// La liquidación factura cantidades por prenda (ej. Sábanas 318 × $885,97).
+// Se cruzan contra la suma de las copias de remitos del período, en las dos
+// direcciones, para ver si el lavadero cobra lo que realmente movió.
+export interface ConciliacionPrenda {
+  prenda: string       // como figura en la liquidación
+  facturadas: number   // cantidad que factura la liquidación
+  retiradas: number    // sucias que se llevaron en el período (según copias)
+  entregadas: number   // limpias que trajeron en el período (según copias)
+}
+
+export function conciliarPrendas(liq: LavaderoLiquidacion, movs: LavaderoMovimiento[]): ConciliacionPrenda[] {
+  if (!liq.detalle || liq.detalle.length === 0) return []
+  const delPeriodo = movs.filter(m => m.fecha >= liq.desde && m.fecha <= liq.hasta)
+
+  const sumar = (tipo: LavaderoMovimiento['tipo']) => {
+    const map = new Map<string, number>()
+    for (const m of delPeriodo) {
+      if (m.tipo !== tipo) continue
+      for (const p of m.prendas) {
+        const k = prendaCanonica(p.prenda)
+        if (!k) continue
+        map.set(k, (map.get(k) ?? 0) + p.cantidad)
+      }
+    }
+    return map
+  }
+  const retiradas = sumar('envio_sucia')
+  const entregadas = sumar('recibo_limpia')
+
+  const filas: ConciliacionPrenda[] = liq.detalle
+    .filter(d => d.prenda.trim())
+    .map(d => ({
+      prenda: d.prenda.trim(),
+      facturadas: d.cantidad,
+      retiradas: retiradas.get(prendaCanonica(d.prenda)) ?? 0,
+      entregadas: entregadas.get(prendaCanonica(d.prenda)) ?? 0,
+    }))
+
+  // Prendas que las copias movieron pero la liquidación NO factura (cantidad 0).
+  const facturadas = new Set(filas.map(f => prendaCanonica(f.prenda)))
+  const extras = new Map<string, ConciliacionPrenda>()
+  for (const m of delPeriodo) {
+    for (const p of m.prendas) {
+      const k = prendaCanonica(p.prenda)
+      if (!k || facturadas.has(k) || extras.has(k)) continue
+      extras.set(k, {
+        prenda: p.prenda.trim(),
+        facturadas: 0,
+        retiradas: retiradas.get(k) ?? 0,
+        entregadas: entregadas.get(k) ?? 0,
+      })
+    }
+  }
+  return [...filas, ...extras.values()]
 }
 
 // ===== Cuenta corriente con el lavadero =====
