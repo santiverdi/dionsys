@@ -6,6 +6,7 @@ import { generateId } from '../utils/imageCompressor'
 const LS_MOVS = 'dionsys_lavadero_movs'
 const LS_LIQS = 'dionsys_lavadero_liqs'
 const LS_PRENDAS_OCULTAS = 'dionsys_lavadero_prendas_ocultas'
+const LS_BASE = 'dionsys_lavadero_base'
 
 interface LavaderoContextType {
   movimientos: LavaderoMovimiento[]
@@ -21,6 +22,10 @@ interface LavaderoContextType {
   prendasOcultas: string[]
   ocultarPrenda: (prenda: string) => void
   mostrarPrenda: (prenda: string) => void
+  // Stock base: total de ropa alquilada por prenda (en el hotel = base - en
+  // el lavadero). Cantidad 0/vacía borra la prenda de la base.
+  base: Record<string, number>
+  setBasePrenda: (prenda: string, cantidad: number) => void
 }
 
 const LavaderoContext = createContext<LavaderoContextType | null>(null)
@@ -40,10 +45,15 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem(LS_PRENDAS_OCULTAS)
     return saved ? JSON.parse(saved) : []
   })
+  const [base, setBase] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem(LS_BASE)
+    return saved ? JSON.parse(saved) : {}
+  })
 
   useCloudSync<LavaderoMovimiento[]>(LS_MOVS, setMovimientos)
   useCloudSync<LavaderoLiquidacion[]>(LS_LIQS, setLiquidaciones)
   useCloudSync<string[]>(LS_PRENDAS_OCULTAS, setPrendasOcultas)
+  useCloudSync<Record<string, number>>(LS_BASE, setBase)
 
   const addMovimiento = useCallback((data: Omit<LavaderoMovimiento, 'id' | 'createdAt'>) => {
     setMovimientos(prev => {
@@ -102,6 +112,18 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setBasePrenda = useCallback((prenda: string, cantidad: number) => {
+    setBase(prev => {
+      const next = { ...prev }
+      const p = prenda.trim()
+      if (!p) return prev
+      if (cantidad > 0) next[p] = Math.round(cantidad)
+      else delete next[p]
+      persist(LS_BASE, next)
+      return next
+    })
+  }, [])
+
   const mostrarPrenda = useCallback((prenda: string) => {
     setPrendasOcultas(prev => {
       const next = prev.filter(p => p !== prenda)
@@ -114,6 +136,7 @@ export function LavaderoProvider({ children }: { children: ReactNode }) {
     <LavaderoContext.Provider value={{
       movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada,
       prendasOcultas, ocultarPrenda, mostrarPrenda,
+      base, setBasePrenda,
     }}>
       {children}
     </LavaderoContext.Provider>

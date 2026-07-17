@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
-import { getBalanceRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, getRetirosPendientes, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION, type RetiroPendiente } from '../lib/lavadero'
+import { getStockRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, getRetirosPendientes, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION, type RetiroPendiente, type StockPrenda } from '../lib/lavadero'
 import { extractRemitoLavadero } from '../lib/invoiceExtract'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
@@ -57,7 +57,7 @@ export default function Lavadero() {
   const { employee } = useAuth()
   const {
     movimientos, liquidaciones, addMovimiento, deleteMovimiento, addLiquidacion, deleteLiquidacion, togglePagada,
-    prendasOcultas, ocultarPrenda, mostrarPrenda,
+    prendasOcultas, ocultarPrenda, mostrarPrenda, base, setBasePrenda,
   } = useLavadero()
   const esAdmin = employee?.role === 'admin'
 
@@ -244,8 +244,21 @@ export default function Lavadero() {
   }
 
   // --- Resúmenes ---
-  const balance = useMemo(() => getBalanceRopa(movimientos), [movimientos])
-  const enLavaderoTotal = balance.reduce((s, b) => s + Math.max(0, b.enLavadero), 0)
+  // Stock: base alquilada por prenda + dónde está la ropa ahora.
+  const [editBase, setEditBase] = useState(false)
+  const stock = useMemo(() => getStockRopa(movimientos, base), [movimientos, base])
+  // En modo edición se muestran también las prendas visibles sin fila todavía,
+  // para poder cargarles la base inicial.
+  const stockRows: StockPrenda[] = useMemo(() => {
+    if (!editBase) return stock
+    const norm = (s: string) => s.trim().toLowerCase()
+    const con = new Set(stock.map(r => norm(r.prenda)))
+    const faltantes = prendasVisibles
+      .filter(p => !con.has(norm(p)))
+      .map(p => ({ prenda: p, base: null, enviadas: 0, recibidas: 0, enLavadero: 0, enHotel: null }))
+    return [...stock, ...faltantes]
+  }, [stock, editBase, prendasVisibles])
+  const enLavaderoTotal = stock.reduce((s, b) => s + Math.max(0, b.enLavadero), 0)
   const cur = useMemo(() => getCurrentMonth(), [])
   const mesActual = useMemo(() => getLavaderoMes(cur.year, cur.month, movimientos, liquidaciones), [cur, movimientos, liquidaciones])
   const deuda = useMemo(() => getDeudaLavadero(liquidaciones), [liquidaciones])
@@ -542,39 +555,75 @@ export default function Lavadero() {
         )}
       </div>
 
-      {/* Balance por prenda */}
-      {balance.length > 0 && (
-        <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-navy-500 mb-2">En el lavadero, por prenda</p>
+      {/* Stock por prenda: base alquilada + dónde está la ropa */}
+      <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className="text-xs font-bold uppercase tracking-wide text-navy-500">Stock de ropa (base alquilada)</p>
+          <button
+            onClick={() => setEditBase(v => !v)}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+              editBase ? 'bg-navy-800 text-cream' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
+            }`}
+          >
+            {editBase ? 'Listo' : 'Editar base'}
+          </button>
+        </div>
+        <p className="text-[11px] text-navy-400 mb-2">
+          La base es el total de ropa alquilada de cada prenda: con eso trabaja todo el ciclo.
+          En el hotel = base − en el lavadero. Los cambios por rotura no la mueven; editala solo
+          si el lavadero suma o quita ropa alquilada.
+        </p>
+        {stockRows.length === 0 ? (
+          <p className="text-xs text-navy-400">Tocá "Editar base" y cargá cuántas prendas alquiladas hay de cada tipo.</p>
+        ) : (
           <div className="overflow-x-auto -mx-3 px-3">
             <table className="w-full text-xs min-w-[400px]">
               <thead>
                 <tr className="text-navy-500 border-b border-navy-100">
                   <th className="text-left py-1.5 pr-2">Prenda</th>
-                  <th className="text-center px-2">Salieron</th>
-                  <th className="text-center px-2">Volvieron</th>
-                  <th className="text-center pl-2">En el lavadero</th>
+                  <th className="text-center px-2">Base</th>
+                  <th className="text-center px-2">En el lavadero</th>
+                  <th className="text-center pl-2">En el hotel</th>
                 </tr>
               </thead>
               <tbody>
-                {balance.map(b => (
+                {stockRows.map(b => (
                   <tr key={b.prenda} className="border-b border-navy-50 last:border-0">
                     <td className="py-1.5 pr-2 text-navy-700 font-semibold">{b.prenda}</td>
-                    <td className="px-2 text-center text-navy-600">{b.enviadas}</td>
-                    <td className="px-2 text-center text-navy-600">{b.recibidas}</td>
-                    <td className={`pl-2 text-center font-bold ${
+                    <td className="px-2 text-center">
+                      {editBase ? (
+                        <input
+                          type="number" min={0} inputMode="numeric"
+                          value={base[b.prenda] ?? ''}
+                          onChange={e => setBasePrenda(b.prenda, Math.round(Number(e.target.value) || 0))}
+                          placeholder="—"
+                          className="w-20 rounded-lg border border-navy-200 px-2 py-1 text-xs text-navy-800 text-center focus:outline-none focus:border-gold-400"
+                        />
+                      ) : (
+                        <span className="text-navy-800 font-semibold">{b.base ?? '—'}</span>
+                      )}
+                    </td>
+                    <td className={`px-2 text-center font-bold ${
                       b.enLavadero > 0 ? 'text-amber-700' : b.enLavadero < 0 ? 'text-red-600' : 'text-green-600'
                     }`}>
                       {b.enLavadero}
                       {b.enLavadero < 0 && <span className="block text-[10px] font-normal">volvió más de lo que salió — revisar</span>}
+                    </td>
+                    <td className={`pl-2 text-center font-bold ${
+                      b.enHotel == null ? 'text-navy-300 font-normal' : b.enHotel < 0 ? 'text-red-600' : 'text-navy-800'
+                    }`}>
+                      {b.enHotel ?? '—'}
+                      {b.enHotel != null && b.enHotel < 0 && (
+                        <span className="block text-[10px] font-normal">hay más en el lavadero que la base — revisar base o remitos</span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Liquidaciones quincenales — la parte de PLATA es solo del admin (Charo).
           La gobernanta solo carga ropa: ni ve montos ni liquidaciones. */}

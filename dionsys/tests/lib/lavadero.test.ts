@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getBalanceRopa, conciliarLiquidacion, conciliarPrendas, prendaCanonica, sumarPrendasPeriodo,
-  getRetirosPendientes, getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
+  getRetirosPendientes, getStockRopa, getDeudaLavadero, costoLavaderoMes, getLavaderoMes,
 } from '../../src/lib/lavadero'
 import { getCostoHabitacion, getNochesHabitacion } from '../../src/lib/negocio'
 import { getAnalisisMes } from '../../src/lib/analisisMes'
@@ -46,6 +46,29 @@ describe('getBalanceRopa', () => {
     ]
     const b = getBalanceRopa(movs)
     expect(b.find(x => x.prenda === 'Toallas turcas')).toMatchObject({ enviadas: 20, recibidas: 0, enLavadero: 20 })
+  })
+})
+
+describe('getStockRopa', () => {
+  const movs = [
+    mov({ tipo: 'envio_sucia', prendas: [{ prenda: 'Fundas', cantidad: 42 }] }),
+    mov({ tipo: 'recibo_limpia', prendas: [{ prenda: 'Fundas', cantidad: 30 }] }),
+    mov({ tipo: 'cambio', prendas: [{ prenda: 'Fundas', cantidad: 5 }] }), // canje: no mueve nada
+  ]
+
+  it('en el hotel = base - en el lavadero', () => {
+    const s = getStockRopa(movs, { Fundas: 300 })
+    expect(s.find(x => x.prenda === 'Fundas')).toMatchObject({ base: 300, enLavadero: 12, enHotel: 288 })
+  })
+
+  it('sin base cargada la prenda muestra el balance pero no el en-hotel', () => {
+    const s = getStockRopa(movs, {})
+    expect(s.find(x => x.prenda === 'Fundas')).toMatchObject({ base: null, enLavadero: 12, enHotel: null })
+  })
+
+  it('las prendas con base pero sin movimientos aparecen con todo en el hotel', () => {
+    const s = getStockRopa(movs, { Fundas: 300, Colchas: 40 })
+    expect(s.find(x => x.prenda === 'Colchas')).toMatchObject({ base: 40, enLavadero: 0, enHotel: 40 })
   })
 })
 

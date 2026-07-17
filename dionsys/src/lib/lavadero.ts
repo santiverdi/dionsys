@@ -60,6 +60,49 @@ export function getBalanceRopa(movs: LavaderoMovimiento[]): BalancePrenda[] {
     .sort((a, b) => b.enLavadero - a.enLavadero || a.prenda.localeCompare(b.prenda))
 }
 
+// ===== Stock de ropa: base alquilada + dónde está =====
+// La BASE es el total de ropa alquilada al lavadero por prenda: el stock con
+// el que trabaja todo el ciclo. En todo momento: en el hotel = base - en el
+// lavadero. Los cambios por rotura no la alteran (canje 1 a 1); solo cambia
+// si se renegocia cuánta ropa se alquila.
+export interface StockPrenda {
+  prenda: string
+  base: number | null    // null = base sin cargar para esa prenda
+  enviadas: number
+  recibidas: number
+  enLavadero: number
+  enHotel: number | null // base - enLavadero (null si no hay base)
+}
+
+export function getStockRopa(movs: LavaderoMovimiento[], base: Record<string, number>): StockPrenda[] {
+  const norm = (s: string) => s.trim().toLowerCase()
+  const basePorPrenda = new Map(
+    Object.entries(base)
+      .filter(([p, n]) => p.trim() && n > 0)
+      .map(([p, n]) => [norm(p), { prenda: p, cantidad: n }]),
+  )
+  const vistas = new Set<string>()
+  const rows: StockPrenda[] = getBalanceRopa(movs).map(b => {
+    const k = norm(b.prenda)
+    vistas.add(k)
+    const bb = basePorPrenda.get(k)
+    return {
+      prenda: b.prenda,
+      base: bb?.cantidad ?? null,
+      enviadas: b.enviadas,
+      recibidas: b.recibidas,
+      enLavadero: b.enLavadero,
+      enHotel: bb ? bb.cantidad - b.enLavadero : null,
+    }
+  })
+  // Prendas con base cargada que todavía no tuvieron movimientos.
+  for (const [k, bb] of basePorPrenda) {
+    if (vistas.has(k)) continue
+    rows.push({ prenda: bb.prenda, base: bb.cantidad, enviadas: 0, recibidas: 0, enLavadero: 0, enHotel: bb.cantidad })
+  }
+  return rows
+}
+
 // ===== Retiros pendientes de devolución =====
 // No hay remito de limpia: el lavadero retira con remito y la misma ropa
 // vuelve lavada. Roxana la cuenta al recibir y "tilda" el retiro; lo que falta
