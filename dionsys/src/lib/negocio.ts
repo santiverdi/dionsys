@@ -56,6 +56,39 @@ export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte
   return getGastosDeCajaDetalle(year, month, cajas).reduce((s, g) => s + g.total, 0)
 }
 
+// Todos los gastos de caja agrupados por mes (del más nuevo al más viejo). Cada
+// mes trae su total y el detalle de egresos, para mostrar el histórico completo
+// en el dashboard (no solo el mes actual). Agrupa por el mes de apertura de la
+// caja, igual criterio que getGastosDeCajaDetalle.
+export interface GastosDeCajaMesGrupo {
+  year: number
+  month: number
+  label: string
+  key: string        // "YYYY-MM"
+  total: number
+  items: GastoItem[]
+}
+
+export function getGastosDeCajaPorMes(cajas: CajaParte[]): GastosDeCajaMesGrupo[] {
+  const map = new Map<string, CajaParte[]>()
+  for (const c of cajas) {
+    const d = new Date(c.aperturaAt)
+    if (isNaN(d.getTime())) continue
+    const key = monthKey(d.getFullYear(), d.getMonth() + 1)
+    const arr = map.get(key)
+    if (arr) arr.push(c)
+    else map.set(key, [c])
+  }
+  const out: GastosDeCajaMesGrupo[] = []
+  for (const [key, cs] of map.entries()) {
+    const items = getGastosCaja(cs)
+    if (items.length === 0) continue
+    const [y, m] = key.split('-').map(Number)
+    out.push({ year: y, month: m, label: monthLabel(y, m), key, total: items.reduce((s, g) => s + g.total, 0), items })
+  }
+  return out.sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month))
+}
+
 // ===== Resultado del mes (ingresos − egresos) =====
 export interface ResultadoMes {
   ingresos: number
