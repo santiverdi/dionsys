@@ -15,7 +15,7 @@ import { useOccupancy } from '../context/OccupancyContext'
 import { useLavadero } from '../context/LavaderoContext'
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
-  getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaPorMes, getCostoHabitacion,
+  getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle, getRetirosDeCajaPorMes, getCostoHabitacion,
 } from '../lib/negocio'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { exportMonthlyReport } from '../utils/monthlyExport'
@@ -66,7 +66,8 @@ export default function Negocio() {
     () => getCostoHabitacion(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs),
     [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs],
   )
-  const gastosCajaPorMes = useMemo(() => getGastosDeCajaPorMes(cajas), [cajas])
+  const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
+  const retirosPorMes = useMemo(() => getRetirosDeCajaPorMes(cajas), [cajas])
   const [mesAbierto, setMesAbierto] = useState<string | null>(monthKey(cur.year, cur.month))
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
@@ -198,13 +199,33 @@ export default function Negocio() {
         </Section>
       </div>
 
-      {/* Egresos de caja por mes (NO incluye retiros a caja fuerte) */}
-      <Section icon={Receipt} title="Egresos de caja por mes">
-        {gastosCajaPorMes.length === 0 ? (
-          <p className="text-xs text-navy-400">Sin gastos pagados de la caja cargados todavía.</p>
+      {/* Desglose de gastos de caja del mes (NO incluye retiros a caja fuerte) */}
+      <Section icon={Receipt} title={`Gastos de caja — desglose (${gastosCajaDetalle.length})`}>
+        {gastosCajaDetalle.length === 0 ? (
+          <p className="text-xs text-navy-400">Sin gastos pagados de la caja este mes.</p>
+        ) : (
+          <ul className="space-y-1 text-xs">
+            {gastosCajaDetalle.map((g, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
+                <span className="min-w-0 truncate text-navy-700">
+                  {g.observacion}
+                  <span className="text-navy-400"> · Caja {g.nroCaja}{g.conserje ? ` · ${g.conserje}` : ''}</span>
+                </span>
+                <span className="shrink-0 font-semibold text-navy-800">{formatMontoCurrency(g.total)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[10px] text-navy-400 mt-2">No incluye los retiros a la caja fuerte (no son gasto).</p>
+      </Section>
+
+      {/* Retiros de efectivo por mes (plata que va a la caja fuerte, NO es gasto) */}
+      <Section icon={Banknote} title="Retiros de efectivo por mes">
+        {retirosPorMes.length === 0 ? (
+          <p className="text-xs text-navy-400">Sin retiros de efectivo cargados todavía.</p>
         ) : (
           <div className="space-y-1.5">
-            {gastosCajaPorMes.map(mes => {
+            {retirosPorMes.map(mes => {
               const abierto = mesAbierto === mes.key
               return (
                 <div key={mes.key} className="rounded-lg border border-navy-100 overflow-hidden">
@@ -215,9 +236,9 @@ export default function Negocio() {
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-navy-700">
                       {abierto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       {mes.label}
-                      <span className="text-navy-400 font-normal">· {mes.items.length} egreso(s)</span>
+                      <span className="text-navy-400 font-normal">· {mes.items.length} retiro(s)</span>
                     </span>
-                    <span className="text-sm font-bold text-red-700 shrink-0">{formatMontoCurrency(mes.total)}</span>
+                    <span className="text-sm font-bold text-navy-800 shrink-0">{formatMontoCurrency(mes.total)}</span>
                   </button>
                   {abierto && (
                     <ul className="space-y-1 text-xs px-3 py-2">
@@ -237,7 +258,7 @@ export default function Negocio() {
             })}
           </div>
         )}
-        <p className="text-[10px] text-navy-400 mt-2">No incluye los retiros a la caja fuerte (no son gasto).</p>
+        <p className="text-[10px] text-navy-400 mt-2">El retiro no es un gasto: es plata del hotel que va a la caja fuerte/oficina.</p>
       </Section>
 
       {/* Costo por habitación ocupada */}

@@ -13,7 +13,7 @@ import type {
 } from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
 import { getCajaResumen, fechaConfiable } from './cajaControl'
-import { getGastosCaja, type GastoItem } from './panorama'
+import { getGastosCaja, getRetirosCaja, type GastoItem } from './panorama'
 import { costoLavaderoMes } from './lavadero'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { isInMonth, getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
@@ -56,11 +56,11 @@ export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte
   return getGastosDeCajaDetalle(year, month, cajas).reduce((s, g) => s + g.total, 0)
 }
 
-// Todos los gastos de caja agrupados por mes (del más nuevo al más viejo). Cada
-// mes trae su total y el detalle de egresos, para mostrar el histórico completo
-// en el dashboard (no solo el mes actual). Agrupa por el mes de apertura de la
-// caja, igual criterio que getGastosDeCajaDetalle.
-export interface GastosDeCajaMesGrupo {
+// Todos los RETIROS DE EFECTIVO agrupados por mes (del más nuevo al más viejo).
+// El retiro NO es gasto: es plata que va a la caja fuerte/oficina. Cada mes trae
+// su total y el detalle, para ver el histórico completo en el dashboard. Agrupa
+// por el mes de apertura de la caja.
+export interface RetirosDeCajaMesGrupo {
   year: number
   month: number
   label: string
@@ -69,7 +69,7 @@ export interface GastosDeCajaMesGrupo {
   items: GastoItem[]
 }
 
-export function getGastosDeCajaPorMes(cajas: CajaParte[]): GastosDeCajaMesGrupo[] {
+export function getRetirosDeCajaPorMes(cajas: CajaParte[]): RetirosDeCajaMesGrupo[] {
   const map = new Map<string, CajaParte[]>()
   for (const c of cajas) {
     const d = new Date(c.aperturaAt)
@@ -79,9 +79,9 @@ export function getGastosDeCajaPorMes(cajas: CajaParte[]): GastosDeCajaMesGrupo[
     if (arr) arr.push(c)
     else map.set(key, [c])
   }
-  const out: GastosDeCajaMesGrupo[] = []
+  const out: RetirosDeCajaMesGrupo[] = []
   for (const [key, cs] of map.entries()) {
-    const items = getGastosCaja(cs)
+    const items = getRetirosCaja(cs)
     if (items.length === 0) continue
     const [y, m] = key.split('-').map(Number)
     out.push({ year: y, month: m, label: monthLabel(y, m), key, total: items.reduce((s, g) => s + g.total, 0), items })

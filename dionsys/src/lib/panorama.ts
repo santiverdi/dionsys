@@ -132,6 +132,29 @@ export function getGastosCaja(cajas: CajaParte[]): GastoItem[] {
   return items.sort((a, b) => b.total - a.total)
 }
 
+// ===== Retiros de efectivo (a la caja fuerte / oficina) =====
+// Detalle de cada RETIRO EFECTIVO. NO es gasto: es plata del hotel que sale de la
+// caja del conserje hacia la caja fuerte/oficina. Se lista para seguir cuánto se
+// retiró y quién lo hizo. Reusa el mismo GastoItem (misma forma de dato).
+export function getRetirosCaja(cajas: CajaParte[]): GastoItem[] {
+  const items: GastoItem[] = []
+  for (const c of cajas) {
+    for (const e of c.egresos) {
+      if (!esRetiroEfectivo(e)) continue
+      items.push({
+        cajaId: c.id,
+        nroCaja: c.nroCaja,
+        conserje: conserjeDeCaja(c),
+        ...(c.turno ? { turno: c.turno } : {}),
+        observacion: e.observacion || 'RETIRO EFECTIVO',
+        total: e.total,
+        fechaHora: e.fechaHora,
+      })
+    }
+  }
+  return items.sort((a, b) => b.total - a.total)
+}
+
 // ===== Control / imperfecciones =====
 export interface ImperfeccionesCount {
   descuadres: number
