@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getDineroResumen, getImperfeccionesGlobal, getConserjeStats,
-  getOcupacionResumen, getCobertura, getGastosCaja, getPanorama, conserjeDeParte,
+  getOcupacionResumen, getCobertura, getGastosCaja, getRetirosCaja, getPanorama, conserjeDeParte,
 } from '../../src/lib/panorama'
 import type { CajaParte, CajaMovimiento, ParteHabitaciones, EstadoHabitacion } from '../../src/types'
 
@@ -86,6 +86,20 @@ describe('getGastosCaja', () => {
     ] })]
     const g = getGastosCaja(cajas)
     expect(g.map(x => x.observacion)).toEqual(['verduleria']) // solo el gasto real
+  })
+
+  it('el retiro estilo conserje (monto + Nº de caja) no es gasto (caso real caja 5 de Gaston)', () => {
+    const cajas = [mkCaja({ nroCaja: 5, conserje: 'Gaston', egresos: [
+      mov({ observacion: '$2.500.000. CAJA 5. GASTON', efectivo: 2500000, total: 2500000 }), // "CAJA 5" sin guion
+      mov({ observacion: '$700.000. C-5. HERRERA', efectivo: 700000, total: 700000 }),        // "C-5" con guion
+      mov({ observacion: '5 bolsas camiseta 3 cajas de', efectivo: 78500, total: 78500 }),     // gasto real: "cajas de", sigue gasto
+    ] })]
+    expect(getGastosCaja(cajas).map(x => x.observacion)).toEqual(['5 bolsas camiseta 3 cajas de'])
+    const retiros = getRetirosCaja(cajas)
+    expect(retiros.map(x => x.total)).toEqual([2500000, 700000]) // ambos retiros, ordenados por monto
+    const r = getDineroResumen(cajas)
+    expect(r.totalRetiros).toBe(3200000)
+    expect(r.totalGastosCaja).toBe(78500)
   })
 
   it('la anulación de un cobro mal cargado no es gasto ni cobro (caso real caja 66)', () => {

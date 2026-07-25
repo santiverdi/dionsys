@@ -46,20 +46,33 @@ export function conserjeDeParte(p: ParteHabitaciones, cajas?: CajaParte[]): stri
   return '—'
 }
 
+// Retiro de efectivo: plata que el conserje saca de su caja hacia la caja
+// fuerte/oficina. NO es gasto. Dos formas de anotarlo, ambas confirmadas contra
+// las cajas reales del PMS (todos estos egresos son 100% en efectivo, nunca
+// compras a proveedores):
+//   - literal "RETIRO EFECTIVO"
+//   - estilo del conserje: el monto y el Nº de caja de donde sale la plata, p.ej.
+//     "$1.000.000. C-96. Herrera" o "$2.500.000. CAJA 5. GASTON". Ojo: "caja N"
+//     pide el número pegado ("CAJA 5"), así "3 cajas de medialunas" sigue gasto.
+const RETIRO_EFECTIVO = [
+  /retiro\s+efectivo/i,
+  /\bc\s*-\s*\d{1,3}\b/i,       // "C-5", "C-100"
+  /\bcaja\s*-?\s*\d{1,3}\b/i,   // "CAJA 5", "CAJA-5"
+]
+const esRetiroEfectivo = (m: CajaMovimiento) =>
+  RETIRO_EFECTIVO.some(re => re.test(m.observacion))
+
 // Un egreso de caja NO es gasto cuando es un movimiento INTERNO de plata: retiro
-// a la caja fuerte/oficina, cierre de lote de tarjeta, transferencia a otra caja
-// ("egreso de caja 100", "C-100"), o la anulación de un cobro mal cargado
-// (esAnulacionPago). Solo el resto (compras, pagos a proveedores…) es gasto real.
-// Patrones confirmados contra cajas reales del PMS.
-const NO_ES_GASTO = [
-  /retiro\s+efectivo/i,         // a la caja fuerte / oficina
+// de efectivo (arriba), cierre de lote de tarjeta, transferencia/cierre de caja,
+// o la anulación de un cobro mal cargado (esAnulacionPago). Solo el resto
+// (compras, pagos a proveedores…) es gasto real. Patrones confirmados contra
+// cajas reales del PMS.
+const OTRO_MOV_INTERNO = [
   /cierre\s+de\s+lote/i,        // liquidación de tarjeta al cerrar
-  /egreso\s+(de|a|al)\s+caja/i, // transferencia a otra caja
-  /\bc\s*-\s*\d+\b/i,           // referencia a otra caja ("C-100")
+  /egreso\s+(de|a|al)\s+caja/i, // transferencia / cierre de caja
 ]
 const esMovimientoInterno = (m: CajaMovimiento) =>
-  esAnulacionPago(m) || NO_ES_GASTO.some(re => re.test(m.observacion))
-const esRetiroEfectivo = (m: CajaMovimiento) => /retiro\s+efectivo/i.test(m.observacion)
+  esAnulacionPago(m) || esRetiroEfectivo(m) || OTRO_MOV_INTERNO.some(re => re.test(m.observacion))
 
 // ===== Dinero / cobranzas =====
 export interface DineroResumen {
