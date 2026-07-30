@@ -71,6 +71,7 @@ function imperfArray(i: ImperfeccionesCount) {
     { label: 'Cajas salteadas', n: i.huecos, level: 'error' as const },
     { label: 'Descuadres', n: i.descuadres, level: 'error' as const },
     { label: 'Tarifa fuera de pactada', n: i.tarifasFuera, level: 'warn' as const },
+    { label: 'Sobreocupación', n: i.sobreocupacion, level: 'warn' as const },
     { label: 'Tarjeta sin FB', n: i.tarjetaSinFB, level: 'warn' as const },
     { label: 'Check-out sin cobro', n: i.checkoutsSinCobro, level: 'error' as const },
     { label: 'Estadías ocultas', n: i.estadiasOcultas, level: 'warn' as const },

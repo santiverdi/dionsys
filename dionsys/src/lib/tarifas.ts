@@ -9,6 +9,7 @@
 
 import type { CajaParte, ParteHabitaciones, CajaMovimiento } from '../types'
 import { fechaConfiable, ingresosNetos, type CajaFlag } from './cajaControl'
+import { getHabitacion, tipoDeHabitacion, haySobreocupacion } from '../data/hotel'
 
 export interface TarifaPeriodo {
   desde: string   // YYYY-MM-DD inclusive
@@ -76,25 +77,71 @@ export function mesesSinTarifa(
   return [...meses].sort()
 }
 
-// Plazas (personas) de un cobro según los partes: primero por Nº de reserva
-// (exacto), si no por habitación (tolerante a combinadas "205/202"). Una reserva
-// de varias habitaciones suma las plazas de todas. Sin match no se puede saber
-// la tarifa → no se controla ese cobro (mejor que un falso positivo).
-function plazasDe(m: CajaMovimiento, partes: ParteHabitaciones[]): number {
+// Una habitación de un cobro, con la gente que el parte dice que durmió ahí.
+interface HabDeCobro {
+  habitacion: string
+  plazas: number     // personas reportadas por el PMS, NO la capacidad
+}
+
+// Habitaciones de un cobro según los partes: primero por Nº de reserva (exacto),
+// si no por habitación (tolerante a combinadas "205/202"). Una reserva puede
+// tener varias habitaciones. Sin match no se puede saber la tarifa → no se
+// controla ese cobro (mejor que un falso positivo).
+function habitacionesDeCobro(m: CajaMovimiento, partes: ParteHabitaciones[]): HabDeCobro[] {
+  const mapear = (habs: ParteHabitaciones['ocupadas']) =>
+    habs.map(o => ({ habitacion: o.habitacion, plazas: o.plazas }))
+
   if (m.reserva) {
     for (const p of partes) {
       const habs = p.ocupadas.filter(o => o.reserva === m.reserva)
-      if (habs.length) return sum(habs.map(o => o.plazas))
+      if (habs.length) return mapear(habs)
     }
   }
   if (m.habitacion) {
     const habsCobro = m.habitacion.split('/').map(s => s.trim()).filter(Boolean)
     for (const p of partes) {
       const habs = p.ocupadas.filter(o => habsCobro.includes(o.habitacion))
-      if (habs.length) return sum(habs.map(o => o.plazas))
+      if (habs.length) return mapear(habs)
     }
   }
-  return 0
+  return []
+}
+
+// Cuánta gente entró vs cuánta entra, comparando el parte contra el maestro de
+// habitaciones. El parte solo dice cuántas personas durmieron; sin el maestro no
+// había con qué compararlo. Se avisa una vez por habitación por caja.
+//
+//   - más gente que plazas  → warn: o durmió gente de más, o el parte está mal
+//   - menos gente que plazas → info: plazas que quedaron sin vender
+//
+// Las habitaciones que no existen en el maestro se ignoran acá: eso es un
+// problema del parte, no del cobro, y lo reporta la validación de partes.
+function flagsDeOcupacion(habs: HabDeCobro[], yaAvisadas: Set<string>): CajaFlag[] {
+  const flags: CajaFlag[] = []
+  for (const h of habs) {
+    if (yaAvisadas.has(h.habitacion)) continue
+    const real = getHabitacion(h.habitacion)
+    if (!real) continue
+    const tipo = tipoDeHabitacion(h.habitacion) ?? `${real.plazas} plazas`
+
+    if (haySobreocupacion(h.habitacion, h.plazas)) {
+      yaAvisadas.add(h.habitacion)
+      flags.push({
+        level: 'warn',
+        tipo: 'ocupacion',
+        mensaje: `Hab. ${h.habitacion}: el parte declara ${h.plazas} personas en una ${tipo} de ${real.plazas} plazas. O durmió gente de más sin cobrarse, o el parte está mal cargado.`,
+      })
+    } else if (h.plazas < real.plazas) {
+      yaAvisadas.add(h.habitacion)
+      const libres = real.plazas - h.plazas
+      flags.push({
+        level: 'info',
+        tipo: 'ocupacion',
+        mensaje: `Hab. ${h.habitacion}: ${tipo} de ${real.plazas} plazas vendida a ${h.plazas} — ${libres} plaza(s) sin vender.`,
+      })
+    }
+  }
+  return flags
 }
 
 export function getTarifaFlags(
@@ -103,12 +150,19 @@ export function getTarifaFlags(
   tarifas: TarifaPeriodo[] = TARIFAS_PACTADAS,
 ): CajaFlag[] {
   const flags: CajaFlag[] = []
+  const yaAvisadas = new Set<string>()
 
   // ingresosNetos: un cobro anulado por el PMS no se controla contra tarifa.
   for (const m of ingresosNetos(caja)) {
     if (m.total <= 0) continue
-    const plazas = plazasDe(m, partes)
+    const habs = habitacionesDeCobro(m, partes)
+    const plazas = sum(habs.map(h => h.plazas))
     if (!plazas) continue
+
+    // Ocupación real vs capacidad: es independiente de si el precio cuadra, así
+    // que se controla antes de decidir nada sobre la tarifa.
+    flags.push(...flagsDeOcupacion(habs, yaAvisadas))
+
     const periodo = tarifaVigente(m.fechaHora || caja.aperturaAt, tarifas)
     if (!periodo) continue
 
@@ -134,7 +188,12 @@ export function getTarifaFlags(
     }
     if (cuadraLista || (cuadraEfectivo && pagoEfectivo)) continue
 
-    const quien = `Hab. ${m.habitacion || '?'}${m.reserva ? ` · reserva ${m.reserva}` : ''} (${plazas} pax)`
+    // Con una sola habitación se nombra su tipo real (del maestro): ayuda a
+    // entender el cobro sin ir a buscar cuántas camas tiene ese cuarto.
+    const tipoUnico = habs.length === 1 ? tipoDeHabitacion(habs[0].habitacion) : undefined
+    const quien = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
+      + `${m.reserva ? ` · reserva ${m.reserva}` : ''}`
+      + ` (${tipoUnico ? `${tipoUnico}, ` : ''}${plazas} pax)`
     const pactada = plazas === 1
       ? `single ${fmt(base.lista)}/noche (${fmt(base.efectivo)} en efectivo)`
       : `${plazas} pax × ${fmt(periodo.porPersona.lista)} = ${fmt(base.lista)}/noche (${fmt(base.efectivo)} en efectivo)`

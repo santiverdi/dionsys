@@ -19,6 +19,7 @@ function mkCaja(p: Partial<CajaParte>): CajaParte {
 }
 
 // Parte con la reserva 500 en la hab 101 (plazas configurables).
+// Ojo: en el maestro (src/data/hotel.ts) la 101 es una triple (3 plazas).
 function mkParte(plazas: number, reserva = '500', habitacion = '101'): ParteHabitaciones {
   return {
     id: 'p1', nroCaja: 1, usuario: 'X', fechaCaja: '2026-07-05T07:00:00.000Z',
@@ -27,6 +28,13 @@ function mkParte(plazas: number, reserva = '500', habitacion = '101'): ParteHabi
     sucias: 0, limpias: 0, mantenimiento: 0, importedBy: 'X', importedAt: '2026-07-05T15:30:00.000Z',
   }
 }
+
+// getTarifaFlags devuelve dos familias: 'tarifa' (el precio) y 'ocupacion'
+// (gente vs capacidad real). Los tests de precio miran solo las de tarifa.
+const soloTarifa = (...args: Parameters<typeof getTarifaFlags>) =>
+  getTarifaFlags(...args).filter(f => f.tipo === 'tarifa')
+const soloOcupacion = (...args: Parameters<typeof getTarifaFlags>) =>
+  getTarifaFlags(...args).filter(f => f.tipo === 'ocupacion')
 
 describe('tarifaVigente', () => {
   it('elige el período por fecha (julio parte en dos)', () => {
@@ -42,7 +50,7 @@ describe('getTarifaFlags', () => {
       mov({ reserva: '500', habitacion: '101', tarjetas: 60_000, total: 60_000 }),          // 1 noche lista
       mov({ reserva: '500', habitacion: '101', efectivo: 108_000, total: 108_000 }),        // 2 noches efectivo
     ] })
-    expect(getTarifaFlags(caja, [mkParte(1)])).toEqual([])
+    expect(soloTarifa(caja, [mkParte(1)])).toEqual([])
   })
 
   it('una doble (2 pax) por noches enteras no marca nada', () => {
@@ -50,12 +58,12 @@ describe('getTarifaFlags', () => {
       mov({ reserva: '500', habitacion: '101', tarjetas: 210_000, total: 210_000 }),        // 3 noches × 2 × 35.000
       mov({ reserva: '500', habitacion: '101', efectivo: 63_000, total: 63_000 }),          // 1 noche × 2 × 31.500
     ] })
-    expect(getTarifaFlags(caja, [mkParte(2)])).toEqual([])
+    expect(soloTarifa(caja, [mkParte(2)])).toEqual([])
   })
 
   it('un cobro que no cuadra con ninguna cantidad de noches marca warn', () => {
     const caja = mkCaja({ ingresos: [mov({ reserva: '500', habitacion: '101', tarjetas: 50_000, total: 50_000 })] })
-    const flags = getTarifaFlags(caja, [mkParte(2)])
+    const flags = soloTarifa(caja, [mkParte(2)])
     expect(flags).toHaveLength(1)
     expect(flags[0].level).toBe('warn')
     expect(flags[0].mensaje).toContain('no cuadra')
@@ -63,7 +71,7 @@ describe('getTarifaFlags', () => {
 
   it('el precio de efectivo pagado con tarjeta marca warn (descuento sin efectivo)', () => {
     const caja = mkCaja({ ingresos: [mov({ reserva: '500', habitacion: '101', tarjetas: 54_000, total: 54_000 })] })
-    const flags = getTarifaFlags(caja, [mkParte(1)])
+    const flags = soloTarifa(caja, [mkParte(1)])
     expect(flags).toHaveLength(1)
     expect(flags[0].mensaje).toContain('no se pagó en efectivo')
   })
@@ -74,7 +82,7 @@ describe('getTarifaFlags', () => {
       ingresos: [mov({ fechaHora: '2026-07-20T12:00:00.000Z', reserva: '500', habitacion: '101', efectivo: 60_000, total: 60_000 })],
       // 2 pax período 2: pactado 75.000 lista / 67.500 efectivo → 60.000 es menor
     })
-    const flags = getTarifaFlags(caja, [mkParte(2)])
+    const flags = soloTarifa(caja, [mkParte(2)])
     expect(flags).toHaveLength(1)
     expect(flags[0].level).toBe('info')
     expect(flags[0].mensaje).toContain('descuentos mejores')
@@ -82,7 +90,7 @@ describe('getTarifaFlags', () => {
 
   it('sin match de reserva/habitación en los partes no controla (evita falsos positivos)', () => {
     const caja = mkCaja({ ingresos: [mov({ reserva: '999', habitacion: '905', tarjetas: 50_000, total: 50_000 })] })
-    expect(getTarifaFlags(caja, [mkParte(2)])).toEqual([])
+    expect(soloTarifa(caja, [mkParte(2)])).toEqual([])
   })
 
   it('sin tarifa vigente para la fecha no controla', () => {
@@ -90,12 +98,12 @@ describe('getTarifaFlags', () => {
       aperturaAt: '2026-06-15T07:00:00.000Z',
       ingresos: [mov({ fechaHora: '2026-06-15T12:00:00.000Z', reserva: '500', tarjetas: 50_000, total: 50_000 })],
     })
-    expect(getTarifaFlags(caja, [mkParte(2)])).toEqual([])
+    expect(soloTarifa(caja, [mkParte(2)])).toEqual([])
   })
 
   it('matchea por habitación (combinada "205/202") cuando la reserva no coincide', () => {
     const caja = mkCaja({ ingresos: [mov({ habitacion: '101/102', tarjetas: 50_000, total: 50_000 })] })
-    const flags = getTarifaFlags(caja, [mkParte(2, '500', '101')])
+    const flags = soloTarifa(caja, [mkParte(2, '500', '101')])
     expect(flags).toHaveLength(1) // encontró las 2 plazas por la hab 101 y el monto no cuadra
   })
 
@@ -116,5 +124,61 @@ describe('getTarifaFlags', () => {
     expect(TARIFAS_PACTADAS[0].porPersona).toEqual({ lista: 35_000, efectivo: 31_500 })
     expect(TARIFAS_PACTADAS[1].porPersona).toEqual({ lista: 37_500, efectivo: 33_750 })
     expect(TARIFAS_PACTADAS[1].puedeHaberMasDescuento).toBe(true)
+  })
+})
+
+// Cruce contra el maestro de habitaciones: el parte solo dice cuántas personas
+// durmieron; la capacidad sale de src/data/hotel.ts.
+describe('getTarifaFlags · ocupación real vs capacidad', () => {
+  const cobroOk = (habitacion: string) =>
+    mkCaja({ ingresos: [mov({ reserva: '500', habitacion, tarjetas: 60_000, total: 60_000 })] })
+
+  it('más gente que plazas marca warn de sobreocupación', () => {
+    // 105 es una doble (2 plazas) y el parte declara 4 personas.
+    const flags = soloOcupacion(cobroOk('105'), [mkParte(4, '500', '105')])
+    expect(flags).toHaveLength(1)
+    expect(flags[0].level).toBe('warn')
+    expect(flags[0].mensaje).toContain('4 personas')
+    expect(flags[0].mensaje).toContain('2 plazas')
+  })
+
+  it('menos gente que plazas es info de plazas sin vender', () => {
+    // 102 es quíntuple (5 plazas) vendida a 2.
+    const flags = soloOcupacion(cobroOk('102'), [mkParte(2, '500', '102')])
+    expect(flags).toHaveLength(1)
+    expect(flags[0].level).toBe('info')
+    expect(flags[0].mensaje).toContain('quintuple')
+    expect(flags[0].mensaje).toContain('3 plaza(s) sin vender')
+  })
+
+  it('la habitación llena no marca nada', () => {
+    expect(soloOcupacion(cobroOk('105'), [mkParte(2, '500', '105')])).toEqual([])
+  })
+
+  it('no repite la misma habitación aunque tenga varios cobros en la caja', () => {
+    const caja = mkCaja({ ingresos: [
+      mov({ reserva: '500', habitacion: '105', tarjetas: 60_000, total: 60_000 }),
+      mov({ reserva: '500', habitacion: '105', tarjetas: 60_000, total: 60_000 }),
+    ] })
+    expect(soloOcupacion(caja, [mkParte(4, '500', '105')])).toHaveLength(1)
+  })
+
+  it('una habitación que no existe en el hotel no se controla acá (la reporta la validación de partes)', () => {
+    expect(soloOcupacion(cobroOk('106'), [mkParte(9, '500', '106')])).toEqual([])
+  })
+
+  it('la sobreocupación se avisa aunque no haya tarifa cargada para esa fecha', () => {
+    const caja = mkCaja({
+      aperturaAt: '2026-06-15T07:00:00.000Z',
+      ingresos: [mov({ fechaHora: '2026-06-15T12:00:00.000Z', reserva: '500', habitacion: '105', tarjetas: 60_000, total: 60_000 })],
+    })
+    expect(soloOcupacion(caja, [mkParte(4, '500', '105')])).toHaveLength(1)
+  })
+
+  it('el mensaje de tarifa nombra el tipo real de la habitación', () => {
+    const caja = mkCaja({ ingresos: [mov({ reserva: '500', habitacion: '105', tarjetas: 50_000, total: 50_000 })] })
+    const flags = soloTarifa(caja, [mkParte(2, '500', '105')])
+    expect(flags).toHaveLength(1)
+    expect(flags[0].mensaje).toContain('(doble, 2 pax)')
   })
 })

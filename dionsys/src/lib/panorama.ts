@@ -174,6 +174,7 @@ export interface ImperfeccionesCount {
   huecos: number            // cajas salteadas: números que faltan antes de esta caja
   tarjetaSinFB: number
   tarifasFuera: number      // cobros que no cuadran con la tarifa pactada
+  sobreocupacion: number    // más gente que plazas tiene la habitación
   checkoutsSinCobro: number
   estadiasOcultas: number
   cajasSinCerrar: number
@@ -181,12 +182,12 @@ export interface ImperfeccionesCount {
 }
 
 const cero = (): ImperfeccionesCount => ({
-  descuadres: 0, huecos: 0, tarjetaSinFB: 0, tarifasFuera: 0, checkoutsSinCobro: 0,
-  estadiasOcultas: 0, cajasSinCerrar: 0, total: 0,
+  descuadres: 0, huecos: 0, tarjetaSinFB: 0, tarifasFuera: 0, sobreocupacion: 0,
+  checkoutsSinCobro: 0, estadiasOcultas: 0, cajasSinCerrar: 0, total: 0,
 })
 
 function totalDe(i: ImperfeccionesCount): number {
-  return i.descuadres + i.huecos + i.tarjetaSinFB + i.tarifasFuera
+  return i.descuadres + i.huecos + i.tarjetaSinFB + i.tarifasFuera + i.sobreocupacion
     + i.checkoutsSinCobro + i.estadiasOcultas + i.cajasSinCerrar
 }
 
@@ -202,8 +203,12 @@ function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: Parte
   const gap = anterior ? gapCircular(anterior.nroCaja, caja.nroCaja) : 0
   i.huecos = gap > 1 && gap <= MAX_SALTO_NROS ? gap - 1 : 0
   i.tarjetaSinFB = ingresosNetos(caja).filter(m => m.tarjetas > 0 && !m.facturaB).length
-  // Solo los warn cuentan como imperfección (los info son descuentos a confirmar).
-  i.tarifasFuera = getTarifaFlags(caja, partes, tarifas).filter(f => f.level === 'warn').length
+  // Solo los warn cuentan como imperfección (los info son descuentos a confirmar
+  // y plazas que quedaron sin vender). getTarifaFlags devuelve dos familias:
+  // 'tarifa' (precio) y 'ocupacion' (gente vs capacidad real de la habitación).
+  const tarifaFlags = getTarifaFlags(caja, partes, tarifas).filter(f => f.level === 'warn')
+  i.tarifasFuera = tarifaFlags.filter(f => f.tipo === 'tarifa').length
+  i.sobreocupacion = tarifaFlags.filter(f => f.tipo === 'ocupacion').length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
   i.total = totalDe(i)
   return i
@@ -224,6 +229,7 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
   a.huecos += b.huecos
   a.tarjetaSinFB += b.tarjetaSinFB
   a.tarifasFuera += b.tarifasFuera
+  a.sobreocupacion += b.sobreocupacion
   a.checkoutsSinCobro += b.checkoutsSinCobro
   a.estadiasOcultas += b.estadiasOcultas
   a.cajasSinCerrar += b.cajasSinCerrar
