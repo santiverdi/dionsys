@@ -16,6 +16,7 @@ import { SueldosProvider } from './context/SueldosContext'
 import { TarifasProvider } from './context/TarifasContext'
 import { PrismaProvider } from './context/PrismaContext'
 import { LavaderoProvider } from './context/LavaderoContext'
+import { GruposProvider } from './context/GruposContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -148,7 +149,9 @@ export default function App() {
                       <TarifasProvider>
                         <PrismaProvider>
                           <LavaderoProvider>
-                            <AppRoutes />
+                            <GruposProvider>
+                              <AppRoutes />
+                            </GruposProvider>
                           </LavaderoProvider>
                         </PrismaProvider>
                       </TarifasProvider>

@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
   Truck, CalendarClock, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, Users,
 } from 'lucide-react'
+import GruposPanel from '../components/GruposPanel'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useOrders } from '../context/OrdersContext'
@@ -317,6 +318,12 @@ export default function Negocio() {
         <p className="text-[10px] text-navy-400 mt-2">
           Ingreso del mes repartido sobre {revenue.diasConDatos} día(s) con ocupación cargada. Aproximado.
         </p>
+      </Section>
+
+      {/* Grupos: lo que cobra el dueño por fuera de la caja. Va antes de la
+          cuenta corriente porque es su espejo: acá lo que NOS deben. */}
+      <Section icon={Users} title="Grupos (cobrados por fuera de la caja)">
+        <GruposPanel />
       </Section>
 
       {/* Cuenta corriente */}

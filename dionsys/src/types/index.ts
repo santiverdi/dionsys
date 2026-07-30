@@ -460,3 +460,27 @@ export interface LavaderoLiquidacion {
   createdBy: string
   createdAt: string         // ISO
 }
+
+// --- Grupos (contingentes que cobra el dueño POR FUERA de la caja) ---
+// El dueño cobra los grupos él mismo (seña + saldo) y lo lleva en un Excel
+// propio. Esa plata no pasa por la caja del PMS: sin esto el sistema no ve ni
+// el ingreso comprometido ni lo que falta cobrar, y cuando el grupo se aloja
+// sus habitaciones aparecen en el parte sin cobro en ninguna caja.
+export interface Grupo {
+  id: string
+  nombre: string
+  facturaPct: number        // qué parte se factura (0, 50, 100)
+  ingreso: string           // YYYY-MM-DD (entrada del grupo)
+  egreso: string            // YYYY-MM-DD (salida)
+  noches: number
+  plazasDoble: number       // personas en base doble
+  precioDoble: number       // por persona por noche
+  plazasSingle: number
+  precioSingle: number
+  total: number
+  pagos: number[]           // señas y pagos parciales ya cobrados
+  saldo: number             // total - pagos (negativo = pagó de más)
+  importedBy: string
+  importedAt: string        // ISO
+  sourceFileName?: string
+}
