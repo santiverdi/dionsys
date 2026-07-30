@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getCajaFlags, faltantesAntesDe, fmtFaltantes, getCajaResumen, ingresosNetos, ingresosNoEfectivo, descuadrePorNoEfectivo } from '../../src/lib/cajaControl'
+import { getCajaFlags, faltantesAntesDe, fmtFaltantes, getCajaResumen, ingresosNetos, ingresosNoEfectivo, aperturaPorCierrePendiente } from '../../src/lib/cajaControl'
 import type { CajaParte, CajaMovimiento } from '../../src/types'
 
 function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
@@ -165,12 +165,13 @@ describe('getCajaFlags — numeración y continuidad', () => {
   })
 })
 
-// Caso real: caja 8 del 26/07/2026. Santiago dejó la caja 7 sin cerrar y Gastón
-// abrió la 8 contando el cajón. Los $59.528,37 que "faltaban" eran justo lo que
-// la 7 había cobrado con tarjeta: plata que el PMS suma al saldo pero que nunca
-// estuvo en el cajón.
-describe('descuadre de apertura por contar solo el efectivo', () => {
-  // 7: abre 1.453.390,26 + cobra 1.030.028,37 (970.500 en efectivo) - retiro 1.600.000
+// Caso real: caja 8 del 26/07/2026. Mientras la caja está abierta, la tarjeta y
+// la transferencia suman al saldo del PMS; al CERRARLA, el PMS agrega un egreso
+// automático ("Egreso al cerrar Caja") que las descuenta y deja el saldo en
+// efectivo puro. Santiago dejó la caja 7 sin cerrar, así que ese egreso nunca se
+// generó y su saldo quedó $59.528,37 por encima del efectivo real.
+describe('apertura que no cuadra porque la caja anterior quedó sin cerrar', () => {
+  // 7: abre 1.453.390,26 + cobra 1.030.028,37 (970.500 efectivo) - retiro 1.600.000
   const c7 = mkCaja({
     nroCaja: 7,
     cierreAt: undefined,
@@ -188,29 +189,34 @@ describe('descuadre de apertura por contar solo el efectivo', () => {
     expect(ingresosNoEfectivo(c7)).toBeCloseTo(59_528.37, 2)
   })
 
-  it('reconoce que la diferencia es exactamente lo cobrado sin efectivo', () => {
-    expect(descuadrePorNoEfectivo(c8, c7)).toBe(true)
+  it('reconoce que la apertura es el efectivo real', () => {
+    expect(aperturaPorCierrePendiente(c8, c7)).toBe(true)
   })
 
-  it('lo explica en el flag en vez de dejar un descuadre pelado', () => {
-    const flag = getCajaFlags(c8, c7).find(f => f.tipo === 'continuidad')
-    expect(flag?.level).toBe('error')
-    expect(flag?.mensaje).toContain('tarjeta o transferencia')
-    expect(flag?.mensaje).toContain('No es plata que falte')
-    expect(flag?.mensaje).toContain('quedó sin cerrar')
+  it('NO lo marca como descuadre: no es culpa de esta caja', () => {
+    const flags = getCajaFlags(c8, c7)
+    expect(flags.some(f => f.tipo === 'continuidad')).toBe(false)
+    const flag = flags.find(f => f.tipo === 'cierre_pendiente_anterior')
+    expect(flag?.level).toBe('warn')
+    expect(flag?.mensaje).toContain('SIN CERRAR')
+    expect(flag?.mensaje).toContain('falta es cerrar la caja 7')
   })
 
-  it('un descuadre que NO cuadra con el no-efectivo queda como estaba', () => {
+  it('si la caja anterior SÍ se cerró, un desvío igual sigue siendo descuadre', () => {
+    // Cerrada: el PMS ya descontó la tarjeta, así que la diferencia es real.
+    const c7cerrada = { ...c7, cierreAt: '2026-07-26T01:00:00.000Z' }
+    expect(aperturaPorCierrePendiente(c8, c7cerrada)).toBe(false)
+    expect(getCajaFlags(c8, c7cerrada).some(f => f.tipo === 'continuidad')).toBe(true)
+  })
+
+  it('una diferencia que no cuadra con el no-efectivo sigue siendo descuadre', () => {
     const otra = mkCaja({ nroCaja: 8, aperturaMonto: 800_000 })
-    expect(descuadrePorNoEfectivo(otra, c7)).toBe(false)
-    const flag = getCajaFlags(otra, c7).find(f => f.tipo === 'continuidad')
-    expect(flag?.mensaje).toContain('no coincide')
-    expect(flag?.mensaje).not.toContain('No es plata que falte')
+    expect(aperturaPorCierrePendiente(otra, c7)).toBe(false)
+    expect(getCajaFlags(otra, c7).some(f => f.tipo === 'continuidad')).toBe(true)
   })
 
-  it('si la caja anterior cobró todo en efectivo, no aplica la explicación', () => {
-    const soloEfectivo = mkCaja({ nroCaja: 7, saldoFinal: 100_000, ingresos: [mov({ efectivo: 5_000, total: 5_000 })] })
-    const sig = mkCaja({ nroCaja: 8, aperturaMonto: 95_000 })
-    expect(descuadrePorNoEfectivo(sig, soloEfectivo)).toBe(false)
+  it('si la anterior cobró todo en efectivo, no aplica', () => {
+    const soloEfectivo = mkCaja({ nroCaja: 7, cierreAt: undefined, saldoFinal: 100_000, ingresos: [mov({ efectivo: 5_000, total: 5_000 })] })
+    expect(aperturaPorCierrePendiente(mkCaja({ nroCaja: 8, aperturaMonto: 95_000 }), soloEfectivo)).toBe(false)
   })
 })

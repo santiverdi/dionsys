@@ -161,18 +161,25 @@ export function ingresosNoEfectivo(caja: CajaParte): number {
 }
 
 /**
- * ¿El descuadre de apertura se explica porque esta caja abrió contando SOLO EL
- * EFECTIVO del cajón, en vez de arrastrar el saldo del PMS?
+ * ¿La "diferencia" de apertura es en realidad porque la caja anterior quedó SIN
+ * CERRAR, y por eso su saldo todavía arrastra la tarjeta y la transferencia?
  *
- * Caso real (caja 8 del 26/07/2026): Santiago dejó la caja 7 SIN CERRAR y
- * Gastón abrió la 8 contando la plata física. Los $59.528,37 que "faltaban"
- * eran exactamente lo que la caja 7 había cobrado con tarjeta/transferencia:
- * plata que el PMS suma al saldo pero que nunca estuvo en el cajón.
+ * CÓMO FUNCIONA EL PMS (visto en el Excel de arqueo real): mientras la caja está
+ * abierta, la tarjeta y la transferencia suman al saldo aunque no sean plata en
+ * el cajón. **Al cerrarla**, el PMS agrega solo un egreso automático llamado
+ * "Egreso al cerrar Caja" que descuenta exactamente esos montos, y el saldo
+ * final queda en efectivo puro (la hoja "Arqueo" del mismo archivo lo confirma:
+ * el efectivo contado coincide con el saldo total).
  *
- * No es plata perdida, pero rompe la cadena del saldo, así que se sigue
- * marcando — con la explicación, que es lo que faltaba.
+ * Caso real (caja 8 del 26/07/2026): Santiago dejó la caja 7 sin cerrar, así que
+ * nunca se generó ese egreso y su saldo quedó $59.528,37 por encima del efectivo
+ * real — justo lo que había cobrado con tarjeta. Gastón abrió la 8 con el
+ * efectivo verdadero: **la apertura estaba bien y el saldo de la 7 es el que
+ * está incompleto**. No hay descuadre que reclamarle a nadie; lo que falta es
+ * cerrar la caja anterior.
  */
-export function descuadrePorNoEfectivo(caja: CajaParte, cajaAnterior: CajaParte): boolean {
+export function aperturaPorCierrePendiente(caja: CajaParte, cajaAnterior: CajaParte): boolean {
+  if (cajaAnterior.cierreAt) return false
   const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
   const noEfectivo = ingresosNoEfectivo(cajaAnterior)
   return noEfectivo > EPS && Math.abs(diff + noEfectivo) <= EPS
@@ -190,20 +197,22 @@ export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFla
     if (gap === 1) {
       const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
       if (Math.abs(diff) > EPS) {
-        const base = `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`
-        // Si la diferencia es EXACTAMENTE lo cobrado sin efectivo, no es plata
-        // que falte: esta caja abrió contando el cajón.
-        const explicado = descuadrePorNoEfectivo(caja, cajaAnterior)
-        const sinCerrar = !cajaAnterior.cierreAt
-          ? ` La caja ${cajaAnterior.nroCaja} además quedó sin cerrar, que es lo que suele llevar a contar el cajón a mano.`
-          : ''
-        flags.push({
-          level: 'error',
-          tipo: 'continuidad',
-          mensaje: explicado
-            ? `${base} Es exactamente lo que la caja ${cajaAnterior.nroCaja} cobró con tarjeta o transferencia (${fmt(ingresosNoEfectivo(cajaAnterior))}): esta abrió contando solo el efectivo del cajón. No es plata que falte, pero corta la cadena del saldo.${sinCerrar}`
-            : base,
-        })
+        // La caja anterior sin cerrar todavía arrastra la tarjeta y la
+        // transferencia en su saldo: la apertura de ESTA (el efectivo real) es
+        // la correcta. No es un descuadre — no se le reclama a este conserje.
+        if (aperturaPorCierrePendiente(caja, cajaAnterior)) {
+          flags.push({
+            level: 'warn',
+            tipo: 'cierre_pendiente_anterior',
+            mensaje: `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el saldo de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}) porque esa caja quedó SIN CERRAR: su saldo todavía incluye ${fmt(ingresosNoEfectivo(cajaAnterior))} cobrados con tarjeta o transferencia, que el PMS descuenta recién al cerrarla. Esta apertura es el efectivo real y está bien: lo que falta es cerrar la caja ${cajaAnterior.nroCaja}.`,
+          })
+        } else {
+          flags.push({
+            level: 'error',
+            tipo: 'continuidad',
+            mensaje: `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`,
+          })
+        }
       }
     } else if (gap > 1 && gap <= MAX_SALTO_NROS) {
       flags.push({
