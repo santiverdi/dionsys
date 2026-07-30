@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import SugerenciaDesayuno from './SugerenciaDesayuno'
 import {
   ChevronLeft, Copy, Check, Send, Plus, Minus,
   Users, TrendingUp, Clock
@@ -216,6 +217,9 @@ export default function LacteosOrder({ onBack }: Props) {
           )}
         </div>
       )}
+
+      {/* Cuánta gente durmió, del parte del turno noche: evita contarla a mano. */}
+      <SugerenciaDesayuno onUsar={setGuests} />
 
       {/* Guest input for suggestions */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-navy-100 mb-4">

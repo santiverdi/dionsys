@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import SugerenciaDesayuno from './SugerenciaDesayuno'
 import { ChevronLeft, Copy, Check, Send, Users } from 'lucide-react'
 import { receptionSuppliers } from '../data/mock'
 import { useAuth } from '../context/AuthContext'
@@ -128,6 +129,9 @@ export default function PanaderiaCalc({ onBack }: Props) {
 
       <h2 className="text-xl font-bold text-navy-800 mb-1">Piazza - Panaderia</h2>
       <p className="text-sm text-navy-500 mb-6">{supplier.notes}</p>
+
+      {/* Cuánta gente durmió, del parte del turno noche: evita contarla a mano. */}
+      <SugerenciaDesayuno onUsar={setGuests} />
 
       {/* Guest input */}
       <div className="bg-white rounded-xl p-5 shadow-sm border border-navy-100 mb-4">
