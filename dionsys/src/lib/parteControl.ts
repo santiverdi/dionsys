@@ -10,6 +10,7 @@
 
 import type { ParteHabitaciones, CajaParte, Turno } from '../types'
 import { anteriorPorNro } from './cajaControl'
+import { HABITACIONES, existeHabitacion } from '../data/hotel'
 
 export type FlagLevel = 'error' | 'warn' | 'info'
 
@@ -166,12 +167,54 @@ export function getEstadiasOcultas(
     .filter(hab => !ocupadasAntes.has(hab) && estadoAntes.get(hab) !== 'sucia')
 }
 
+// Cobertura del parte contra el maestro de habitaciones (src/data/hotel.ts).
+// El PMS debería listar TODAS las habitaciones del hotel, cada una ocupada o
+// libre. Lo que sobra o falta es un problema: una habitación que no aparece en
+// ningún lado quedó fuera de todo control (nadie sabe si se usó), y un número
+// que no existe en el hotel es un error de lectura del PDF o un cambio en la
+// distribución que el maestro todavía no tiene.
+export interface CoberturaParte {
+  faltantes: string[]     // habitaciones vendibles que el parte no reporta
+  desconocidas: string[]  // números del parte que no existen en el hotel
+}
+
+export function getCoberturaParte(parte: ParteHabitaciones): CoberturaParte {
+  const enParte = new Set([
+    ...parte.ocupadas.map(o => o.habitacion),
+    ...parte.libres.map(l => l.habitacion),
+  ])
+  // Solo se exigen las activas: una habitación fuera de servicio puede
+  // legítimamente no figurar en el parte.
+  const faltantes = HABITACIONES
+    .filter(h => h.activa && !enParte.has(h.numero))
+    .map(h => h.numero)
+  const desconocidas = [...enParte].filter(n => !existeHabitacion(n)).sort()
+  return { faltantes, desconocidas }
+}
+
 export function getParteFlags(
   parte: ParteHabitaciones,
   parteAnterior?: ParteHabitaciones,
   cajas: CajaParte[] = [],
 ): ParteFlag[] {
   const flags: ParteFlag[] = []
+
+  // El parte no cubre todo el hotel.
+  const { faltantes, desconocidas } = getCoberturaParte(parte)
+  if (faltantes.length) {
+    flags.push({
+      level: 'warn',
+      tipo: 'parte_incompleto',
+      mensaje: `El parte no reporta ${faltantes.length} habitación(es) del hotel: ${faltantes.join(', ')}. No figuran ni ocupadas ni libres, así que quedaron sin control.`,
+    })
+  }
+  if (desconocidas.length) {
+    flags.push({
+      level: 'warn',
+      tipo: 'hab_desconocida',
+      mensaje: `El parte menciona ${desconocidas.length} habitación(es) que no existen en el hotel: ${desconocidas.join(', ')}. Revisá la lectura del PDF o actualizá el maestro de habitaciones.`,
+    })
+  }
 
   // Estadías cortas que el parte no registró como ocupadas (huella de limpieza).
   const ocultas = getEstadiasOcultas(parte, parteAnterior)

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { parseParteItems, parteFromExtracted, type PdfTextItem } from '../../src/lib/parsePartePdf'
 import type { ExtractedParte } from '../../src/lib/invoiceExtract'
-import { getParteResumen, getParteFlags, getCheckouts } from '../../src/lib/parteControl'
+import { getParteResumen, getParteFlags, getCheckouts, getCoberturaParte } from '../../src/lib/parteControl'
+import { TOTAL_HABITACIONES } from '../../src/data/hotel'
 import type { CajaParte } from '../../src/types'
 import fixture from '../fixtures/parte_caja80.json'
 
@@ -157,6 +158,15 @@ describe('getParteFlags / getCheckouts (cruce con caja)', () => {
     aperturaAt: '2026-02-10T00:00:00.000Z', aperturaMonto: 0, saldoFinal: 0,
     ingresos: [], egresos: [], retiros: [], importedBy: 't', importedAt: '',
   }
+
+  // El maestro de habitaciones (src/data/hotel.ts) se armó a mano; este parte
+  // real es la única prueba de que coincide con el hotel de verdad. Si el PMS
+  // trae una habitación que el maestro no tiene (o al revés), acá se rompe.
+  it('el parte real cubre exactamente el maestro de habitaciones', () => {
+    expect(getCoberturaParte(parte)).toEqual({ faltantes: [], desconocidas: [] })
+    // 53 vendibles + la 1102, que el PMS reporta siempre en mantenimiento.
+    expect(parte.ocupadas.length + parte.libres.length).toBe(TOTAL_HABITACIONES + 1)
+  })
 
   it('sin parte anterior, pide importarlo', () => {
     const flags = getParteFlags(parte)

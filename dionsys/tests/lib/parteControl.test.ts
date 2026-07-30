@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parteAnteriorDe, getCheckouts, getEstadiasOcultas, getParteFlags } from '../../src/lib/parteControl'
+import { parteAnteriorDe, getCheckouts, getEstadiasOcultas, getParteFlags, getCoberturaParte } from '../../src/lib/parteControl'
+import { HABITACIONES, TOTAL_HABITACIONES } from '../../src/data/hotel'
 import type { ParteHabitaciones, CajaParte, CajaMovimiento, EstadoHabitacion } from '../../src/types'
 
 // Helpers mínimos para armar partes/cajas de prueba.
@@ -100,5 +101,49 @@ describe('getEstadiasOcultas (estadía corta delatada por el cambio de limpieza)
     const flag = getParteFlags(actual, prev).find(f => f.tipo === 'estadia_oculta')
     expect(flag?.level).toBe('warn')
     expect(flag?.mensaje).toContain('1001')
+  })
+})
+
+// El PMS debería listar TODAS las habitaciones del hotel, ocupadas o libres.
+describe('getCoberturaParte (parte vs maestro de habitaciones)', () => {
+  it('un parte completo no reporta faltantes ni desconocidas', () => {
+    const activas = HABITACIONES.filter(h => h.activa).map(h => h.numero)
+    const parte = mkParte(1, '2026-06-19T09:00:00.000Z',
+      [[activas[0], '100']],
+      activas.slice(1).map(n => [n, 'limpia'] as [string, EstadoHabitacion]),
+    )
+    expect(getCoberturaParte(parte)).toEqual({ faltantes: [], desconocidas: [] })
+  })
+
+  it('avisa las habitaciones que el parte no reportó', () => {
+    const parte = mkParte(1, '2026-06-19T09:00:00.000Z', [['101', '100']])
+    const { faltantes } = getCoberturaParte(parte)
+    expect(faltantes).toHaveLength(TOTAL_HABITACIONES - 1)
+    expect(faltantes).not.toContain('101')
+    expect(faltantes).toContain('102')
+
+    const flag = getParteFlags(parte).find(f => f.tipo === 'parte_incompleto')
+    expect(flag?.level).toBe('warn')
+    expect(flag?.mensaje).toContain('no reporta')
+  })
+
+  it('avisa los números que no existen en el hotel', () => {
+    const parte = mkParte(1, '2026-06-19T09:00:00.000Z', [['999', '100']], [['106', 'limpia']])
+    expect(getCoberturaParte(parte).desconocidas).toEqual(['106', '999'])
+
+    const flag = getParteFlags(parte).find(f => f.tipo === 'hab_desconocida')
+    expect(flag?.level).toBe('warn')
+    expect(flag?.mensaje).toContain('999')
+  })
+
+  it('una habitación fuera de servicio no se exige, pero se acepta si el parte la trae', () => {
+    // La 1102 existe pero no se vende: ni falta ni es desconocida.
+    const activas = HABITACIONES.filter(h => h.activa).map(h => h.numero)
+    const parte = mkParte(1, '2026-06-19T09:00:00.000Z',
+      [[activas[0], '100']],
+      [...activas.slice(1).map(n => [n, 'limpia'] as [string, EstadoHabitacion]), ['1102', 'mantenimiento']],
+    )
+    expect(getCoberturaParte(parte)).toEqual({ faltantes: [], desconocidas: [] })
+    expect(HABITACIONES.some(h => h.numero === '1102' && !h.activa)).toBe(true)
   })
 })

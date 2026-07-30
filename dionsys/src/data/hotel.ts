@@ -13,7 +13,7 @@
 // Estructura del hotel (pasada por administración, julio 2026):
 //   Pisos 1 a 9  → 5 habitaciones cada uno (X01…X05), mismo patrón de camas
 //   Piso 10      → 1001…1005, patrón propio
-//   Piso 11      → solo 1103, 1104 y 1105
+//   Piso 11      → 1102 a 1105 (la 1102 está fuera de servicio: ver abajo)
 //
 // OJO: `plazas` = personas que duermen. Hoy se asume 1 cama = 1 plaza. Si alguna
 // habitación tiene cama matrimonial (2 personas en 1 cama), hay que corregir esa
@@ -49,13 +49,22 @@ const CAMAS_PISO_10: Record<string, number> = {
 }
 
 const CAMAS_PISO_11: Record<string, number> = {
+  '1102': 2,
   '1103': 2,
   '1104': 2,
   '1105': 2,
 }
 
+// Habitaciones que existen físicamente pero NO se venden. Cuentan para validar
+// los partes (el PMS las lista) y no cuentan para la capacidad.
+//
+// 1102: el PMS la reporta siempre en mantenimiento. Con ella el hotel tiene 54
+// habitaciones físicas y 53 vendibles — que es el 53 que estaba escrito a mano
+// en OccupancyContext. Si vuelve a servicio, sacarla de acá.
+const FUERA_DE_SERVICIO = new Set(['1102'])
+
 function hab(numero: string, piso: number, camas: number): Habitacion {
-  return { numero, piso, camas, plazas: camas, activa: true }
+  return { numero, piso, camas, plazas: camas, activa: !FUERA_DE_SERVICIO.has(numero) }
 }
 
 function construirLayout(): Habitacion[] {
