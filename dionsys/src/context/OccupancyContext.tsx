@@ -1,8 +1,11 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import { persist, useCloudSync } from '../lib/cloudStore'
+import { TOTAL_HABITACIONES } from '../data/hotel'
 
-export const HOTEL_CAPACITY = 53
+// Capacidad en HABITACIONES. Antes era un 53 escrito a mano; ahora sale del
+// maestro de habitaciones (src/data/hotel.ts), que conoce piso por piso.
+export const HOTEL_CAPACITY = TOTAL_HABITACIONES
 
 export type Turno = 'manana' | 'tarde' | 'noche'
 
