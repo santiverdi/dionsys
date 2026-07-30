@@ -8,6 +8,7 @@ import { useGrupos } from '../context/GruposContext'
 import { parseGruposExcel } from '../lib/parseGrupos'
 import {
   getResumenGrupos, gruposProximos, gruposConDeudaVencida, gruposSobrepagados, ingresosPorMes,
+  type ResultadoImport,
 } from '../lib/grupos'
 import { formatMontoCurrency } from '../utils/validators'
 
@@ -26,10 +27,14 @@ export default function GruposPanel() {
   const { grupos, importarGrupos, borrarGrupos } = useGrupos()
   const [importando, setImportando] = useState(false)
   const [error, setError] = useState('')
+  const [ultimoImport, setUltimoImport] = useState<ResultadoImport | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const resumen = useMemo(() => getResumenGrupos(grupos), [grupos])
   const proximos = useMemo(() => gruposProximos(grupos), [grupos])
+  // La tabla los muestra TODOS (los ya alojados se conservan y suman en los
+  // totales: si no se vieran, el "contratado" no cerraría con lo listado).
+  const hoy = new Date().toISOString().slice(0, 10)
   const vencidos = useMemo(() => gruposConDeudaVencida(grupos), [grupos])
   const sobrepagados = useMemo(() => gruposSobrepagados(grupos), [grupos])
   const porMes = useMemo(() => ingresosPorMes(grupos), [grupos])
@@ -38,7 +43,7 @@ export default function GruposPanel() {
     setError('')
     setImportando(true)
     try {
-      importarGrupos(await parseGruposExcel(file, employee?.name ?? '?'))
+      setUltimoImport(importarGrupos(await parseGruposExcel(file, employee?.name ?? '?')))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo leer el archivo.')
     } finally {
@@ -51,8 +56,8 @@ export default function GruposPanel() {
     <div>
       <p className="text-[11px] text-navy-400 mb-2">
         Los grupos los cobra el dueño por fuera de la caja, así que esta plata no aparece en ningún
-        otro lado del sistema. Importá tu planilla de grupos: reemplaza lo cargado, así se refleja
-        cualquier pago o corrección que hayas hecho en el Excel.
+        otro lado del sistema. Importá tu planilla cada vez que cobres algo: manda lo que diga el
+        Excel. Los grupos que ya se alojaron se conservan acá aunque los saques de la planilla.
       </p>
 
       <div className="flex items-center gap-2 mb-3">
@@ -81,6 +86,28 @@ export default function GruposPanel() {
 
       {error && (
         <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5 mb-3">{error}</p>
+      )}
+
+      {ultimoImport && (
+        <div className="text-xs text-navy-700 bg-navy-50 border border-navy-100 rounded-lg p-2.5 mb-3">
+          <p>
+            {ultimoImport.nuevos} nuevo(s) · {ultimoImport.actualizados} actualizado(s)
+            {ultimoImport.archivados.length > 0 && ` · ${ultimoImport.archivados.length} conservado(s)`}
+          </p>
+          {ultimoImport.archivados.length > 0 && (
+            <p className="text-[11px] text-navy-500 mt-1">
+              Ya no están en la planilla pero se conservan porque ya se alojaron:{' '}
+              <strong>{ultimoImport.archivados.map(g => g.nombre).join(', ')}</strong>.
+            </p>
+          )}
+          {ultimoImport.quitados.length > 0 && (
+            <p className="text-[11px] text-amber-700 mt-1">
+              Se quitaron (todavía no se alojaban y salieron de la planilla):{' '}
+              <strong>{ultimoImport.quitados.map(g => g.nombre).join(', ')}</strong>. Si fue sin querer,
+              volvé a agregarlos al Excel y reimportá.
+            </p>
+          )}
+        </div>
       )}
 
       {!grupos.length ? (
@@ -138,7 +165,7 @@ export default function GruposPanel() {
             <table className="w-full text-xs min-w-[540px]">
               <thead>
                 <tr className="text-navy-500 border-b border-navy-100">
-                  <th className="text-left py-1.5 pr-2">Grupo</th>
+                  <th className="text-left py-1.5 pr-2">Grupo <span className="font-normal normal-case text-navy-400">({proximos.length} por venir)</span></th>
                   <th className="text-left px-2">Estadía</th>
                   <th className="text-right px-2">Pax</th>
                   <th className="text-right px-2">Total</th>
@@ -147,12 +174,14 @@ export default function GruposPanel() {
                 </tr>
               </thead>
               <tbody>
-                {proximos.map(g => {
+                {grupos.map(g => {
                   const cobrado = g.pagos.reduce((a, b) => a + b, 0)
+                  const yaPaso = g.egreso < hoy
                   return (
-                    <tr key={g.id} className="border-b border-navy-50 last:border-0">
+                    <tr key={g.id} className={`border-b border-navy-50 last:border-0 ${yaPaso ? 'opacity-60' : ''}`}>
                       <td className="py-1.5 pr-2 text-navy-700">
                         {g.nombre}
+                        {yaPaso && <span className="text-navy-400"> · ya se alojó</span>}
                         {g.facturaPct > 0 && <span className="text-navy-400"> · fact. {g.facturaPct}%</span>}
                       </td>
                       <td className="px-2 text-navy-500 whitespace-nowrap">

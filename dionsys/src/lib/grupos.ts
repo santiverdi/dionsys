@@ -104,3 +104,40 @@ export function grupoDeFecha(fecha: string, grupos: Grupo[]): Grupo | undefined 
 export function estaEnGrupo(fecha: string, grupos: Grupo[]): boolean {
   return !!grupoDeFecha(fecha, grupos)
 }
+
+export interface ResultadoImport {
+  grupos: Grupo[]
+  nuevos: number
+  actualizados: number
+  archivados: Grupo[]   // ya se alojaron y salieron de la planilla: se CONSERVAN
+  quitados: Grupo[]     // futuros que ya no figuran: se sacan (cancelados o repactados)
+}
+
+/**
+ * Fusiona lo que trae el Excel con lo ya guardado.
+ *
+ * La planilla del dueño **solo tiene los grupos que vienen**: cuando uno se
+ * aloja, lo saca. Si el import reemplazara todo, ese grupo desaparecería del
+ * sistema junto con su ingreso — justo la plata que queremos registrada. Por eso:
+ *
+ *   - grupo que está en el Excel      → manda el Excel (trae los pagos al día)
+ *   - grupo que YA se alojó y no está → se conserva (es historia contable)
+ *   - grupo FUTURO que ya no está     → se saca (se canceló o se repactó), pero
+ *                                       se informa cuál para que no sea silencioso
+ */
+export function mergeGrupos(existentes: Grupo[], delExcel: Grupo[], hoy = new Date()): ResultadoImport {
+  const dia = hoy.toISOString().slice(0, 10)
+  const enExcel = new Map(delExcel.map(g => [g.id, g]))
+  const previos = new Map(existentes.map(g => [g.id, g]))
+
+  const archivados = existentes.filter(g => !enExcel.has(g.id) && g.egreso < dia)
+  const quitados = existentes.filter(g => !enExcel.has(g.id) && g.egreso >= dia)
+
+  return {
+    grupos: [...delExcel, ...archivados].sort((a, b) => a.ingreso.localeCompare(b.ingreso)),
+    nuevos: delExcel.filter(g => !previos.has(g.id)).length,
+    actualizados: delExcel.filter(g => previos.has(g.id)).length,
+    archivados,
+    quitados,
+  }
+}

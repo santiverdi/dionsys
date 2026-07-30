@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parseGruposRows } from '../../src/lib/parseGrupos'
 import {
   getResumenGrupos, gruposProximos, gruposConDeudaVencida, gruposSobrepagados,
-  ingresosPorMes, ingresoGruposMes, grupoDeFecha, estaEnGrupo,
+  ingresosPorMes, ingresoGruposMes, grupoDeFecha, estaEnGrupo, mergeGrupos,
 } from '../../src/lib/grupos'
 import type { Grupo } from '../../src/types'
 
@@ -123,5 +123,50 @@ describe('grupoDeFecha', () => {
   it('sin grupos no rompe', () => {
     expect(estaEnGrupo('2026-09-09', [] as Grupo[])).toBe(false)
     expect(getResumenGrupos([]).contratado).toBe(0)
+  })
+})
+
+// La planilla del dueño SOLO tiene los grupos que vienen: cuando uno se aloja,
+// lo saca. Si el import reemplazara todo, ese grupo (y su ingreso) desaparecería.
+describe('mergeGrupos', () => {
+  const [coro, club] = grupos   // CORO 08→11/09, CLUB 19→23/10
+
+  it('conserva el grupo que YA se alojó y salió de la planilla', () => {
+    // Estamos en octubre: el CORO ya pasó y el Excel solo trae al CLUB.
+    const r = mergeGrupos(grupos, [club], new Date('2026-10-01'))
+    expect(r.grupos.map(g => g.nombre)).toEqual(['CORO', 'CLUB'])
+    expect(r.archivados.map(g => g.nombre)).toEqual(['CORO'])
+    expect(r.quitados).toEqual([])
+  })
+
+  it('saca el grupo FUTURO que ya no figura, y lo informa', () => {
+    // Seguimos en agosto: el CORO todavía no se alojó y desapareció del Excel.
+    const r = mergeGrupos(grupos, [club], new Date('2026-08-01'))
+    expect(r.grupos.map(g => g.nombre)).toEqual(['CLUB'])
+    expect(r.quitados.map(g => g.nombre)).toEqual(['CORO'])
+    expect(r.archivados).toEqual([])
+  })
+
+  it('lo del Excel pisa lo guardado (trae los pagos al día)', () => {
+    const coroPagado = { ...coro, pagos: [3_600_000], saldo: 0 }
+    const r = mergeGrupos(grupos, [coroPagado, club], new Date('2026-08-01'))
+    expect(r.grupos.find(g => g.nombre === 'CORO')!.saldo).toBe(0)
+    expect(r).toMatchObject({ nuevos: 0, actualizados: 2 })
+  })
+
+  it('cuenta los nuevos', () => {
+    const r = mergeGrupos([coro], [coro, club], new Date('2026-08-01'))
+    expect(r).toMatchObject({ nuevos: 1, actualizados: 1 })
+  })
+
+  it('la primera importación entra entera', () => {
+    const r = mergeGrupos([], grupos, new Date('2026-08-01'))
+    expect(r.grupos).toHaveLength(2)
+    expect(r).toMatchObject({ nuevos: 2, actualizados: 0 })
+  })
+
+  it('el ingreso de un grupo ya alojado sigue contando en su mes', () => {
+    const r = mergeGrupos(grupos, [club], new Date('2026-10-01'))
+    expect(ingresoGruposMes(2026, 9, r.grupos)).toBe(3_600_000)
   })
 })
