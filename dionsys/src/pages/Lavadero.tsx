@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
 import { getStockRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, getRetirosPendientes, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION, type RetiroPendiente, type StockPrenda } from '../lib/lavadero'
 import { extractRemitoLavadero } from '../lib/invoiceExtract'
+import LavaderoPrediccion from '../components/LavaderoPrediccion'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import type { TipoMovLavadero, LavaderoPrenda } from '../types'
@@ -656,6 +657,10 @@ export default function Lavadero() {
           caja fuerte; se pueden pagar dos quincenas juntas). Este costo entra solo como egreso del
           mes — no lo cargues además como factura de proveedor.
         </p>
+
+        {/* Cuánta ropa justifica la ocupación del período que se está liquidando:
+            se controla ANTES de pagar. Sigue las mismas fechas del form. */}
+        <LavaderoPrediccion movimientos={movimientos} desde={liqDesde} hasta={liqHasta} />
 
         <div className="rounded-lg border border-navy-100 p-2.5 mb-3">
             <div className="flex items-center gap-2 mb-2">
