@@ -3,9 +3,16 @@
 // corresponde a esa reserva. Las plazas (personas) salen del parte de
 // habitaciones — en el parte "plazas" son personas reales durmiendo.
 //
-// Regla del hotel: la single tiene precio fijo por noche; de la doble a la
-// quíntuple se cobra POR PERSONA por noche. "efectivo" es el precio con
-// descuento por pagar en efectivo. Un cobro que cuadra = n noches × tarifa.
+// Regla del hotel: la "single" NO es un tipo de habitación — el hotel no tiene
+// ninguna de 1 cama. Es la tarifa de OCUPACIÓN SIMPLE: una sola persona en una
+// habitación paga un precio fijo por noche (60.000). De 2 personas en adelante
+// se cobra POR PERSONA por noche (2 pax = 2 × 35.000 = 70.000). Por eso el
+// precio se elige por las personas del parte y no por la capacidad del cuarto.
+// "efectivo" es el precio con descuento por pagar en efectivo. Un cobro que
+// cuadra = n noches × tarifa.
+//
+// La capacidad real de la habitación (maestro en src/data/hotel.ts) no entra en
+// el precio, pero sí en el control de ocupación: ver flagsDeOcupacion().
 
 import type { CajaParte, ParteHabitaciones, CajaMovimiento } from '../types'
 import { fechaConfiable, ingresosNetos, type CajaFlag } from './cajaControl'
