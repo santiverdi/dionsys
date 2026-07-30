@@ -32,6 +32,7 @@ import Facturas from './pages/Facturas'
 import ControlCaja from './pages/ControlCaja'
 import CerrarTurno from './pages/CerrarTurno'
 import Lavadero from './pages/Lavadero'
+import Hotel from './pages/Hotel'
 import SyncPanel from './pages/SyncPanel'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -79,6 +80,7 @@ function AppRoutes() {
         <Route path="control-caja" element={<RoleRoute path="/control-caja"><ControlCaja /></RoleRoute>} />
         <Route path="cerrar-turno" element={<RoleRoute path="/cerrar-turno"><CerrarTurno /></RoleRoute>} />
         <Route path="lavadero" element={<RoleRoute path="/lavadero"><Lavadero /></RoleRoute>} />
+        <Route path="hotel" element={<RoleRoute path="/hotel"><Hotel /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Solo admin. */}
