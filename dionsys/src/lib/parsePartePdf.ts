@@ -218,17 +218,31 @@ export function parseParteItems(items: PdfTextItem[], importedBy: string, fileNa
   // --- Habitaciones libres ---
   // Cada libre = un estado de limpieza con su nº de habitación inmediatamente a la
   // izquierda en la misma columna. Cuidado: una fila puede mezclar columnas (una
-  // ocupada de la col. 1 cae en la misma y que una libre de la col. 3), y los
-  // totales "Sucia/Limpia/Mantenimiento" también son estados — pero esos tienen un
-  // número a su derecha, mientras que el estado de una libre es lo último de su fila.
+  // ocupada de la col. 1 cae en la misma fila que una libre de la col. 3), y los
+  // totales "Sucia/Limpia/Mantenimiento" también son estados — esos se reconocen
+  // porque tienen SU número a la derecha.
+  //
+  // OJO (bug real, 2026-07-30): el bloque de totales cae en las MISMAS filas
+  // visuales que las últimas libres, así:
+  //     304@53   Limpia@232      Limpia@291   23@539
+  //     ↑hab     ↑libre real     ↑totales     ↑nº del total
+  // Buscar "algún número a la derecha" en toda la fila mataba la libre real (acá
+  // la 304). Se perdían ~3 habitaciones en 81 de 119 partes cargados, y como el
+  // parte quedaba corto sin avisar, se ensuciaba la ocupación y las estadías
+  // ocultas. Por eso solo se miran los ítems hasta el próximo CORTE: otro estado
+  // o una etiqueta "Total…". Si antes del corte hay un número, ese estado es el
+  // del bloque de totales; si no, es una libre de verdad.
   const MAX_GAP = 250
+  const esCorte = (s: string) => !!estadoOf(s) || /^total/i.test(s.trim())
   const libres: HabitacionLibre[] = []
   for (const r of rows) {
     for (const est of r.items) {
       const estado = estadoOf(est.str)
       if (!estado) continue
-      // Si hay un número a la derecha, es la fila de totales, no una libre.
-      if (r.items.some(i => i.x > est.x && /^\d+$/.test(i.str.trim()))) continue
+      const derecha = r.items.filter(i => i.x > est.x).sort((a, b) => a.x - b.x)
+      const corte = derecha.findIndex(i => esCorte(i.str))
+      const propios = corte === -1 ? derecha : derecha.slice(0, corte)
+      if (propios.some(i => /^\d+$/.test(i.str.trim()))) continue
       // Habitación más cercana a la izquierda, dentro de la misma columna.
       const hab = r.items
         .filter(i => i.x < est.x && est.x - i.x < MAX_GAP && isHab(i.str))

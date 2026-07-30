@@ -216,6 +216,24 @@ export function getParteFlags(
     })
   }
 
+  // El PDF imprime sus propios totales: si no coinciden con lo que se leyó, se
+  // perdieron renglones al parsear. Es la red de seguridad contra un bug de
+  // lectura que corrompa el parte en silencio (pasó: el bloque de totales caía
+  // en la misma fila que las últimas libres y se comían 3 habitaciones).
+  const perdidas = [
+    parte.totalOcupadas !== parte.ocupadas.length
+      ? `ocupadas (dice ${parte.totalOcupadas}, se leyeron ${parte.ocupadas.length})` : '',
+    parte.totalLibres !== parte.libres.length
+      ? `libres (dice ${parte.totalLibres}, se leyeron ${parte.libres.length})` : '',
+  ].filter(Boolean)
+  if (perdidas.length) {
+    flags.push({
+      level: 'error',
+      tipo: 'parte_mal_leido',
+      mensaje: `Los totales impresos del parte no coinciden con lo leído: ${perdidas.join(' y ')}. El parte quedó incompleto — volvé a importarlo.`,
+    })
+  }
+
   // Estadías cortas que el parte no registró como ocupadas (huella de limpieza).
   const ocultas = getEstadiasOcultas(parte, parteAnterior)
   if (ocultas.length) {
