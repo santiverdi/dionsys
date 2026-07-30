@@ -147,6 +147,37 @@ export function fmtFaltantes(nums: number[]): string {
   return `${nums.length} cajas (Nº ${nums[0]} a Nº ${nums[nums.length - 1]})`
 }
 
+/**
+ * Lo que se cobró SIN que entrara plata al cajón: tarjeta, transferencia,
+ * cheque, otros. Se usan los movimientos crudos (no `ingresosNetos`) porque es
+ * la misma cuenta que hace el PMS para su saldo.
+ *
+ * Verificado sobre las 128 cajas reales: el PMS calcula
+ *     saldoFinal = apertura + TODOS los ingresos − egresos − retiros
+ * o sea que la tarjeta ENTRA al saldo aunque no sea efectivo en mano.
+ */
+export function ingresosNoEfectivo(caja: CajaParte): number {
+  return caja.ingresos.reduce((s, m) => s + ((m.total || 0) - (m.efectivo || 0)), 0)
+}
+
+/**
+ * ¿El descuadre de apertura se explica porque esta caja abrió contando SOLO EL
+ * EFECTIVO del cajón, en vez de arrastrar el saldo del PMS?
+ *
+ * Caso real (caja 8 del 26/07/2026): Santiago dejó la caja 7 SIN CERRAR y
+ * Gastón abrió la 8 contando la plata física. Los $59.528,37 que "faltaban"
+ * eran exactamente lo que la caja 7 había cobrado con tarjeta/transferencia:
+ * plata que el PMS suma al saldo pero que nunca estuvo en el cajón.
+ *
+ * No es plata perdida, pero rompe la cadena del saldo, así que se sigue
+ * marcando — con la explicación, que es lo que faltaba.
+ */
+export function descuadrePorNoEfectivo(caja: CajaParte, cajaAnterior: CajaParte): boolean {
+  const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
+  const noEfectivo = ingresosNoEfectivo(cajaAnterior)
+  return noEfectivo > EPS && Math.abs(diff + noEfectivo) <= EPS
+}
+
 export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFlag[] {
   const flags: CajaFlag[] = []
 
@@ -159,10 +190,19 @@ export function getCajaFlags(caja: CajaParte, cajaAnterior?: CajaParte): CajaFla
     if (gap === 1) {
       const diff = caja.aperturaMonto - cajaAnterior.saldoFinal
       if (Math.abs(diff) > EPS) {
+        const base = `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`
+        // Si la diferencia es EXACTAMENTE lo cobrado sin efectivo, no es plata
+        // que falte: esta caja abrió contando el cajón.
+        const explicado = descuadrePorNoEfectivo(caja, cajaAnterior)
+        const sinCerrar = !cajaAnterior.cierreAt
+          ? ` La caja ${cajaAnterior.nroCaja} además quedó sin cerrar, que es lo que suele llevar a contar el cajón a mano.`
+          : ''
         flags.push({
           level: 'error',
           tipo: 'continuidad',
-          mensaje: `La apertura (${fmt(caja.aperturaMonto)}) no coincide con el cierre de la caja ${cajaAnterior.nroCaja} (${fmt(cajaAnterior.saldoFinal)}). Diferencia ${fmt(diff)}.`,
+          mensaje: explicado
+            ? `${base} Es exactamente lo que la caja ${cajaAnterior.nroCaja} cobró con tarjeta o transferencia (${fmt(ingresosNoEfectivo(cajaAnterior))}): esta abrió contando solo el efectivo del cajón. No es plata que falte, pero corta la cadena del saldo.${sinCerrar}`
+            : base,
         })
       }
     } else if (gap > 1 && gap <= MAX_SALTO_NROS) {

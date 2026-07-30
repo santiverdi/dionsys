@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getCajaFlags, faltantesAntesDe, fmtFaltantes, getCajaResumen, ingresosNetos } from '../../src/lib/cajaControl'
+import { getCajaFlags, faltantesAntesDe, fmtFaltantes, getCajaResumen, ingresosNetos, ingresosNoEfectivo, descuadrePorNoEfectivo } from '../../src/lib/cajaControl'
 import type { CajaParte, CajaMovimiento } from '../../src/types'
 
 function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
@@ -162,5 +162,55 @@ describe('getCajaFlags — numeración y continuidad', () => {
     // Caja vieja 91 contra la nueva 36: distancia circular 55 → ni descuadre ni falta_caja.
     const flags = getCajaFlags(mkCaja({ nroCaja: 91, aperturaMonto: 999 }), mkCaja({ nroCaja: 36, saldoFinal: 5 }))
     expect(flags.some(f => f.tipo === 'continuidad' || f.tipo === 'falta_caja')).toBe(false)
+  })
+})
+
+// Caso real: caja 8 del 26/07/2026. Santiago dejó la caja 7 sin cerrar y Gastón
+// abrió la 8 contando el cajón. Los $59.528,37 que "faltaban" eran justo lo que
+// la 7 había cobrado con tarjeta: plata que el PMS suma al saldo pero que nunca
+// estuvo en el cajón.
+describe('descuadre de apertura por contar solo el efectivo', () => {
+  // 7: abre 1.453.390,26 + cobra 1.030.028,37 (970.500 en efectivo) - retiro 1.600.000
+  const c7 = mkCaja({
+    nroCaja: 7,
+    cierreAt: undefined,
+    aperturaMonto: 1_453_390.26,
+    saldoFinal: 883_418.63,
+    ingresos: [
+      mov({ efectivo: 970_500, total: 970_500 }),
+      mov({ tarjetas: 59_528.37, total: 59_528.37 }),
+    ],
+    egresos: [mov({ observacion: 'RETIRO EFECTIVO', total: 1_600_000 })],
+  })
+  const c8 = mkCaja({ nroCaja: 8, aperturaMonto: 823_890.26, saldoFinal: 886_890.26 })
+
+  it('ingresosNoEfectivo suma lo que no entró al cajón', () => {
+    expect(ingresosNoEfectivo(c7)).toBeCloseTo(59_528.37, 2)
+  })
+
+  it('reconoce que la diferencia es exactamente lo cobrado sin efectivo', () => {
+    expect(descuadrePorNoEfectivo(c8, c7)).toBe(true)
+  })
+
+  it('lo explica en el flag en vez de dejar un descuadre pelado', () => {
+    const flag = getCajaFlags(c8, c7).find(f => f.tipo === 'continuidad')
+    expect(flag?.level).toBe('error')
+    expect(flag?.mensaje).toContain('tarjeta o transferencia')
+    expect(flag?.mensaje).toContain('No es plata que falte')
+    expect(flag?.mensaje).toContain('quedó sin cerrar')
+  })
+
+  it('un descuadre que NO cuadra con el no-efectivo queda como estaba', () => {
+    const otra = mkCaja({ nroCaja: 8, aperturaMonto: 800_000 })
+    expect(descuadrePorNoEfectivo(otra, c7)).toBe(false)
+    const flag = getCajaFlags(otra, c7).find(f => f.tipo === 'continuidad')
+    expect(flag?.mensaje).toContain('no coincide')
+    expect(flag?.mensaje).not.toContain('No es plata que falte')
+  })
+
+  it('si la caja anterior cobró todo en efectivo, no aplica la explicación', () => {
+    const soloEfectivo = mkCaja({ nroCaja: 7, saldoFinal: 100_000, ingresos: [mov({ efectivo: 5_000, total: 5_000 })] })
+    const sig = mkCaja({ nroCaja: 8, aperturaMonto: 95_000 })
+    expect(descuadrePorNoEfectivo(sig, soloEfectivo)).toBe(false)
   })
 })
