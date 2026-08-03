@@ -20,7 +20,7 @@ import {
 } from '../lib/negocio'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { exportMonthlyReport } from '../utils/monthlyExport'
-import { getCurrentMonth, getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
+import { getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import { employees } from '../data/mock'
 
@@ -42,7 +42,7 @@ function fmtVto(s?: string): string {
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
 }
 
-export default function Negocio() {
+export default function Negocio({ year, month }: { year: number; month: number }) {
   const { cajas } = useCajas()
   const { partes } = usePartes()
   const { orders } = useOrders()
@@ -55,21 +55,31 @@ export default function Negocio() {
   const { records } = useOccupancy()
   const { liquidaciones: lavaderoLiqs } = useLavadero()
 
-  const cur = useMemo(() => getCurrentMonth(), [])
+  const cur = useMemo(() => ({ year, month }), [year, month])
   const prev = useMemo(() => getPreviousMonth(cur.year, cur.month), [cur])
+  // La tendencia termina en el mes que se está mirando (no en hoy), así al
+  // retroceder de mes se ven los 6 meses que llegan hasta ese mes.
+  const finTendencia = useMemo(() => new Date(cur.year, cur.month - 1, 15), [cur])
 
   const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs), [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
   const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs), [prev, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
   const ingresos = useMemo(() => getIngresosMes(cur.year, cur.month, cajas), [cur, cajas])
   const expenses = useMemo(() => getMonthlyExpenses(cur.year, cur.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios), [cur, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
-  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, new Date(), pagosSueldos, lavaderoLiqs), [cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
+  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, finTendencia, pagosSueldos, lavaderoLiqs), [finTendencia, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
   const costoHab = useMemo(
     () => getCostoHabitacion(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs),
     [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs],
   )
   const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
   const retirosPorMes = useMemo(() => getRetirosDeCajaPorMes(cajas), [cajas])
+  // El acordeón de retiros arranca abierto en el mes que se está mirando, y se
+  // reacomoda solo cuando cambia el mes elegido (sin pisar lo que abra el usuario).
   const [mesAbierto, setMesAbierto] = useState<string | null>(monthKey(cur.year, cur.month))
+  const [mesSeguido, setMesSeguido] = useState(monthKey(cur.year, cur.month))
+  if (mesSeguido !== monthKey(cur.year, cur.month)) {
+    setMesSeguido(monthKey(cur.year, cur.month))
+    setMesAbierto(monthKey(cur.year, cur.month))
+  }
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
   const revenue = useMemo(() => getRevenueOcupacion(cur.year, cur.month, cajas, records), [cur, cajas, records])
@@ -115,7 +125,7 @@ export default function Negocio() {
       {sinDatos && (
         <div className="text-center py-10 bg-white rounded-xl border border-navy-100 mb-4">
           <Scale size={40} className="mx-auto text-navy-200 mb-2" />
-          <p className="text-navy-400 text-sm">Sin cajas ni gastos cargados este mes todavía.</p>
+          <p className="text-navy-400 text-sm">Sin cajas ni gastos cargados en {monthLabel(cur.year, cur.month)}.</p>
         </div>
       )}
 

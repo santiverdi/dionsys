@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  Sparkles, TrendingUp, TrendingDown, Minus, ChevronLeft, ChevronRight,
+  Sparkles, TrendingUp, TrendingDown, Minus,
   ArrowUpCircle, Package, Receipt, BedDouble, AlertTriangle, RefreshCw, Shirt,
 } from 'lucide-react'
 import { useCajas } from '../context/CajaContext'
@@ -14,7 +14,7 @@ import { useOccupancy } from '../context/OccupancyContext'
 import { useLavadero } from '../context/LavaderoContext'
 import { getAnalisisMes, type RubroComparado } from '../lib/analisisMes'
 import { analizarMesIA, getAnalisisCacheado, cachearAnalisis } from '../lib/analisisIA'
-import { getCurrentMonth, getPreviousMonth, getNextMonth, monthLabel } from '../utils/dateRange'
+import { monthLabel } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import type { Delta } from '../utils/monthlyMetrics'
 
@@ -60,7 +60,7 @@ function Section({ icon: Icon, title, children }: { icon: typeof Sparkles; title
   )
 }
 
-export default function AnalisisMes() {
+export default function AnalisisMes({ year, month }: { year: number; month: number }) {
   const { cajas } = useCajas()
   const { partes } = usePartes()
   const { orders } = useOrders()
@@ -70,10 +70,6 @@ export default function AnalisisMes() {
   const { pagos: pagosSueldos } = useSueldos()
   const { records } = useOccupancy()
   const { movimientos: lavaderoMovs, liquidaciones: lavaderoLiqs } = useLavadero()
-
-  const actual = useMemo(() => getCurrentMonth(), [])
-  const [{ year, month }, setMes] = useState(actual)
-  const esMesActual = year === actual.year && month === actual.month
 
   const a = useMemo(
     () => getAnalisisMes(year, month, {
@@ -87,10 +83,11 @@ export default function AnalisisMes() {
   const [iaBusy, setIaBusy] = useState(false)
   const [iaError, setIaError] = useState('')
 
-  function cambiarMes(dir: -1 | 1) {
-    const next = dir === -1 ? getPreviousMonth(year, month) : getNextMonth(year, month)
-    setMes(next)
-    setIaTexto(getAnalisisCacheado(`${next.year}-${String(next.month).padStart(2, '0')}`)?.texto ?? null)
+  // Al cambiar de mes se muestra el análisis guardado de ESE mes (o nada).
+  const [mesSeguido, setMesSeguido] = useState(a.mes)
+  if (mesSeguido !== a.mes) {
+    setMesSeguido(a.mes)
+    setIaTexto(getAnalisisCacheado(a.mes)?.texto ?? null)
     setIaError('')
   }
 
@@ -114,17 +111,9 @@ export default function AnalisisMes() {
 
   return (
     <div>
-      {/* Selector de mes */}
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <p className="text-sm text-navy-500">
-          Qué subió y qué bajó contra {a.labelAnterior}, con el detalle de cada rubro.
-        </p>
-        <div className="flex items-center gap-1 bg-white border border-navy-100 rounded-xl px-1 py-1 shrink-0">
-          <button onClick={() => cambiarMes(-1)} className="p-1.5 rounded-lg text-navy-500 hover:bg-navy-50"><ChevronLeft size={16} /></button>
-          <span className="text-xs font-bold text-navy-800 capitalize w-28 text-center">{monthLabel(year, month)}</span>
-          <button onClick={() => cambiarMes(1)} disabled={esMesActual} className={`p-1.5 rounded-lg ${esMesActual ? 'text-navy-200' : 'text-navy-500 hover:bg-navy-50'}`}><ChevronRight size={16} /></button>
-        </div>
-      </div>
+      <p className="text-sm text-navy-500 mb-4">
+        {monthLabel(year, month)}: qué subió y qué bajó contra {a.labelAnterior}, con el detalle de cada rubro.
+      </p>
 
       {/* Datos faltantes para que el análisis sea real */}
       {faltantes.length > 0 && (
