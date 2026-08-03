@@ -102,6 +102,20 @@ describe('getGastosCaja', () => {
     expect(r.totalGastosCaja).toBe(78500)
   })
 
+  it('el retiro con numeral ("CAJA N°26") tampoco es gasto (caso real caja 26 de Gaston)', () => {
+    const cajas = [mkCaja({ nroCaja: 26, conserje: 'Gaston', egresos: [
+      mov({ observacion: '$700.000. CAJA N°26. HERRERA', efectivo: 700000, total: 700000 }),
+      mov({ observacion: '$500.000. CAJA Nº 26. HERRERA', efectivo: 500000, total: 500000 }),
+      mov({ observacion: '$300.000. CAJA NRO 26. HERRERA', efectivo: 300000, total: 300000 }),
+      mov({ observacion: '$200.000. CAJA #26. HERRERA', efectivo: 200000, total: 200000 }),
+      mov({ observacion: 'medialunas 2 cajas de facturas', efectivo: 15000, total: 15000 }), // gasto real
+    ] })]
+    expect(getGastosCaja(cajas).map(x => x.observacion)).toEqual(['medialunas 2 cajas de facturas'])
+    const r = getDineroResumen(cajas)
+    expect(r.totalRetiros).toBe(1700000)
+    expect(r.totalGastosCaja).toBe(15000)
+  })
+
   it('la anulación de un cobro mal cargado no es gasto ni cobro (caso real caja 66)', () => {
     const cajas = [mkCaja({ nroCaja: 66, conserje: 'Gaston',
       ingresos: [

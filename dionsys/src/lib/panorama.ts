@@ -52,12 +52,15 @@ export function conserjeDeParte(p: ParteHabitaciones, cajas?: CajaParte[]): stri
 // compras a proveedores):
 //   - literal "RETIRO EFECTIVO"
 //   - estilo del conserje: el monto y el Nº de caja de donde sale la plata, p.ej.
-//     "$1.000.000. C-96. Herrera" o "$2.500.000. CAJA 5. GASTON". Ojo: "caja N"
-//     pide el número pegado ("CAJA 5"), así "3 cajas de medialunas" sigue gasto.
+//     "$1.000.000. C-96. Herrera" o "$2.500.000. CAJA 5. GASTON". El número puede
+//     venir con marca de numeral ("CAJA N°26", "CAJA Nº 26", "CAJA NRO 26",
+//     "CAJA #26"), que es como lo anota Gaston. Ojo: entre "caja" y el número solo
+//     se acepta esa marca, así "3 cajas de medialunas" sigue siendo gasto.
+const NUMERAL = String.raw`(?:n\s*(?:ro|o|[°º.])?\s*|#\s*)?`
 const RETIRO_EFECTIVO = [
   /retiro\s+efectivo/i,
-  /\bc\s*-\s*\d{1,3}\b/i,       // "C-5", "C-100"
-  /\bcaja\s*-?\s*\d{1,3}\b/i,   // "CAJA 5", "CAJA-5"
+  new RegExp(String.raw`\bc\s*-\s*${NUMERAL}\d{1,3}\b`, 'i'),      // "C-5", "C-100"
+  new RegExp(String.raw`\bcaja\s*-?\s*${NUMERAL}\d{1,3}\b`, 'i'),  // "CAJA 5", "CAJA-5", "CAJA N°26"
 ]
 const esRetiroEfectivo = (m: CajaMovimiento) =>
   RETIRO_EFECTIVO.some(re => re.test(m.observacion))
