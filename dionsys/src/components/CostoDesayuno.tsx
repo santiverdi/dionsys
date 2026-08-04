@@ -7,6 +7,7 @@ import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { usePartes } from '../context/ParteContext'
 import { getCostoDesayuno } from '../lib/desayunoCosto'
+import { getCosteoDeposito } from '../lib/costoUnitario'
 import { formatMontoCurrency } from '../utils/validators'
 
 function Dato({ label, value, sub, tone = 'navy' }: { label: string; value: string; sub?: string; tone?: 'navy' | 'green' | 'amber' }) {
@@ -25,9 +26,11 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
   const { pedidos, movements, items, suppliers } = useStock()
   const { partes } = usePartes()
 
+  // Precios por unidad sacados de las facturas de los pedidos ya cargados.
+  const costeo = useMemo(() => getCosteoDeposito(pedidos, items, movements), [pedidos, items, movements])
   const r = useMemo(
-    () => getCostoDesayuno(year, month, { orders, pedidos, movements, items, suppliers, partes }),
-    [year, month, orders, pedidos, movements, items, suppliers, partes],
+    () => getCostoDesayuno(year, month, { orders, pedidos, movements, items, suppliers, partes, precios: costeo.precios }),
+    [year, month, orders, pedidos, movements, items, suppliers, partes, costeo],
   )
 
   if (r.compras.total === 0 && r.consumo.length === 0) {
@@ -42,18 +45,29 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
     <div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         <Dato
-          label="Gasto del desayuno"
+          label="Comprado en el mes"
           value={formatMontoCurrency(r.compras.total)}
-          sub="compras del mes"
+          sub={`panadería y lácteos ${formatMontoCurrency(r.compras.panaderia + r.compras.lacteos)} · depósito ${formatMontoCurrency(r.compras.deposito)}`}
         />
         <Dato
-          label="Por huésped"
+          label="Por huésped (comprado)"
           value={r.desayunos > 0 ? formatMontoCurrency(r.costoPorHuesped) : '—'}
           sub={r.desayunos > 0 ? `${r.desayunos} desayunos` : 'sin partes cargados'}
+        />
+        <Dato
+          label="Consumido del depósito"
+          value={r.costoConsumido > 0 ? formatMontoCurrency(r.costoConsumido) : '—'}
+          sub={r.productosSinCostear > 0
+            ? `${r.productosCosteados} de ${r.productosCosteados + r.productosSinCostear} productos con precio`
+            : r.costoConsumido > 0 ? 'todos los productos con precio' : 'sin precios todavía'}
+          tone={r.productosSinCostear > 0 ? 'amber' : 'green'}
+        />
+        <Dato
+          label="Por huésped (consumido)"
+          value={r.costoConsumidoPorHuesped > 0 ? formatMontoCurrency(r.costoConsumidoPorHuesped) : '—'}
+          sub="lo que realmente salió"
           tone="green"
         />
-        <Dato label="Panadería + lácteos" value={formatMontoCurrency(r.compras.panaderia + r.compras.lacteos)} sub="recepción diaria" />
-        <Dato label="Depósito" value={formatMontoCurrency(r.compras.deposito)} sub="proveedores de desayunador" />
       </div>
 
       {r.desayunos === 0 && (
@@ -104,7 +118,8 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
                   <th className="text-left py-1.5 pr-2">Producto</th>
                   <th className="px-2 text-left">Salió del depósito</th>
                   <th className="px-2 text-center">Entró</th>
-                  <th className="pl-2 text-right">Por huésped</th>
+                  <th className="px-2 text-right">Por huésped</th>
+                  <th className="pl-2 text-right">Costó</th>
                 </tr>
               </thead>
               <tbody>
@@ -120,10 +135,22 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
                       </div>
                     </td>
                     <td className="px-2 text-center text-navy-500 whitespace-nowrap">{c.entradas || '—'}</td>
-                    <td className="pl-2 text-right text-navy-700 whitespace-nowrap">
+                    <td className="px-2 text-right text-navy-700 whitespace-nowrap">
                       {r.desayunos > 0
                         ? <>{c.porHuesped} <span className="text-navy-400">({c.porCada100} c/100)</span></>
                         : '—'}
+                    </td>
+                    <td className="pl-2 text-right whitespace-nowrap">
+                      {c.costo != null ? (
+                        <>
+                          <span className="font-semibold text-navy-800">{formatMontoCurrency(c.costo)}</span>
+                          <span className="block text-[10px] text-navy-400">
+                            {formatMontoCurrency(c.precioUnitario!)}/{c.unidad}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-navy-300">sin precio</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -133,11 +160,34 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
         </>
       )}
 
-      <p className="text-[10px] text-navy-400 mt-3 flex items-start gap-1.5">
+      {/* Termómetro del costeo: de dónde salen los precios y cuánto falta. */}
+      <div className="mt-3 rounded-lg bg-navy-50 p-2.5">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-navy-500 mb-1">
+          Precios sacados de las facturas
+        </p>
+        <p className="text-[11px] text-navy-600">
+          {costeo.itemsCosteados > 0
+            ? <>Hay precio para <strong>{costeo.itemsCosteados} producto(s)</strong> del depósito, sacado de
+              las facturas de los pedidos. Se costeó {formatMontoCurrency(costeo.montoCosteado)} de compras.</>
+            : <>Todavía no se pudo sacar el precio de ningún producto.</>}
+          {costeo.montoSinCostear > 0 && (
+            <> Quedaron <strong>{formatMontoCurrency(costeo.montoSinCostear)}</strong> sin bajar a productos.</>
+          )}
+        </p>
+        {costeo.sinCostear.length > 0 && (
+          <p className="text-[10px] text-navy-400 mt-1">
+            Los motivos más pesados: {[...new Set(costeo.sinCostear.slice(0, 5).map(s => s.motivo))].join(', ')}.
+            Una factura sin renglones, o con renglones que no se pueden asociar a un solo producto, no se
+            reparte a ojo: queda sin costear.
+          </p>
+        )}
+      </div>
+
+      <p className="text-[10px] text-navy-400 mt-2 flex items-start gap-1.5">
         <Croissant size={12} className="shrink-0 mt-0.5" />
         <span>
-          La plata es lo COMPRADO en el mes; el consumo es lo que SALIÓ del depósito. No son lo mismo:
-          no hay precio por producto cargado, así que el consumo va en unidades y no en pesos.
+          "Comprado" es lo que se pagó este mes; "consumido" es lo que salió del depósito valorizado al
+          precio de la última factura de cada producto. No son lo mismo, y esa diferencia es stock.
           Los desayunos salen de los partes de la noche (la gente que durmió).
         </span>
         <Milk size={12} className="shrink-0 mt-0.5" />

@@ -158,3 +158,32 @@ describe('getCostoDesayuno', () => {
     expect(r.totalSalidas).toBe(10)
   })
 })
+
+describe('getCostoDesayuno con precios', () => {
+  it('valoriza el consumo con el precio de las facturas y deja sin costear lo que no tiene precio', () => {
+    const partes = [parteNoche('2026-07-10', [ocupada('301', 50)])]
+    const movements = [
+      mov({ itemId: 'des-1', itemName: 'Medialunas', type: 'salida', quantity: 10 }),
+      mov({ itemId: 'des-2', itemName: 'Café', type: 'salida', quantity: 4 }),
+    ]
+    // Solo las medialunas tienen precio: $3.000 la docena.
+    const precios = new Map([
+      ['des-1', {
+        itemId: 'des-1', nombre: 'Medialunas', unidad: 'docena', precioPorUnidad: 3000,
+        fecha: '2026-07-05', origen: 'proveedor-un-producto' as const,
+        proveedor: 'Panaderia', pedidoId: 'p1',
+      }],
+    ])
+    const r = getCostoDesayuno(2026, 7, inputs({ partes, movements, precios }))
+
+    expect(r.costoConsumido).toBe(30000)            // 10 docenas x $3.000
+    expect(r.costoConsumidoPorHuesped).toBe(600)    // 30.000 / 50 desayunos
+    expect(r.productosCosteados).toBe(1)
+    expect(r.productosSinCostear).toBe(1)           // el café no tiene precio
+
+    const medialunas = r.consumo.find(c => c.item === 'Medialunas')!
+    expect(medialunas.costo).toBe(30000)
+    expect(medialunas.precioUnitario).toBe(3000)
+    expect(r.consumo.find(c => c.item === 'Café')!.costo).toBeUndefined()
+  })
+})

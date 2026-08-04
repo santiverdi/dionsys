@@ -26,6 +26,7 @@
 import type {
   Order, PedidoSemanal, StockMovement, DepositoItem, DepositoSupplier, ParteHabitaciones,
 } from '../types'
+import type { PrecioItem } from './costoUnitario'
 import { partesNochePorDia } from './desayuno'
 import { isInMonth, monthKey } from '../utils/dateRange'
 
@@ -41,6 +42,11 @@ export interface ConsumoItem {
   entradas: number       // repuesto en el mes
   porHuesped: number     // salidas ÷ desayunos servidos
   porCada100: number     // lo mismo pero por cada 100 huéspedes (más legible)
+  // Valorización: solo si el producto tiene precio derivado de una factura
+  // (ver costoUnitario.ts). Sin precio quedan en undefined — nunca estimado.
+  precioUnitario?: number
+  precioFecha?: string
+  costo?: number         // salidas × precio: lo que costó lo que se consumió
 }
 
 export interface CostoDesayuno {
@@ -58,6 +64,13 @@ export interface CostoDesayuno {
   consumo: ConsumoItem[]     // por producto, de mayor a menor salida
   totalEntradas: number
   totalSalidas: number
+  // Costo de lo CONSUMIDO (≠ compras del mes). Solo suma los productos con
+  // precio conocido; los que no lo tienen se cuentan aparte para que se vea
+  // cuánto del consumo todavía no está costeado.
+  costoConsumido: number
+  costoConsumidoPorHuesped: number
+  productosCosteados: number
+  productosSinCostear: number
 }
 
 const round = (n: number) => Math.round(n * 100) / 100
@@ -80,6 +93,9 @@ export interface DesayunoInputs {
   items: DepositoItem[]
   suppliers: DepositoSupplier[]
   partes: ParteHabitaciones[]
+  // Precios por unidad de consumo, derivados de las facturas de los pedidos
+  // (getCosteoDeposito). Sin esto el consumo se muestra solo en unidades.
+  precios?: Map<string, PrecioItem>
 }
 
 export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs): CostoDesayuno {
@@ -130,30 +146,43 @@ export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs)
   }
 
   // --- Consumo del depósito (solo productos de desayunador) ---
-  const esDesayunador = new Map(d.items.map(i => [i.id, i]))
-  const porItem = new Map<string, { unidad: string; salidas: number; entradas: number }>()
+  const porId = new Map(d.items.map(i => [i.id, i]))
+  // Se agrupa por itemId (no por nombre) para poder buscarle el precio.
+  const porItem = new Map<string, { nombre: string; unidad: string; salidas: number; entradas: number }>()
   let totalEntradas = 0, totalSalidas = 0
 
   for (const m of d.movements) {
     if (!isInMonth(m.date, year, month)) continue
-    const item = esDesayunador.get(m.itemId)
+    const item = porId.get(m.itemId)
     if (item?.category !== 'desayunador') continue
 
-    const acc = porItem.get(m.itemName) ?? { unidad: item.unit, salidas: 0, entradas: 0 }
+    const acc = porItem.get(m.itemId) ?? { nombre: item.name || m.itemName, unidad: item.unit, salidas: 0, entradas: 0 }
     if (m.type === 'salida') { acc.salidas += m.quantity; totalSalidas += m.quantity }
     else { acc.entradas += m.quantity; totalEntradas += m.quantity }
-    porItem.set(m.itemName, acc)
+    porItem.set(m.itemId, acc)
   }
 
+  let costoConsumido = 0, productosCosteados = 0, productosSinCostear = 0
   const consumo: ConsumoItem[] = [...porItem.entries()]
-    .map(([item, v]) => ({
-      item,
-      unidad: v.unidad,
-      salidas: round(v.salidas),
-      entradas: round(v.entradas),
-      porHuesped: desayunos > 0 ? round3(v.salidas / desayunos) : 0,
-      porCada100: desayunos > 0 ? round((v.salidas / desayunos) * 100) : 0,
-    }))
+    .map(([itemId, v]) => {
+      const precio = d.precios?.get(itemId)
+      // Solo se valoriza lo que SALIÓ: es lo que se consumió.
+      const costo = precio && v.salidas > 0 ? round(v.salidas * precio.precioPorUnidad) : undefined
+      if (v.salidas > 0) {
+        if (costo != null) { costoConsumido += costo; productosCosteados++ }
+        else productosSinCostear++
+      }
+      return {
+        item: v.nombre,
+        unidad: v.unidad,
+        salidas: round(v.salidas),
+        entradas: round(v.entradas),
+        porHuesped: desayunos > 0 ? round3(v.salidas / desayunos) : 0,
+        porCada100: desayunos > 0 ? round((v.salidas / desayunos) * 100) : 0,
+        ...(precio ? { precioUnitario: round(precio.precioPorUnidad), precioFecha: precio.fecha } : {}),
+        ...(costo != null ? { costo } : {}),
+      }
+    })
     .sort((a, b) => b.salidas - a.salidas)
 
   const total = round(panaderia + lacteos + deposito)
@@ -168,5 +197,9 @@ export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs)
     consumo,
     totalEntradas: round(totalEntradas),
     totalSalidas: round(totalSalidas),
+    costoConsumido: round(costoConsumido),
+    costoConsumidoPorHuesped: desayunos > 0 ? Math.round(costoConsumido / desayunos) : 0,
+    productosCosteados,
+    productosSinCostear,
   }
 }
