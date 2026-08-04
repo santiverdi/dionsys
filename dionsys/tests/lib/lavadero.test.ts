@@ -138,6 +138,21 @@ describe('conciliarLiquidacion', () => {
     expect(c.remitosSinCopia).toEqual([])
     expect(c.copiasSinLiquidar).toEqual([])
   })
+
+  it('el mismo remito con y sin ceros a la izquierda es el mismo (caso real liq. 0025436)', () => {
+    // El talonario de copias imprime 8 dígitos y la liquidación lista el número
+    // pelado. Antes esto marcaba TODO sin copia y TODAS las copias sin liquidar.
+    const conCeros = [
+      mov({ fecha: '2026-07-05', remito: '00174789', prendas: [{ prenda: 'Sábana', cantidad: 10 }] }),
+      mov({ fecha: '2026-07-08', remito: '00174791', prendas: [{ prenda: 'Sábana', cantidad: 10 }] }),
+    ]
+    const c = conciliarLiquidacion(
+      liq({ desde: '2026-07-01', hasta: '2026-07-14', remitos: ['174789', '174791'] }),
+      conCeros,
+    )
+    expect(c.remitosSinCopia).toEqual([])
+    expect(c.copiasSinLiquidar).toEqual([])
+  })
 })
 
 describe('prendaCanonica', () => {

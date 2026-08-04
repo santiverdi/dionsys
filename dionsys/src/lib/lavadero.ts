@@ -153,7 +153,12 @@ export function getRetirosPendientes(movs: LavaderoMovimiento[]): RetiroPendient
 // ===== Conciliación de una liquidación contra las copias de remitos =====
 // La liquidación lista los remitos ORIGINALES de la quincena; la gobernanta
 // tiene las COPIAS (los movimientos cargados). Tienen que coincidir.
-const normRemito = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
+// Los ceros a la izquierda se ignoran: el talonario de copias imprime 8 dígitos
+// ("00174789") y la liquidación lista el mismo remito sin relleno ("174789").
+// Sin esto, el cruce marca TODOS los remitos como "sin copia" y al mismo tiempo
+// TODAS las copias como "sin liquidar" — visto con la liquidación real 0025436.
+const normRemito = (s: string) =>
+  s.trim().toLowerCase().replace(/\s+/g, '').replace(/^0+(?=.)/, '')
 
 export interface ConciliacionLiquidacion {
   // Remitos que la liquidación factura pero de los que NO hay copia cargada:
