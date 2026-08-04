@@ -24,16 +24,37 @@
 // entradas y las salidas juntas: si difieren mucho, el gasto no es consumo.
 
 import type {
-  Order, PedidoSemanal, StockMovement, DepositoItem, DepositoSupplier, ParteHabitaciones,
+  Order, PedidoSemanal, StockMovement, DepositoItem, DepositoSupplier, ParteHabitaciones, CajaParte,
 } from '../types'
 import type { PrecioItem } from './costoUnitario'
 import { partesNochePorDia } from './desayuno'
+import { getGastosDeCajaDetalle } from './negocio'
 import { isInMonth, monthKey } from '../utils/dateRange'
 
 // Los ids que usa la recepción diaria al crear la orden: 'panaderia' y
 // 'lacteos' son desayuno; 'verduleria' no (PanaderiaCalc, LacteosOrder,
 // VerduleriaOrder los escriben así).
 const RECEPCION = { panaderia: 'panaderia', lacteos: 'lacteos', verduleria: 'verduleria' } as const
+
+// EL DESAYUNO SE PAGA EN EFECTIVO DE LA CAJA, y ese es el grueso: el pan y los
+// lácteos llegan todos los días y el conserje los paga del cajón. Si solo se
+// miran los montos cargados en los pedidos, el desayuno da ridículamente barato.
+//
+// El egreso de caja es texto libre, así que hay que reconocerlo por el nombre
+// del proveedor. Estos son los reales del hotel (ver receptionSuppliers en
+// src/data/mock.ts): Piazza es la panadería y El Amanecer los lácteos.
+//
+// La lista es a propósito CORTA: cada palabra de más es un gasto de limpieza o
+// de mantenimiento que se cuela adentro del desayuno sin que se note. Lo que no
+// matchea queda listado como "sin clasificar" para poder revisarlo y sumar el
+// nombre que falte, en vez de adivinar.
+const CAJA_DESAYUNO = [
+  /piazza/i,                      // panadería
+  /amanecer/i,                    // lácteos
+  /panader[ií]a/i,
+  /medialuna/i,
+  /l[áa]cteos?/i,
+]
 
 export interface ConsumoItem {
   item: string
@@ -56,8 +77,12 @@ export interface CostoDesayuno {
     panaderia: number
     lacteos: number
     deposito: number         // proveedores de desayunador del pedido semanal
+    caja: number             // pagado en efectivo de la caja (Piazza, El Amanecer…)
     total: number
   }
+  // Egresos de caja del mes que NO se reconocieron como desayuno. Se listan para
+  // poder cazar el proveedor que falte en la lista, en vez de perderlo callado.
+  cajaSinClasificar: { observacion: string; total: number }[]
   costoPorHuesped: number    // compras.total ÷ desayunos
   verduleria: number         // aparte: NO cuenta como desayuno
   sinClasificar: number      // plata de pedidos que no se pudo asignar a un rubro
@@ -93,6 +118,9 @@ export interface DesayunoInputs {
   items: DepositoItem[]
   suppliers: DepositoSupplier[]
   partes: ParteHabitaciones[]
+  // Las cajas de recepción: de ahí sale el desayuno pagado en efectivo, que es
+  // el grueso del gasto. Sin esto el número da de menos.
+  cajas?: CajaParte[]
   // Precios por unidad de consumo, derivados de las facturas de los pedidos
   // (getCosteoDeposito). Sin esto el consumo se muestra solo en unidades.
   precios?: Map<string, PrecioItem>
@@ -108,8 +136,35 @@ export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs)
     desayunos += parte.totalPlazas || parte.ocupadas.reduce((s, o) => s + o.plazas, 0)
   }
 
+  // --- Lo pagado en efectivo de la caja ---
+  const gastosCaja = getGastosDeCajaDetalle(year, month, d.cajas ?? [])
+  const esDesayunoCaja = (obs: string) => CAJA_DESAYUNO.some(re => re.test(obs))
+  const cajaDesayuno = gastosCaja.filter(g => esDesayunoCaja(g.observacion))
+  const caja = cajaDesayuno.reduce((s, g) => s + g.total, 0)
+  const cajaSinClasificar = gastosCaja
+    .filter(g => !esDesayunoCaja(g.observacion))
+    .map(g => ({ observacion: g.observacion, total: g.total }))
+    .sort((a, b) => b.total - a.total)
+
   // --- Compras del mes ---
   let panaderia = 0, lacteos = 0, verduleria = 0, deposito = 0, sinClasificar = 0
+
+  // Si el pedido de recepción tiene monto cargado Y además se pagó de la caja,
+  // es la MISMA compra por dos lados. Se cuenta una sola vez: manda la caja,
+  // que es la plata que efectivamente salió. Se aparea por monto y fecha
+  // cercana, que es lo único que hay para ligarlos (el egreso de caja no
+  // referencia al pedido).
+  const cajaLibre = cajaDesayuno.map(g => ({ total: g.total, fecha: g.fechaHora, usado: false }))
+  const yaPagadoEnCaja = (monto: number, fechaOrden: string): boolean => {
+    const t = new Date(fechaOrden).getTime()
+    const match = cajaLibre.find(c =>
+      !c.usado
+      && Math.abs(c.total - monto) < 0.5
+      && Math.abs(new Date(c.fecha).getTime() - t) <= 3 * 86_400_000)
+    if (!match) return false
+    match.usado = true
+    return true
+  }
 
   for (const o of d.orders) {
     if (o.status === 'borrado' || o.monto == null) continue
@@ -117,6 +172,8 @@ export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs)
     const id = (o.distributorId || '').toLowerCase()
 
     if (o.type === 'recepcion') {
+      const esDesayuno = id.includes(RECEPCION.panaderia) || id.includes(RECEPCION.lacteos)
+      if (esDesayuno && yaPagadoEnCaja(o.monto, o.createdAt)) continue   // ya contado en la caja
       if (id.includes(RECEPCION.panaderia)) panaderia += o.monto
       else if (id.includes(RECEPCION.lacteos)) lacteos += o.monto
       else if (id.includes(RECEPCION.verduleria)) verduleria += o.monto
@@ -185,12 +242,16 @@ export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs)
     })
     .sort((a, b) => b.salidas - a.salidas)
 
-  const total = round(panaderia + lacteos + deposito)
+  const total = round(panaderia + lacteos + deposito + caja)
 
   return {
     desayunos,
     nochesMedidas,
-    compras: { panaderia: round(panaderia), lacteos: round(lacteos), deposito: round(deposito), total },
+    compras: {
+      panaderia: round(panaderia), lacteos: round(lacteos),
+      deposito: round(deposito), caja: round(caja), total,
+    },
+    cajaSinClasificar,
     costoPorHuesped: desayunos > 0 ? Math.round(total / desayunos) : 0,
     verduleria: round(verduleria),
     sinClasificar: round(sinClasificar),

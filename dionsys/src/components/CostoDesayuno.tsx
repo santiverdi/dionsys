@@ -6,6 +6,7 @@ import { AlertTriangle, Croissant, Milk, Package, TrendingUp } from 'lucide-reac
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { usePartes } from '../context/ParteContext'
+import { useCajas } from '../context/CajaContext'
 import { getCostoDesayuno } from '../lib/desayunoCosto'
 import { getCosteoDeposito } from '../lib/costoUnitario'
 import { formatMontoCurrency } from '../utils/validators'
@@ -25,12 +26,15 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
   const { orders } = useOrders()
   const { pedidos, movements, items, suppliers } = useStock()
   const { partes } = usePartes()
+  const { cajas } = useCajas()
 
   // Precios por unidad sacados de las facturas de los pedidos ya cargados.
   const costeo = useMemo(() => getCosteoDeposito(pedidos, items, movements), [pedidos, items, movements])
   const r = useMemo(
-    () => getCostoDesayuno(year, month, { orders, pedidos, movements, items, suppliers, partes, precios: costeo.precios }),
-    [year, month, orders, pedidos, movements, items, suppliers, partes, costeo],
+    () => getCostoDesayuno(year, month, {
+      orders, pedidos, movements, items, suppliers, partes, cajas, precios: costeo.precios,
+    }),
+    [year, month, orders, pedidos, movements, items, suppliers, partes, cajas, costeo],
   )
 
   if (r.compras.total === 0 && r.consumo.length === 0) {
@@ -47,7 +51,7 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
         <Dato
           label="Comprado en el mes"
           value={formatMontoCurrency(r.compras.total)}
-          sub={`panadería y lácteos ${formatMontoCurrency(r.compras.panaderia + r.compras.lacteos)} · depósito ${formatMontoCurrency(r.compras.deposito)}`}
+          sub={`caja ${formatMontoCurrency(r.compras.caja)} · pedidos ${formatMontoCurrency(r.compras.panaderia + r.compras.lacteos)} · depósito ${formatMontoCurrency(r.compras.deposito)}`}
         />
         <Dato
           label="Por huésped (comprado)"
@@ -158,6 +162,29 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
             </table>
           </div>
         </>
+      )}
+
+      {/* Lo que salió de la caja y NO se reconoció como desayuno. Está a la vista
+          para poder cazar el proveedor que falta en la lista. */}
+      {r.cajaSinClasificar.length > 0 && (
+        <details className="mt-3 rounded-lg bg-navy-50 p-2.5">
+          <summary className="text-[11px] font-bold uppercase tracking-wide text-navy-500 cursor-pointer">
+            Gastos de caja que no conté como desayuno ({r.cajaSinClasificar.length})
+          </summary>
+          <p className="text-[10px] text-navy-400 mt-1 mb-1.5">
+            Reconozco a Piazza (panadería) y El Amanecer (lácteos). Si acá abajo ves otro proveedor de
+            desayuno, decímelo y lo agrego — no lo adivino solo para no meter limpieza o mantenimiento
+            adentro del desayuno.
+          </p>
+          <ul className="text-[11px] space-y-0.5 max-h-48 overflow-y-auto">
+            {r.cajaSinClasificar.slice(0, 25).map((g, i) => (
+              <li key={i} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-navy-600">{g.observacion}</span>
+                <span className="shrink-0 text-navy-700">{formatMontoCurrency(g.total)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {/* Termómetro del costeo: de dónde salen los precios y cuánto falta. */}

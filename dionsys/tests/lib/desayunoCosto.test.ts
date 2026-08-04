@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { getCostoDesayuno, type DesayunoInputs } from '../../src/lib/desayunoCosto'
 import type {
   Order, PedidoSemanal, StockMovement, DepositoItem, DepositoSupplier,
-  ParteHabitaciones, HabitacionOcupada,
+  ParteHabitaciones, HabitacionOcupada, CajaParte, CajaMovimiento,
 } from '../../src/types'
 
 const items: DepositoItem[] = [
@@ -185,5 +185,67 @@ describe('getCostoDesayuno con precios', () => {
     expect(medialunas.costo).toBe(30000)
     expect(medialunas.precioUnitario).toBe(3000)
     expect(r.consumo.find(c => c.item === 'Café')!.costo).toBeUndefined()
+  })
+})
+
+describe('getCostoDesayuno con lo pagado de la caja', () => {
+  function egreso(observacion: string, total: number, fechaHora = '2026-07-10T09:00:00.000Z'): CajaMovimiento {
+    return {
+      fechaHora, usuario: 'Gaston', comp: '', habitacion: '', observacion,
+      efectivo: total, tarjetas: 0, cheques: 0, transferencia: 0, otros: 0, total,
+    }
+  }
+
+  function caja(egresos: CajaMovimiento[], aperturaAt = '2026-07-10T07:00:00.000Z'): CajaParte {
+    return {
+      id: 'c1', nroCaja: 1, puntoVenta: 'Recepcion', moneda: 'AR$', usuarioApertura: 'Gaston',
+      aperturaAt, cierreAt: '2026-07-10T15:00:00.000Z', aperturaMonto: 0, saldoFinal: 0,
+      ingresos: [], egresos, retiros: [], importedBy: 'X', importedAt: '2026-07-10T15:30:00.000Z',
+    }
+  }
+
+  it('cuenta el desayuno pagado en efectivo: Piazza es la panaderia y El Amanecer los lacteos', () => {
+    const r = getCostoDesayuno(2026, 7, inputs({ cajas: [caja([
+      egreso('PIAZZA', 180000),
+      egreso('EL AMANECER lacteos', 90000),
+      egreso('Ferreteria', 40000),          // no es desayuno
+    ])] }))
+
+    expect(r.compras.caja).toBe(270000)
+    expect(r.compras.total).toBe(270000)
+    expect(r.cajaSinClasificar).toEqual([{ observacion: 'Ferreteria', total: 40000 }])
+  })
+
+  it('no cuenta dos veces la compra que ademas tiene el monto cargado en el pedido', () => {
+    // Misma plata por dos lados: el egreso de caja y el monto del pedido diario.
+    const r = getCostoDesayuno(2026, 7, inputs({
+      cajas: [caja([egreso('PIAZZA', 180000, '2026-07-10T09:00:00.000Z')])],
+      orders: [order({ distributorId: 'panaderia', monto: 180000, createdAt: '2026-07-10T08:00:00.000Z' })],
+    }))
+
+    expect(r.compras.caja).toBe(180000)
+    expect(r.compras.panaderia).toBe(0)   // no se suma de nuevo
+    expect(r.compras.total).toBe(180000)
+  })
+
+  it('el pedido con monto que NO se pago de la caja sigue contando', () => {
+    const r = getCostoDesayuno(2026, 7, inputs({
+      cajas: [caja([egreso('PIAZZA', 180000)])],
+      orders: [order({ distributorId: 'lacteos', monto: 95000 })],   // otro monto: es otra compra
+    }))
+
+    expect(r.compras.caja).toBe(180000)
+    expect(r.compras.lacteos).toBe(95000)
+    expect(r.compras.total).toBe(275000)
+  })
+
+  it('el retiro de efectivo no es un gasto de desayuno ni figura sin clasificar', () => {
+    const r = getCostoDesayuno(2026, 7, inputs({ cajas: [caja([
+      egreso('RETIRO EFECTIVO', 500000),
+      egreso('PIAZZA', 100000),
+    ])] }))
+
+    expect(r.compras.caja).toBe(100000)
+    expect(r.cajaSinClasificar).toEqual([])
   })
 })
