@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { getRendimientoPorHabitacion } from '../../src/lib/porHabitacion'
-import type { CajaParte, CajaMovimiento, ParteHabitaciones, HabitacionOcupada } from '../../src/types'
+import { getRendimientoPorHabitacion, getFichaHabitacion } from '../../src/lib/porHabitacion'
+import type { CajaParte, CajaMovimiento, ParteHabitaciones, HabitacionOcupada, HabitacionLibre } from '../../src/types'
 
 function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
   return {
@@ -23,10 +23,10 @@ function ocupada(habitacion: string, plazas: number, reserva = ''): HabitacionOc
 }
 
 // Un parte NOCHE: es el que dice quién durmió (misma regla que el desayuno).
-function mkParteNoche(fecha: string, ocupadas: HabitacionOcupada[]): ParteHabitaciones {
+function mkParteNoche(fecha: string, ocupadas: HabitacionOcupada[], libres: HabitacionLibre[] = []): ParteHabitaciones {
   return {
     id: `p${fecha}`, nroCaja: 1, usuario: 'X', fechaCaja: `${fecha}T01:30:00.000Z`, turno: 'noche',
-    ocupadas, libres: [],
+    ocupadas, libres,
     totalOcupadas: ocupadas.length, totalPlazas: ocupadas.reduce((s, o) => s + o.plazas, 0), totalLibres: 0,
     sucias: 0, limpias: 0, mantenimiento: 0, importedBy: 'X', importedAt: `${fecha}T02:00:00.000Z`,
   }
@@ -137,6 +137,21 @@ describe('getRendimientoPorHabitacion', () => {
     expect(triple.ingreso).toBe(90000)
   })
 
+  it('el ingreso por habitación del mes coincide con el de su ficha', () => {
+    // La ficha no puede contradecir a la tabla: comparten el mismo reparto.
+    const partes = [mkParteNoche('2026-07-10', [ocupada('202', 3, '900'), ocupada('205', 1, '900')])]
+    const cajas = [mkCaja({ nroCaja: 1, ingresos: [
+      mov({ habitacion: '202/205', reserva: '900', efectivo: 400000, total: 400000 }),
+    ] })]
+    const tabla = getRendimientoPorHabitacion(2026, 7, cajas, partes)
+    const ficha = getFichaHabitacion('202', cajas, partes)!
+
+    expect(ficha.totales.ingreso).toBe(tabla.habitaciones.find(h => h.numero === '202')!.ingreso)
+    expect(ficha.cobros[0].compartido).toBe(true)   // el cobro tocaba dos cuartos
+    expect(ficha.meses[0].key).toBe('2026-07')
+    expect(ficha.meses[0].ingreso).toBe(300000)
+  })
+
   it('ignora las cajas de otros meses y los cobros anulados', () => {
     const cajas = [
       mkCaja({ nroCaja: 1, ingresos: [mov({ habitacion: '301', efectivo: 100000, total: 100000 })] }),
@@ -151,5 +166,53 @@ describe('getRendimientoPorHabitacion', () => {
     expect(r.habitaciones.find(h => h.numero === '301')!.ingreso).toBe(100000)
     expect(r.habitaciones.find(h => h.numero === '905')!.ingreso).toBe(0)
     expect(r.totalCobrado).toBe(100000)
+  })
+})
+
+describe('getFichaHabitacion', () => {
+  const partes = [
+    mkParteNoche('2026-07-10', [ocupada('301', 2, '11')], [{ habitacion: '905', estado: 'sucia' }]),
+    mkParteNoche('2026-07-11', [ocupada('301', 3, '12')], [{ habitacion: '905', estado: 'mantenimiento' }]),
+    // El 12 el parte no nombra la 905 ni ocupada ni libre: queda sin control.
+    mkParteNoche('2026-07-12', [ocupada('905', 1, '13')], []),
+  ]
+  const cajas = [mkCaja({ nroCaja: 1, ingresos: [
+    mov({ habitacion: '301', efectivo: 200000, total: 200000 }),
+    mov({ habitacion: '905', efectivo: 40000, total: 40000 }),
+  ] })]
+
+  it('junta noches, plata, canales y controles de una habitación', () => {
+    const f = getFichaHabitacion('301', cajas, partes)!
+
+    expect(f.habitacion.piso).toBe(3)
+    expect(f.tipo).toBe('triple')                  // 3 plazas
+    expect(f.totales.noches).toBe(2)
+    expect(f.totales.nochesMedidas).toBe(3)
+    expect(f.totales.ocupacionPct).toBe(67)
+    expect(f.totales.ingreso).toBe(200000)
+    expect(f.totales.ingresoPorNoche).toBe(100000)
+    expect(f.estadias[0].fecha).toBe('2026-07-11') // la más nueva primero
+    expect(f.canales).toEqual([{ canal: 'Booking.com', noches: 2 }])
+  })
+
+  it('cuenta las noches sin dato, sucia y en mantenimiento', () => {
+    const f = getFichaHabitacion('905', cajas, partes)!
+
+    expect(f.totales.noches).toBe(1)
+    expect(f.totales.sucia).toBe(1)
+    expect(f.totales.mantenimiento).toBe(1)
+    expect(f.totales.sinDato).toBe(0)
+  })
+
+  it('la habitación que ningún parte nombra queda como noche sin dato', () => {
+    const f = getFichaHabitacion('401', cajas, partes)!
+
+    expect(f.totales.noches).toBe(0)
+    expect(f.totales.sinDato).toBe(3)   // las 3 noches medidas
+    expect(f.totales.ingreso).toBe(0)
+  })
+
+  it('devuelve undefined si la habitación no existe en el hotel', () => {
+    expect(getFichaHabitacion('9999', cajas, partes)).toBeUndefined()
   })
 })

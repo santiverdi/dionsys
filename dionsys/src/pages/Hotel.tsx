@@ -2,9 +2,10 @@
 // el último parte importado. Reemplaza tener que leer las dos listas sueltas del
 // PDF del PMS para saber cómo está el hotel ahora.
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Building2, BedDouble, Sparkles, Wrench, HelpCircle, AlertTriangle, Users } from 'lucide-react'
 import { usePartes } from '../context/ParteContext'
+import FichaHabitacionModal from '../components/FichaHabitacionModal'
 import { getMapaHotel, type CeldaHabitacion, type EstadoMapa } from '../lib/mapaHotel'
 import { TOTAL_HABITACIONES } from '../data/hotel'
 import { TURNO_LABELS } from '../context/OccupancyContext'
@@ -35,22 +36,25 @@ function Kpi({ label, value, sub, tone = 'navy' }: { label: string; value: strin
   )
 }
 
-function Celda({ c }: { c: CeldaHabitacion }) {
+function Celda({ c, onClick }: { c: CeldaHabitacion; onClick: () => void }) {
   const st = ESTADO[c.estado]
   const fuera = !c.habitacion.activa
-  // El título del hover es la ficha completa: el resto entra apretado en la celda.
+  // El hover resume; el click abre la ficha con el historial completo.
   const detalle = [
     `Hab. ${c.habitacion.numero} · ${c.habitacion.plazas} plazas`,
     fuera ? 'FUERA DE SERVICIO' : '',
     st.label,
     c.ocupacion ? `Reserva ${c.ocupacion.reserva} · ${c.ocupacion.plazas} pax · ${c.ocupacion.canal}` : '',
     c.sobreocupada ? `SOBREOCUPADA: ${c.ocupacion?.plazas} personas en ${c.habitacion.plazas} plazas` : '',
+    'Tocá para ver la ficha',
   ].filter(Boolean).join('\n')
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       title={detalle}
-      className={`relative rounded-lg border p-2 text-center ${st.celda} ${fuera ? 'opacity-60' : ''}`}
+      className={`relative w-full rounded-lg border p-2 text-center transition-shadow hover:shadow-md hover:ring-2 hover:ring-gold-300 ${st.celda} ${fuera ? 'opacity-60' : ''}`}
     >
       {c.sobreocupada && (
         <AlertTriangle size={12} className="absolute top-1 right-1 text-red-500" aria-label="Sobreocupada" />
@@ -63,7 +67,7 @@ function Celda({ c }: { c: CeldaHabitacion }) {
         <p className="text-[10px] leading-tight opacity-70 truncate">Res. {c.ocupacion.reserva}</p>
       )}
       {fuera && <p className="text-[10px] leading-tight font-semibold">fuera de servicio</p>}
-    </div>
+    </button>
   )
 }
 
@@ -71,6 +75,7 @@ export default function Hotel() {
   const { partes } = usePartes()
   const mapa = useMemo(() => getMapaHotel(partes), [partes])
   const { parte, totales } = mapa
+  const [ficha, setFicha] = useState<string | null>(null)
 
   return (
     <div>
@@ -143,7 +148,9 @@ export default function Hotel() {
                 </p>
               </div>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                {p.celdas.map(c => <Celda key={c.habitacion.numero} c={c} />)}
+                {p.celdas.map(c => (
+                  <Celda key={c.habitacion.numero} c={c} onClick={() => setFicha(c.habitacion.numero)} />
+                ))}
               </div>
             </div>
           )
@@ -152,10 +159,13 @@ export default function Hotel() {
 
       <p className="text-[11px] text-navy-400 mt-3 flex items-start gap-1.5">
         <Sparkles size={12} className="shrink-0 mt-0.5" />
+        Tocá cualquier habitación para ver su ficha: noches vendidas, plata que hizo, canales y controles.
         El estado sale del último parte importado; se actualiza al cargar el parte del turno siguiente.
         Las habitaciones fuera de servicio no cuentan para el % de ocupación.
         <Wrench size={12} className="shrink-0 mt-0.5" />
       </p>
+
+      <FichaHabitacionModal numero={ficha} onClose={() => setFicha(null)} />
     </div>
   )
 }

@@ -25,11 +25,11 @@
 // otro lado (ver GruposPanel).
 
 import type { CajaParte, CajaMovimiento, ParteHabitaciones } from '../types'
-import { HABITACIONES, getHabitacion, tipoDeHabitacion, type TipoHabitacion } from '../data/hotel'
+import { HABITACIONES, getHabitacion, tipoDeHabitacion, type Habitacion, type TipoHabitacion } from '../data/hotel'
 import { ingresosNetos } from './cajaControl'
 import { habitacionesDeCobro } from './tarifas'
 import { partesNochePorDia } from './desayuno'
-import { isInMonth, monthKey } from '../utils/dateRange'
+import { isInMonth, monthKey, monthLabel } from '../utils/dateRange'
 
 export interface RendimientoHabitacion {
   numero: string
@@ -183,5 +183,159 @@ export function getRendimientoPorHabitacion(
     ingresoAtribuido: round(ingresoAtribuido),
     ingresoSinAtribuir: round(totalCobrado - ingresoAtribuido),
     sinCobro: habitaciones.filter(h => h.ocupadaSinCobro).map(h => h.numero).sort(),
+  }
+}
+
+// ===== Ficha de una habitación =====
+// Todo lo que se sabe de un cuarto, sin recortar por mes: su historial de noches
+// (quién durmió, de qué canal), sus cobros y cómo le fue mes a mes. Usa el MISMO
+// reparto de plata que la tabla de arriba, así la ficha nunca la contradice.
+
+export interface EstadiaNoche {
+  fecha: string            // YYYY-MM-DD de la noche
+  reserva: string
+  canal: string
+  plazas: number
+  sobreocupada: boolean    // durmió más gente que plazas tiene
+}
+
+export interface CobroDeHabitacion {
+  fecha: string            // ISO del movimiento
+  nroCaja: number
+  reserva?: string
+  observacion: string
+  monto: number            // lo atribuido a ESTA habitación
+  compartido: boolean      // el cobro tocaba más de un cuarto: el monto es su parte
+}
+
+export interface MesDeHabitacion {
+  key: string
+  label: string
+  noches: number
+  nochesMedidas: number
+  ingreso: number
+  ingresoPorNoche: number
+}
+
+export interface FichaHabitacion {
+  habitacion: Habitacion
+  tipo?: TipoHabitacion
+  estadias: EstadiaNoche[]        // de la más nueva a la más vieja
+  cobros: CobroDeHabitacion[]     // idem
+  meses: MesDeHabitacion[]        // idem
+  canales: { canal: string; noches: number }[]
+  totales: {
+    noches: number
+    nochesMedidas: number         // noches del hotel con parte cargado
+    ingreso: number
+    ingresoPorNoche: number
+    ocupacionPct: number
+    sinDato: number               // noches en que el parte no la nombró: sin control
+    sucia: number
+    mantenimiento: number
+  }
+}
+
+export function getFichaHabitacion(
+  numero: string,
+  cajas: CajaParte[],
+  partes: ParteHabitaciones[],
+): FichaHabitacion | undefined {
+  const habitacion = getHabitacion(numero)
+  if (!habitacion) return undefined
+
+  const estadias: EstadiaNoche[] = []
+  const nochesPorMes = new Map<string, number>()
+  const medidasPorMes = new Map<string, number>()
+  const canales = new Map<string, number>()
+  let sinDato = 0, sucia = 0, mantenimiento = 0, nochesMedidas = 0
+
+  for (const [dia, parte] of partesNochePorDia(partes)) {
+    nochesMedidas++
+    const mes = dia.slice(0, 7)
+    medidasPorMes.set(mes, (medidasPorMes.get(mes) ?? 0) + 1)
+
+    const ocupada = parte.ocupadas.find(o => o.habitacion === habitacion.numero)
+    if (ocupada) {
+      estadias.push({
+        fecha: dia,
+        reserva: ocupada.reserva,
+        canal: ocupada.canal || 'sin canal',
+        plazas: ocupada.plazas,
+        sobreocupada: ocupada.plazas > habitacion.plazas,
+      })
+      nochesPorMes.set(mes, (nochesPorMes.get(mes) ?? 0) + 1)
+      const canal = ocupada.canal || 'sin canal'
+      canales.set(canal, (canales.get(canal) ?? 0) + 1)
+      continue
+    }
+    const libre = parte.libres.find(l => l.habitacion === habitacion.numero)
+    if (!libre) sinDato++
+    else if (libre.estado === 'sucia') sucia++
+    else if (libre.estado === 'mantenimiento') mantenimiento++
+  }
+
+  const cobros: CobroDeHabitacion[] = []
+  const ingresoPorMes = new Map<string, number>()
+  for (const caja of cajas) {
+    const d = new Date(caja.aperturaAt)
+    // El mes del cobro es el de la caja, igual que en el resto del negocio.
+    const mes = isNaN(d.getTime()) ? '' : monthKey(d.getFullYear(), d.getMonth() + 1)
+    for (const m of ingresosNetos(caja)) {
+      const reparto = repartoDeCobro(m, partes)
+      const mia = reparto.find(r => r.numero === habitacion.numero)
+      if (!mia) continue
+      const pesoTotal = reparto.reduce((s, r) => s + r.peso, 0)
+      const monto = round(m.total * (pesoTotal > 0 ? mia.peso / pesoTotal : 1 / reparto.length))
+      cobros.push({
+        fecha: m.fechaHora,
+        nroCaja: caja.nroCaja,
+        ...(m.reserva ? { reserva: m.reserva } : {}),
+        observacion: m.observacion || 'sin observación',
+        monto,
+        compartido: reparto.length > 1,
+      })
+      if (mes) ingresoPorMes.set(mes, (ingresoPorMes.get(mes) ?? 0) + monto)
+    }
+  }
+
+  const meses: MesDeHabitacion[] = [...new Set([...nochesPorMes.keys(), ...ingresoPorMes.keys()])]
+    .sort((a, b) => b.localeCompare(a))
+    .map(key => {
+      const [y, m] = key.split('-').map(Number)
+      const noches = nochesPorMes.get(key) ?? 0
+      const ingreso = round(ingresoPorMes.get(key) ?? 0)
+      return {
+        key,
+        label: monthLabel(y, m),
+        noches,
+        nochesMedidas: medidasPorMes.get(key) ?? 0,
+        ingreso,
+        ingresoPorNoche: div(ingreso, noches),
+      }
+    })
+
+  const ingreso = round(cobros.reduce((s, c) => s + c.monto, 0))
+  const tipo = tipoDeHabitacion(habitacion.numero)
+
+  return {
+    habitacion,
+    ...(tipo ? { tipo } : {}),
+    estadias: estadias.sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    cobros: cobros.sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? '')),
+    meses,
+    canales: [...canales.entries()]
+      .map(([canal, noches]) => ({ canal, noches }))
+      .sort((a, b) => b.noches - a.noches),
+    totales: {
+      noches: estadias.length,
+      nochesMedidas,
+      ingreso,
+      ingresoPorNoche: div(ingreso, estadias.length),
+      ocupacionPct: nochesMedidas > 0 ? Math.round((estadias.length / nochesMedidas) * 100) : 0,
+      sinDato,
+      sucia,
+      mantenimiento,
+    },
   }
 }
