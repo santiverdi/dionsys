@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
   Truck, CalendarClock, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
-  ChevronDown, ChevronRight, Users, Building2,
+  ChevronDown, ChevronRight, Users, Building2, Croissant,
 } from 'lucide-react'
 import GruposPanel from '../components/GruposPanel'
 import RendimientoHabitaciones from '../components/RendimientoHabitaciones'
+import CostoDesayuno from '../components/CostoDesayuno'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useOrders } from '../context/OrdersContext'
@@ -335,6 +336,13 @@ export default function Negocio({ year, month }: { year: number; month: number }
           que acá se ve cuál factura de verdad y cuál no se vende. */}
       <Section icon={Building2} title="Rendimiento por habitación">
         <RendimientoHabitaciones year={cur.year} month={cur.month} />
+      </Section>
+
+      {/* El desayuno como unidad aparte: lo que se compra para él y lo que se
+          lleva cada huésped. Va acá porque es el otro costo que escala con la
+          gente, igual que el lavadero. */}
+      <Section icon={Croissant} title="Desayuno — gasto y consumo por huésped">
+        <CostoDesayuno year={cur.year} month={cur.month} />
       </Section>
 
       {/* Grupos: lo que cobra el dueño por fuera de la caja. Va antes de la
