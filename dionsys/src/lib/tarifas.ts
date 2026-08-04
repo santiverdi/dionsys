@@ -85,7 +85,7 @@ export function mesesSinTarifa(
 }
 
 // Una habitación de un cobro, con la gente que el parte dice que durmió ahí.
-interface HabDeCobro {
+export interface HabDeCobro {
   habitacion: string
   plazas: number     // personas reportadas por el PMS, NO la capacidad
 }
@@ -94,7 +94,7 @@ interface HabDeCobro {
 // si no por habitación (tolerante a combinadas "205/202"). Una reserva puede
 // tener varias habitaciones. Sin match no se puede saber la tarifa → no se
 // controla ese cobro (mejor que un falso positivo).
-function habitacionesDeCobro(m: CajaMovimiento, partes: ParteHabitaciones[]): HabDeCobro[] {
+export function habitacionesDeCobro(m: CajaMovimiento, partes: ParteHabitaciones[]): HabDeCobro[] {
   const mapear = (habs: ParteHabitaciones['ocupadas']) =>
     habs.map(o => ({ habitacion: o.habitacion, plazas: o.plazas }))
 

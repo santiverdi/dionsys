@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
   Truck, CalendarClock, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
-  ChevronDown, ChevronRight, Users,
+  ChevronDown, ChevronRight, Users, Building2,
 } from 'lucide-react'
 import GruposPanel from '../components/GruposPanel'
+import RendimientoHabitaciones from '../components/RendimientoHabitaciones'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useOrders } from '../context/OrdersContext'
@@ -328,6 +329,12 @@ export default function Negocio({ year, month }: { year: number; month: number }
         <p className="text-[10px] text-navy-400 mt-2">
           Ingreso del mes repartido sobre {revenue.diasConDatos} día(s) con ocupación cargada. Aproximado.
         </p>
+      </Section>
+
+      {/* Lo mismo pero SIN promediar: cada cobro del PMS trae su habitación, así
+          que acá se ve cuál factura de verdad y cuál no se vende. */}
+      <Section icon={Building2} title="Rendimiento por habitación">
+        <RendimientoHabitaciones year={cur.year} month={cur.month} />
       </Section>
 
       {/* Grupos: lo que cobra el dueño por fuera de la caja. Va antes de la

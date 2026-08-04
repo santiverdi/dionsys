@@ -32,8 +32,12 @@ export interface DesayunoDia {
   cargadoA: string       // hora en que se cerró el parte (para saber si ya está)
 }
 
-/** Los partes del turno noche, uno por día. Si hay varios se queda con el de más ocupadas. */
-function nochePorDia(partes: ParteHabitaciones[]): Map<string, ParteHabitaciones> {
+/**
+ * Los partes del turno noche, uno por día (clave YYYY-MM-DD). Si hay varios del
+ * mismo día se queda con el de más ocupadas. Es la regla de "quién durmió esa
+ * noche": la comparte el rendimiento por habitación (ver porHabitacion.ts).
+ */
+export function partesNochePorDia(partes: ParteHabitaciones[]): Map<string, ParteHabitaciones> {
   const out = new Map<string, ParteHabitaciones>()
   for (const p of partes) {
     if (p.turno !== 'noche') continue
@@ -60,7 +64,7 @@ function aDesayuno(fecha: string, p: ParteHabitaciones): DesayunoDia {
 /** Desayuno de una fecha puntual. undefined = no hay parte noche de esa noche. */
 export function desayunoDeFecha(fecha: string, partes: ParteHabitaciones[]): DesayunoDia | undefined {
   const dia = (fecha || '').slice(0, 10)
-  const p = nochePorDia(partes).get(dia)
+  const p = partesNochePorDia(partes).get(dia)
   return p ? aDesayuno(dia, p) : undefined
 }
 
@@ -79,7 +83,7 @@ export function desayunoDeFecha(fecha: string, partes: ParteHabitaciones[]): Des
  * sabe que entra o sale un grupo.
  */
 export function ultimaNoche(partes: ParteHabitaciones[]): DesayunoDia | undefined {
-  const porDia = nochePorDia(partes)
+  const porDia = partesNochePorDia(partes)
   const dias = [...porDia.keys()].sort()
   const ultimo = dias[dias.length - 1]
   return ultimo ? aDesayuno(ultimo, porDia.get(ultimo)!) : undefined
@@ -94,7 +98,7 @@ export function diasDeAntiguedad(d: DesayunoDia, hoy = new Date()): number {
 
 /** Serie de los últimos días con parte noche, del más nuevo al más viejo. */
 export function serieDesayuno(partes: ParteHabitaciones[], dias = 14): DesayunoDia[] {
-  const porDia = nochePorDia(partes)
+  const porDia = partesNochePorDia(partes)
   return [...porDia.keys()]
     .sort((a, b) => b.localeCompare(a))
     .slice(0, dias)
