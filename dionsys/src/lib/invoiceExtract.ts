@@ -125,7 +125,7 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
 }
 
 // Comprime/codifica el archivo y llama al endpoint con el modo indicado.
-async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo' | 'remito'): Promise<unknown> {
+async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo' | 'remito' | 'liquidacion'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -185,6 +185,32 @@ export interface ExtractedRemitoLavadero {
 /** Lee un remito manuscrito del lavadero (foto del talonario). */
 export async function extractRemitoLavadero(file: File): Promise<ExtractedRemitoLavadero> {
   return (await callExtract(file, 'remito')) as ExtractedRemitoLavadero
+}
+
+// La liquidación quincenal del lavadero: ticket IMPRESO (no manuscrito), con el
+// período que liquida, el total, la lista de remitos que factura y el detalle
+// por prenda. Ojo con las dos fechas del papel: la de emisión ("Fecha y Hora")
+// NO es la que importa — el mes al que entra el gasto lo decide el FIN DEL
+// PERÍODO, así que eso es lo que hay que leer.
+export interface ExtractedLiquidacionLavadero {
+  nro: string
+  desde: string    // YYYY-MM-DD (inicio del período) o ''
+  hasta: string    // YYYY-MM-DD (fin del período) o ''
+  total: string    // total facturado, como viene impreso
+  remitos: string[]
+  prendas: { prenda: string; cantidad: string }[]
+}
+
+/**
+ * Lee la liquidación quincenal del lavadero desde una foto.
+ *
+ * OJO: el modo 'liquidacion' debe existir en /api/extract-invoice (endpoint
+ * FUERA de este repo). Hasta agregarlo, esta llamada falla y la pantalla lo
+ * dice: se carga a mano, que es lo que se hacía siempre. Mismo caso que
+ * extractCaja.
+ */
+export async function extractLiquidacionLavadero(file: File): Promise<ExtractedLiquidacionLavadero> {
+  return (await callExtract(file, 'liquidacion')) as ExtractedLiquidacionLavadero
 }
 
 export async function extractInvoice(file: File): Promise<ExtractedInvoice> {

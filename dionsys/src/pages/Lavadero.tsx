@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useLavadero } from '../context/LavaderoContext'
 import { getStockRopa, getLavaderoMes, getDeudaLavadero, conciliarLiquidacion, conciliarPrendas, sumarPrendasPeriodo, prendaCanonica, getRetirosPendientes, PRENDAS_SUGERIDAS, PRENDAS_LIQUIDACION, type RetiroPendiente, type StockPrenda } from '../lib/lavadero'
-import { extractRemitoLavadero } from '../lib/invoiceExtract'
+import { extractRemitoLavadero, extractLiquidacionLavadero } from '../lib/invoiceExtract'
 import LavaderoPrediccion from '../components/LavaderoPrediccion'
 import { getCurrentMonth } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
@@ -202,6 +202,48 @@ export default function Lavadero() {
   const [liqRemitos, setLiqRemitos] = useState('')
   const [liqCants, setLiqCants] = useState<Record<string, string>>({})
   const [liqSaved, setLiqSaved] = useState(false)
+  const [leyendoLiq, setLeyendoLiq] = useState(false)
+  const [errorLiq, setErrorLiq] = useState('')
+
+  // Foto de la liquidación → precarga el form. Igual que el remito, es un
+  // BORRADOR: se revisa contra el papel antes de guardar. Acá importa doble,
+  // porque de este número sale la deuda que se paga.
+  async function leerFotoLiquidacion(file: File) {
+    setLeyendoLiq(true)
+    setErrorLiq('')
+    try {
+      const r = await extractLiquidacionLavadero(file)
+      // El período manda: es lo que decide en qué mes cae el gasto. La fecha de
+      // emisión del ticket (que suele ser posterior) no se usa.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(r.desde)) setLiqDesde(r.desde)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(r.hasta)) setLiqHasta(r.hasta)
+      if (r.nro) setLiqNro(r.nro)
+      const total = Number(String(r.total).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'))
+      if (total > 0) setLiqTotal(String(total))
+      if (r.remitos?.length) setLiqRemitos(r.remitos.join(', '))
+
+      const nuevas: Record<string, string> = {}
+      for (const p of r.prendas ?? []) {
+        const cant = Math.max(0, Math.round(Number(p.cantidad) || 0))
+        if (!p.prenda?.trim() || cant <= 0) continue
+        // La liquidación factura las sábanas juntas, así que el nombre canónico
+        // alcanza para ubicar la fila (no hay que distinguir SG de SCH acá).
+        const destino = PRENDAS_LIQUIDACION.find(v => prendaCanonica(v) === prendaCanonica(p.prenda))
+        if (destino) nuevas[destino] = String(cant)
+      }
+      if (Object.keys(nuevas).length > 0) setLiqCants(nuevas)
+      if (!total && !r.nro && Object.keys(nuevas).length === 0) {
+        setErrorLiq('No se pudo leer la liquidación de la foto. Cargala a mano.')
+      }
+    } catch (e) {
+      // El lector puede no tener habilitado todavía el modo 'liquidacion' (vive
+      // fuera de este repo). Se avisa sin drama: cargarla a mano siempre funciona.
+      const msg = e instanceof Error ? e.message : 'No se pudo leer la foto.'
+      setErrorLiq(`${msg} Si el lector todavía no reconoce las liquidaciones, cargala a mano acá abajo.`)
+    } finally {
+      setLeyendoLiq(false)
+    }
+  }
 
   // Suma de las copias del período elegido, por prenda (lo que Charo sumaba a
   // mano en su Excel): se muestra al lado de cada casillero para comparar en
@@ -673,6 +715,24 @@ export default function Lavadero() {
         <LavaderoPrediccion movimientos={movimientos} desde={liqDesde} hasta={liqHasta} />
 
         <div className="rounded-lg border border-navy-100 p-2.5 mb-3">
+            {/* La liquidación es un ticket impreso: la IA la lee bastante mejor
+                que el remito manuscrito. Igual precarga y no guarda: de este
+                número sale la deuda que se paga. */}
+            <label className={`w-full flex items-center justify-center gap-2 py-2 mb-2 rounded-lg border border-dashed cursor-pointer transition-colors ${
+              leyendoLiq ? 'border-navy-200 text-navy-400' : 'border-gold-300 text-navy-600 hover:border-gold-400 hover:bg-gold-50'
+            }`}>
+              {leyendoLiq ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+              <span className="text-sm font-medium">
+                {leyendoLiq ? 'Leyendo la liquidación…' : 'Sacar foto a la liquidación (carga sola)'}
+              </span>
+              <input
+                type="file" accept="image/*,application/pdf" capture="environment" className="hidden"
+                disabled={leyendoLiq}
+                onChange={e => { const f = e.target.files?.[0]; if (f) leerFotoLiquidacion(f); e.target.value = '' }}
+              />
+            </label>
+            {errorLiq && <p className="text-xs text-red-600 mb-2">{errorLiq}</p>}
+
             <div className="flex items-center gap-2 mb-2">
               <input type="date" value={liqDesde} onChange={e => setLiqDesde(e.target.value)} className={inputCls} />
               <span className="text-xs text-navy-400 shrink-0">al</span>
