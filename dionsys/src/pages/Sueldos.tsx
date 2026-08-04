@@ -80,6 +80,8 @@ export default function Sueldos() {
 
   const [mesActual, setMesActual] = useState(() => getCurrentMonth())
   const mesStr = monthKey(mesActual.year, mesActual.month)
+  const hoyMes = getCurrentMonth()
+  const esMesActual = mesActual.year === hoyMes.year && mesActual.month === hoyMes.month
 
   // --- Nómina (alta/baja) ---
   const [showNominaForm, setShowNominaForm] = useState(false)
@@ -489,6 +491,20 @@ export default function Sueldos() {
       {showPagoForm && (
         <div className="bg-white rounded-xl shadow-sm border border-navy-300 p-4 space-y-3">
           <h3 className="font-semibold text-navy-800 text-sm">Cargar Pago - {monthLabel(mesActual.year, mesActual.month)}</h3>
+          {/* El pago se guarda con el mes que está seleccionado arriba, no con la
+              fecha de hoy. Cargar en agosto el sueldo de julio sin mover el mes
+              lo manda al mes equivocado y el resultado de julio queda mal. */}
+          {esMesActual ? (
+            <p className="text-[11px] text-navy-500 bg-navy-50 border border-navy-100 rounded-lg p-2">
+              Se va a cargar en <strong>{monthLabel(mesActual.year, mesActual.month)}</strong>. Si estás
+              cargando el sueldo de otro mes, cambiá el mes arriba <em>antes</em> de guardar.
+            </p>
+          ) : (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg p-2">
+              Este pago se va a cargar en <strong>{monthLabel(mesActual.year, mesActual.month)}</strong>,
+              que no es el mes actual. Si es lo que querés, seguí.
+            </p>
+          )}
           {empleadosActivos.length === 0 ? (
             <p className="text-sm text-navy-400">
               Primero agregá empleados en <button onClick={() => { setShowPagoForm(false); setShowNominaForm(true) }} className="text-gold-600 font-semibold hover:text-gold-700">Gestionar Nómina</button>.
