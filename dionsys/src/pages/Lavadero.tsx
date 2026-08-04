@@ -578,22 +578,32 @@ export default function Lavadero() {
       <div className="bg-white rounded-xl border border-navy-100 p-3 mb-4">
         <div className="flex items-center justify-between gap-2 mb-1">
           <p className="text-xs font-bold uppercase tracking-wide text-navy-500">Stock de ropa (base alquilada)</p>
-          <button
-            onClick={() => setEditBase(v => !v)}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
-              editBase ? 'bg-navy-800 text-cream' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
-            }`}
-          >
-            {editBase ? 'Listo' : 'Editar base'}
-          </button>
+          {/* La base es el eje de todo el control del lavadero y se toca muy de
+              vez en cuando: la edita solo el admin. El resto la ve. */}
+          {esAdmin && (
+            <button
+              onClick={() => setEditBase(v => !v)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 ${
+                editBase ? 'bg-navy-800 text-cream' : 'bg-navy-100 text-navy-600 hover:bg-navy-200'
+              }`}
+            >
+              {editBase ? 'Listo' : 'Editar base'}
+            </button>
+          )}
         </div>
         <p className="text-[11px] text-navy-400 mb-2">
           La base es el total de ropa alquilada de cada prenda: con eso trabaja todo el ciclo.
-          En el hotel = base − en el lavadero. Los cambios por rotura no la mueven; editala solo
-          si el lavadero suma o quita ropa alquilada.
+          En el hotel = base − en el lavadero. Los cambios por rotura no la mueven;{' '}
+          {esAdmin
+            ? 'editala solo si el lavadero suma o quita ropa alquilada.'
+            : 'si el lavadero sumó o quitó ropa alquilada, avisale a administración para que la corrija.'}
         </p>
         {stockRows.length === 0 ? (
-          <p className="text-xs text-navy-400">Tocá "Editar base" y cargá cuántas prendas alquiladas hay de cada tipo.</p>
+          <p className="text-xs text-navy-400">
+            {esAdmin
+              ? 'Tocá "Editar base" y cargá cuántas prendas alquiladas hay de cada tipo.'
+              : 'Todavía no está cargada la base de ropa alquilada. La carga administración.'}
+          </p>
         ) : (
           <div className="overflow-x-auto -mx-3 px-3">
             <table className="w-full text-xs min-w-[400px]">
@@ -610,7 +620,7 @@ export default function Lavadero() {
                   <tr key={b.prenda} className="border-b border-navy-50 last:border-0">
                     <td className="py-1.5 pr-2 text-navy-700 font-semibold">{b.prenda}</td>
                     <td className="px-2 text-center">
-                      {editBase ? (
+                      {editBase && esAdmin ? (
                         <input
                           type="number" min={0} inputMode="numeric"
                           value={base[b.prenda] ?? ''}
