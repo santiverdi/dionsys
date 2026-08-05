@@ -104,6 +104,23 @@ describe('getMonthlyExpenses', () => {
     expect(result.total).toBe(1100) // 1000 sueldos + 100 recepción
   })
 
+  // Las cargas sociales (VEP de seguridad social) se pagan por toda la nómina
+  // junta: no son de un empleado, van en su propio rubro, pero suman al total.
+  // El mes es el del PAGO: las cargas del período 04 pagadas en mayo son de mayo.
+  it('separa las cargas sociales de los sueldos pero las suma al total', () => {
+    const pagosSueldos: PagoSueldo[] = [
+      { id: 's1', empleadoId: 'e1', empleadoNombre: 'Roxana', mes: '2026-05', tipo: 'sueldo', monto: 800, fecha: '2026-05-05', medio: 'efectivo' },
+      // Mismo empleado, mismo mes, recibo aparte: las vacaciones se liquidan solas.
+      { id: 'v1', empleadoId: 'e1', empleadoNombre: 'Roxana', mes: '2026-05', tipo: 'vacaciones', monto: 200, fecha: '2026-05-05', medio: 'efectivo' },
+      { id: 'c1', empleadoId: '', empleadoNombre: 'Cargas sociales (AFIP)', mes: '2026-05', tipo: 'cargas', monto: 350, fecha: '2026-05-12', medio: 'transferencia', periodo: '2026-04' },
+      { id: 'c2', empleadoId: '', empleadoNombre: 'Cargas sociales (AFIP)', mes: '2026-04', tipo: 'cargas', monto: 999, fecha: '2026-04-12', medio: 'transferencia', periodo: '2026-03' }, // otro mes
+    ]
+    const result = getMonthlyExpenses(Y, M, [], [], [], [], pagosSueldos)
+    expect(result.sueldos).toBe(1000) // sueldo + vacaciones: los dos son pago al personal
+    expect(result.cargasSociales).toBe(350)
+    expect(result.total).toBe(1350)
+  })
+
   it('separa los pagos por categoría de servicio (sin categoría = impuesto)', () => {
     const servicios: ImpuestoServicio[] = [
       { id: 'imp', nombre: 'ARBA', nroCuenta: '', urlPago: '', frecuencia: 'mensual', diaVto: 10, observaciones: '', categoria: 'impuesto' },

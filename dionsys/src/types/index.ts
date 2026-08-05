@@ -376,7 +376,18 @@ export interface EmpleadoNomina {
   activo: boolean
 }
 
-export type TipoPagoSueldo = 'sueldo' | 'adelanto' | 'aguinaldo' | 'extra'
+// 'cargas' NO es un pago a un empleado: es el VEP de seguridad social que se paga
+// a AFIP por toda la nómina junta. Va acá y no en Impuestos porque es parte del
+// costo laboral del mes, y así suma solo en todos los reportes que ya leen PagoSueldo.
+//
+// 'vacaciones' es su propio tipo porque la contadora liquida las vacaciones en un
+// recibo APARTE del mensual: el mismo empleado puede tener los dos en el mismo mes,
+// y si no se distinguen el segundo parece un duplicado del primero.
+export type TipoPagoSueldo = 'sueldo' | 'vacaciones' | 'adelanto' | 'aguinaldo' | 'extra' | 'cargas'
+
+// Los tipos que sí son un pago a una persona de la nómina (el form de carga manual
+// y el agrupado por empleado usan estos; 'cargas' va aparte).
+export const TIPOS_PAGO_EMPLEADO: TipoPagoSueldo[] = ['sueldo', 'vacaciones', 'adelanto', 'aguinaldo', 'extra']
 
 export type MedioPagoSueldo = 'efectivo' | 'transferencia'
 
@@ -402,15 +413,22 @@ export interface PagoSueldo {
   desglose?: ReciboLinea[] // renglones del recibo leídos por IA (haberes/deducciones)
   bruto?: number           // total remunerativo del recibo, si la IA lo detectó
   cuil?: string            // CUIL leído del recibo
+  // Solo para tipo 'cargas': el período fiscal que cancela el VEP (YYYY-MM). Es
+  // distinto de `mes`: las cargas de junio se pagan en julio, y el gasto pesa en
+  // JULIO (mes en que sale la plata), pero el período dice a qué mes corresponden.
+  periodo?: string
+  vepNro?: string          // número de VEP del comprobante
   createdBy?: string
   createdAt?: string
 }
 
 export const TIPO_PAGO_SUELDO_LABELS: Record<TipoPagoSueldo, string> = {
   sueldo: 'Sueldo',
+  vacaciones: 'Vacaciones',
   adelanto: 'Adelanto',
   aguinaldo: 'Aguinaldo',
   extra: 'Extra',
+  cargas: 'Cargas sociales',
 }
 
 // --- Lavadero (ropa blanca ALQUILADA, lavado tercerizado) ---

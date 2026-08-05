@@ -125,7 +125,7 @@ async function compressImage(file: File): Promise<{ data: string; mimeType: stri
 }
 
 // Comprime/codifica el archivo y llama al endpoint con el modo indicado.
-async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo' | 'remito' | 'liquidacion'): Promise<unknown> {
+async function callExtract(file: File, mode: 'servicio' | 'proveedor' | 'parte' | 'caja' | 'recibo' | 'remito' | 'liquidacion' | 'vep'): Promise<unknown> {
   const isImage = file.type.startsWith('image/')
   const { data, mimeType } = isImage
     ? await compressImage(file)
@@ -166,6 +166,9 @@ export interface ExtractedRecibo {
   empleado: string
   cuil: string
   periodo: string  // YYYY-MM o ''
+  // Qué liquidación es. Un mismo empleado puede tener el recibo mensual Y el de
+  // vacaciones del mismo mes: sin esto el segundo parece un duplicado del primero.
+  liquidacion: 'mensual' | 'vacaciones' | 'sac' | 'final'
   fechaPago: string // YYYY-MM-DD o ''
   neto: string     // número con punto decimal, listo para validateMonto
   bruto: string
@@ -225,6 +228,27 @@ export async function extractProviderInvoice(file: File): Promise<ExtractedProvi
 /** Lee un recibo de sueldo (foto o PDF): empleado, período, neto y desglose. */
 export async function extractRecibo(file: File): Promise<ExtractedRecibo> {
   return (await callExtract(file, 'recibo')) as ExtractedRecibo
+}
+
+// El VEP / comprobante con el que se pagan las CARGAS SOCIALES de toda la nómina.
+// OJO con las dos fechas: `fechaGeneracion` es cuándo se emitió el volante y
+// `fechaPago` cuándo salió la plata. El gasto pesa en el mes de `fechaPago`
+// (las cargas de junio se pagan en julio y van a julio); `periodo` solo dice a
+// qué mes de sueldos corresponden.
+export interface ExtractedVEP {
+  nroVep: string
+  cuit: string
+  impuesto: string        // descripción tal como figura, ej "351 - APORTES SEG. SOCIAL"
+  codigoImpuesto: string  // solo el código, ej "351"
+  periodo: string         // YYYY-MM o ''
+  fechaPago: string       // YYYY-MM-DD o '' (vacío si el VEP todavía no se pagó)
+  fechaGeneracion: string // YYYY-MM-DD o ''
+  importe: string         // número con punto decimal, listo para validateMonto
+}
+
+/** Lee el VEP / comprobante de pago de las cargas sociales (AFIP-ARCA o banco). */
+export async function extractVEP(file: File): Promise<ExtractedVEP> {
+  return (await callExtract(file, 'vep')) as ExtractedVEP
 }
 
 /** Lee el Parte Diario de habitaciones desde una foto/escaneo (PDF o imagen). */

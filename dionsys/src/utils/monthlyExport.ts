@@ -49,6 +49,7 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
     ['GASTOS DEL MES'],
     ['Concepto', 'Monto', `vs ${monthLabel(prev.year, prev.month)}`],
     ['Sueldos', expenses.sueldos, expensesPrev.sueldos],
+    ['Cargas sociales', expenses.cargasSociales, expensesPrev.cargasSociales],
     ['Impuestos pagados', expenses.impuestosPagado, expensesPrev.impuestosPagado],
     ['Servicios pagados', expenses.serviciosPagado, expensesPrev.serviciosPagado],
     ['Profesionales pagados', expenses.profesionalesPagado, expensesPrev.profesionalesPagado],
@@ -85,7 +86,12 @@ export function exportMonthlyReport(year: number, month: number, data: ExportDat
   const mKey = monthKey(year, month)
   const gastosRows: Row[] = [['Tipo', 'Fecha', 'Descripción', 'Monto', 'Cargado por', 'Estado']]
   for (const p of pagosSueldos.filter(p => p.mes === mKey)) {
-    gastosRows.push(['Sueldo', p.fecha, `${p.empleadoNombre} — ${TIPO_PAGO_SUELDO_LABELS[p.tipo]}`, p.monto, p.createdBy ?? '', p.medio])
+    // Las cargas sociales no son de un empleado: se describen por el período que
+    // cancelan, no por el nombre (que es un rótulo fijo).
+    const desc = p.tipo === 'cargas'
+      ? `${TIPO_PAGO_SUELDO_LABELS.cargas}${p.periodo ? ` — período ${p.periodo}` : ''}${p.vepNro ? ` (VEP ${p.vepNro})` : ''}`
+      : `${p.empleadoNombre} — ${TIPO_PAGO_SUELDO_LABELS[p.tipo]}`
+    gastosRows.push([p.tipo === 'cargas' ? 'Cargas sociales' : 'Sueldo', p.fecha, desc, p.monto, p.createdBy ?? '', p.medio])
   }
   for (const p of data.pagos.filter(p => p.mes === mKey)) {
     gastosRows.push(['Impuesto', p.vtoActual, 'Vto pago', p.monto, p.createdBy ?? '', p.pagado ? 'Pagado' : 'Pendiente'])

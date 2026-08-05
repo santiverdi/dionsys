@@ -9,7 +9,8 @@ import { isInMonth, monthKey } from './dateRange'
 // ---------- Gastos ----------
 
 export interface MonthlyExpenses {
-  sueldos: number
+  sueldos: number         // pagos al personal (sueldo/adelanto/aguinaldo/extra)
+  cargasSociales: number  // VEP de seguridad social del mes (no es de un empleado)
   impuestosPagado: number
   serviciosPagado: number
   profesionalesPagado: number
@@ -52,8 +53,14 @@ export function getMonthlyExpenses(
   const impuestosPendiente = pagos
     .filter(p => !p.pagado && p.mes === mKey)
     .reduce((s, p) => s + p.monto, 0)
-  const sueldos = pagosSueldos
-    .filter(p => p.mes === mKey)
+  // Los pagos al personal y las cargas sociales van separados para que el desglose
+  // no mienta, pero los dos son costo laboral del mes y los dos suman al total.
+  const delMes = pagosSueldos.filter(p => p.mes === mKey)
+  const sueldos = delMes
+    .filter(p => p.tipo !== 'cargas')
+    .reduce((s, p) => s + p.monto, 0)
+  const cargasSociales = delMes
+    .filter(p => p.tipo === 'cargas')
     .reduce((s, p) => s + p.monto, 0)
   const pedidosSemanales = pedidos
     .filter(p => p.status !== 'borrado' && p.monto != null && isInMonth(p.date, year, month))
@@ -67,10 +74,10 @@ export function getMonthlyExpenses(
       .filter(m => m.source === 'compra_externa')
       .reduce((s, m) => s + (m.cost ?? 0), 0), 0)
 
-  const total = sueldos + impuestosPagado + serviciosPagado + profesionalesPagado
+  const total = sueldos + cargasSociales + impuestosPagado + serviciosPagado + profesionalesPagado
     + pedidosSemanales + pedidosDistribuidor + mantenimiento
   return {
-    sueldos, impuestosPagado, serviciosPagado, profesionalesPagado, impuestosPendiente,
+    sueldos, cargasSociales, impuestosPagado, serviciosPagado, profesionalesPagado, impuestosPendiente,
     pedidosSemanales, pedidosDistribuidor, mantenimiento, total,
   }
 }

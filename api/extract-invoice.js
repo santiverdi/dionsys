@@ -87,19 +87,41 @@ const RESPONSE_SCHEMA_PROVEEDOR = {
 }
 
 // --- Modo "recibo": recibo de sueldo argentino (foto o PDF) ---
-const PROMPT_RECIBO = `Sos un asistente que lee RECIBOS DE SUELDO argentinos (recibo de haberes, Ley 20.744). Te paso una foto o PDF del recibo. Extraé EXACTAMENTE estos campos:
-- empleado: nombre y apellido del TRABAJADOR (no del empleador). Como figura en el recibo.
-- cuil: CUIL del trabajador, solo números y guiones si figuran (ej "20-12345678-3"). Si no figura, "".
-- periodo: mes al que corresponde el sueldo, en formato YYYY-MM. Buscá "Período" / "Período abonado" / "Mes" (ej "Junio 2026" → "2026-06"). Si es quincena, igual devolvé el mes.
-- fechaPago: fecha de pago en formato YYYY-MM-DD. Si no figura, "".
-- neto: importe NETO A COBRAR (lo que recibe el trabajador en mano), como número con punto decimal, sin separador de miles ni símbolo (ej "850000.50"). Suele figurar como "NETO A COBRAR" / "Total Neto" / "Son pesos...".
-- bruto: total de haberes REMUNERATIVOS (sueldo bruto sujeto a aportes), número con punto decimal. Si no se distingue, "".
-- items: lista con CADA renglón del recibo, en orden. Para cada renglón:
-    - descripcion: concepto tal como figura (ej "Sueldo básico", "Antigüedad", "Presentismo", "Horas extras 50%", "Jubilación", "Ley 19032", "Obra Social", "Cuota sindical UTHGRA").
-    - tipo: "haber" si es un haber remunerativo; "haber_nr" si es un haber NO remunerativo (suele estar en columna aparte o aclarado); "deduccion" si es un descuento/retención (jubilación, ley 19032, obra social, sindicato, seguro, adelantos descontados, embargos).
-    - importe: importe del renglón, número con punto decimal, sin separador de miles ni símbolo. Siempre POSITIVO (aunque sea deducción).
-  NO incluyas los totales (total haberes, total deducciones, neto) como renglones.
-  La cuenta debe cerrar: haberes + haberes_nr - deducciones ≈ neto.
+const PROMPT_RECIBO = `Sos un asistente que lee RECIBOS DE SUELDO argentinos (recibo de haberes, Ley 20.744). Te paso la imagen o el PDF de UN SOLO recibo, de UN SOLO trabajador. Extraé EXACTAMENTE estos campos.
+
+FORMATO DE LOS NÚMEROS (crítico): los importes vienen en formato argentino, donde el PUNTO separa los miles y la COMA los decimales. "$ 1.341.614,00" son un millón trescientos cuarenta y un mil, y se devuelve como "1341614.00". "$ 12.176,42" se devuelve como "12176.42". Nunca devuelvas el punto de miles ni el símbolo $.
+
+- empleado: apellido y nombre del TRABAJADOR, de la fila "APELLIDO Y NOMBRE". NO es la razón social del empleador (la empresa aparece arriba de todo, con su CUIT).
+- cuil: C.U.I.L del trabajador, tal cual figura, con o sin guiones (ej "27286086247" o "20-12345678-3"). NO confundir con el CUIT de la empresa.
+- periodo: mes que se está pagando, en formato YYYY-MM. Suele estar arriba a la derecha en un recuadro "Periodo abonado" (ej "Mensual - Julio 2026" → "2026-07"). Si es quincena, vacaciones o SAC, igual devolvé el mes.
+- liquidacion: QUÉ liquidación es este recibo. Un mismo trabajador puede tener DOS recibos del mismo mes (el mensual y el de vacaciones, liquidados por separado), así que esto es lo que los distingue. Mirá el recuadro "Periodo abonado" (ej "Mensual - Julio 2026" → "mensual"; "Vacaciones - Julio 2026" → "vacaciones") y, si ahí no se aclara, mirá los conceptos de la tabla. Devolvé una de estas palabras exactas:
+    * "vacaciones" si es una liquidación de vacaciones (conceptos como "Vacaciones", "Vacaciones gozadas", "Plus vacacional")
+    * "sac" si es aguinaldo / SAC / sueldo anual complementario
+    * "final" si es una liquidación final por egreso (indemnización, preaviso, vacaciones no gozadas)
+    * "mensual" para el recibo de sueldo normal del mes
+  Ante la duda, "mensual".
+- fechaPago: fecha de pago en formato YYYY-MM-DD. Muchas veces está dentro de la línea "Lugar de Pago" al pie de la tabla (ej "Lugar de Pago: BUENOS AIRES, 08/08/2026" → "2026-08-08"). Ojo: en formato argentino 08/08/2026 es dd/mm/aaaa. Si no figura, "".
+
+- neto: el SUELDO NETO, o sea la plata que cobra el trabajador en mano. **Es el importe que está a la derecha del rótulo "SUELDO NETO $"** (también puede decir "NETO A COBRAR", "Total Neto" o "Son pesos..."). Suele ser la última fila de la tabla de conceptos, en la misma línea que "Lugar de Pago".
+  CUIDADO, estos NO son el neto:
+    * la columna "SUELDO" del encabezado del empleado (ese es el sueldo básico de convenio);
+    * el "TOTALES" de la columna REMUNERATIVO (ese es el bruto);
+    * el "COSTO TOTAL EMPLEADOR" (ese incluye las cargas del empleador y es bastante más alto).
+- bruto: total de haberes REMUNERATIVOS, o sea el importe de la fila "TOTALES" en la columna "REMUNERATIVO". Si no se distingue, "".
+
+- items: cada renglón de la tabla de conceptos del trabajador, en orden. La tabla suele tener las columnas: CONCEPTO | UNIDAD | REMUNERATIVO | RETENCIÓN | NO REM. El tipo sale de EN QUÉ COLUMNA está el importe:
+    - importe en la columna REMUNERATIVO → tipo "haber" (Sueldo Mensual, Antiguedad, Asistencia Perfecta, Complemento Servicio, Adicional por alimentacion, Feriado Trabajado, horas extras…)
+    - importe en la columna RETENCIÓN → tipo "deduccion" (Jubilacion, Ley 19032, Obra Social, Aporte Sindical Oblig., Retencion por alimentación, Seguro de Vida y Sepelio, Recupero de Adelanto de Sueldos, embargos…)
+    - importe en la columna NO REM → tipo "haber_nr" (Suma No Rem. CCT, Redondeo, sumas no remunerativas de acuerdo…)
+    - descripcion: el concepto tal cual figura. importe: número positivo SIEMPRE, aunque sea deducción (el signo lo da el tipo).
+
+QUÉ **NO** VA EN items (muy importante, si lo metés la cuenta no cierra):
+  * la fila "TOTALES", el "SUELDO NETO $" ni ningún subtotal;
+  * la SEGUNDA tabla, la de cargas del empleador: "Contribución de Seg. Social", "Contribución de Obra Social", "ART", "Seguro de Vida Colectivo (SCVO)", "SUB TOTAL CONTRIBUCIONES EMPLEADOR", "COSTO TOTAL EMPLEADOR". Eso lo paga la empresa aparte, NO se le descuenta al trabajador;
+  * el bloque de abajo "Detalle de la composición salarial" (Total Costo Sindical, Total Seguridad Social, Total Obra Social, Total costo INSSJP, Total costo ART, Total Costo SCVO) ni el gráfico de torta.
+
+CONTROL antes de responder: la suma de los "haber" + los "haber_nr" − los "deduccion" tiene que dar el neto. Si no da, es que metiste renglones de las cargas del empleador o leíste mal un número: revisalo.
+
 Si un dato no aparece en el documento, devolvé cadena vacía "" en ese campo. No inventes datos.`
 
 const RESPONSE_SCHEMA_RECIBO = {
@@ -108,6 +130,7 @@ const RESPONSE_SCHEMA_RECIBO = {
     empleado: { type: 'STRING' },
     cuil: { type: 'STRING' },
     periodo: { type: 'STRING' },
+    liquidacion: { type: 'STRING' },
     fechaPago: { type: 'STRING' },
     neto: { type: 'STRING' },
     bruto: { type: 'STRING' },
@@ -124,7 +147,38 @@ const RESPONSE_SCHEMA_RECIBO = {
       },
     },
   },
-  required: ['empleado', 'cuil', 'periodo', 'fechaPago', 'neto', 'bruto', 'items'],
+  required: ['empleado', 'cuil', 'periodo', 'liquidacion', 'fechaPago', 'neto', 'bruto', 'items'],
+}
+
+// --- Modo "vep": VEP / comprobante de pago de cargas sociales (AFIP-ARCA) ---
+// Lo que llega es el volante electrónico de pago o el ticket del homebanking con
+// el que se pagan los aportes y contribuciones de toda la nómina. Puede venir
+// como VEP generado (todavía sin pagar) o como comprobante ya pagado del banco:
+// por eso pedimos las dos fechas por separado y que NO las mezcle.
+const PROMPT_VEP = `Sos un asistente que lee VEP (Volante Electrónico de Pago) de AFIP/ARCA y comprobantes de pago de bancos/homebanking argentinos, usados para pagar CARGAS SOCIALES (aportes y contribuciones de seguridad social). Te paso una foto o PDF. Extraé EXACTAMENTE estos campos:
+- nroVep: número del VEP / número de transacción o comprobante. Solo el número, sin texto. Si no figura, "".
+- cuit: CUIT del contribuyente que paga (el empleador), con guiones si figuran (ej "30-12345678-9"). Si no figura, "".
+- impuesto: la descripción del impuesto/concepto TAL COMO figura, incluyendo el código si lo hay (ej "351 - APORTES SEG. SOCIAL EMPLEADORES", "308 - SEGURIDAD SOCIAL", "F931"). Si no figura, "".
+- codigoImpuesto: SOLO el código numérico del impuesto si figura (ej "351"). Si no figura, "".
+- periodo: período fiscal que cancela el pago, en formato YYYY-MM. Suele figurar como "Período fiscal" / "Período" en MM/AAAA (ej "06/2026" → "2026-06"). Si no figura, "".
+- fechaPago: fecha en que se PAGÓ efectivamente, formato YYYY-MM-DD. Buscá "Fecha de pago" / "Fecha de acreditación" / la fecha del ticket del banco. Si el documento es un VEP generado pero NO pagado, devolvé "".
+- fechaGeneracion: fecha de generación del VEP o fecha de vencimiento/expiración, formato YYYY-MM-DD. Si no figura, "".
+- importe: importe TOTAL pagado, como número con punto decimal, sin separador de miles ni símbolo (ej "1850000.50"). Es el total del volante, NO el desglose por concepto.
+Si un dato no aparece en el documento, devolvé cadena vacía "" en ese campo. No inventes datos ni deduzcas fechas que no estén escritas.`
+
+const RESPONSE_SCHEMA_VEP = {
+  type: 'OBJECT',
+  properties: {
+    nroVep: { type: 'STRING' },
+    cuit: { type: 'STRING' },
+    impuesto: { type: 'STRING' },
+    codigoImpuesto: { type: 'STRING' },
+    periodo: { type: 'STRING' },
+    fechaPago: { type: 'STRING' },
+    fechaGeneracion: { type: 'STRING' },
+    importe: { type: 'STRING' },
+  },
+  required: ['nroVep', 'cuit', 'impuesto', 'codigoImpuesto', 'periodo', 'fechaPago', 'fechaGeneracion', 'importe'],
 }
 
 // --- Modo "parte": Parte Diario de habitaciones (foto/escaneo del reporte impreso) ---
@@ -288,7 +342,7 @@ module.exports = async (req, res) => {
   }
   const mimeType = body && body.mimeType
   const data = body && body.data
-  const mode = ['proveedor', 'parte', 'caja', 'recibo', 'remito'].includes(body && body.mode) ? body.mode : 'servicio'
+  const mode = ['proveedor', 'parte', 'caja', 'recibo', 'remito', 'vep'].includes(body && body.mode) ? body.mode : 'servicio'
   if (!mimeType || !data) {
     res.status(400).json({ error: 'Faltan datos del archivo (mimeType / data).' })
     return
@@ -299,8 +353,8 @@ module.exports = async (req, res) => {
     return
   }
 
-  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : mode === 'recibo' ? PROMPT_RECIBO : mode === 'remito' ? PROMPT_REMITO : PROMPT
-  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : mode === 'recibo' ? RESPONSE_SCHEMA_RECIBO : mode === 'remito' ? RESPONSE_SCHEMA_REMITO : RESPONSE_SCHEMA
+  const prompt = mode === 'proveedor' ? PROMPT_PROVEEDOR : mode === 'parte' ? PROMPT_PARTE : mode === 'caja' ? PROMPT_CAJA : mode === 'recibo' ? PROMPT_RECIBO : mode === 'remito' ? PROMPT_REMITO : mode === 'vep' ? PROMPT_VEP : PROMPT
+  const schema = mode === 'proveedor' ? RESPONSE_SCHEMA_PROVEEDOR : mode === 'parte' ? RESPONSE_SCHEMA_PARTE : mode === 'caja' ? RESPONSE_SCHEMA_CAJA : mode === 'recibo' ? RESPONSE_SCHEMA_RECIBO : mode === 'remito' ? RESPONSE_SCHEMA_REMITO : mode === 'vep' ? RESPONSE_SCHEMA_VEP : RESPONSE_SCHEMA
 
   const payload = {
     contents: [
@@ -364,14 +418,30 @@ module.exports = async (req, res) => {
                 }
               }).filter(it => it.descripcion || it.importe)
             : []
+          const liq = str(parsed.liquidacion).toLowerCase()
           res.status(200).json({
             empleado: str(parsed.empleado),
             cuil: str(parsed.cuil),
             periodo: str(parsed.periodo),
+            liquidacion: ['vacaciones', 'sac', 'final'].includes(liq) ? liq : 'mensual',
             fechaPago: str(parsed.fechaPago),
             neto: str(parsed.neto),
             bruto: str(parsed.bruto),
             items,
+          })
+          return
+        }
+        if (mode === 'vep') {
+          const str = v => String(v ?? '').trim()
+          res.status(200).json({
+            nroVep: str(parsed.nroVep),
+            cuit: str(parsed.cuit),
+            impuesto: str(parsed.impuesto),
+            codigoImpuesto: str(parsed.codigoImpuesto),
+            periodo: str(parsed.periodo),
+            fechaPago: str(parsed.fechaPago),
+            fechaGeneracion: str(parsed.fechaGeneracion),
+            importe: str(parsed.importe),
           })
           return
         }

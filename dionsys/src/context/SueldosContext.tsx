@@ -6,7 +6,9 @@ import { useAuth } from './AuthContext'
 interface SueldosContextType {
   empleados: EmpleadoNomina[]
   pagos: PagoSueldo[]
-  addEmpleado: (empleado: Omit<EmpleadoNomina, 'id'>) => void
+  // Devuelve el empleado creado (con su id) para poder asignarlo en el acto: el
+  // alta desde un recibo escaneado necesita saber a quién acaba de crear.
+  addEmpleado: (empleado: Omit<EmpleadoNomina, 'id'>) => EmpleadoNomina
   updateEmpleado: (empleado: EmpleadoNomina) => void
   deleteEmpleado: (id: string) => void
   addPago: (pago: Omit<PagoSueldo, 'id'>) => void
@@ -71,13 +73,16 @@ export function SueldosProvider({ children }: { children: ReactNode }) {
     return () => { active = false }
   }, [isAdmin])
 
-  const addEmpleado = useCallback((empleado: Omit<EmpleadoNomina, 'id'>) => {
+  const addEmpleado = useCallback((empleado: Omit<EmpleadoNomina, 'id'>): EmpleadoNomina => {
+    // El id se genera FUERA del updater: así se puede devolver al que llama, y de
+    // paso el updater queda idempotente si React lo corre dos veces.
+    const nuevo: EmpleadoNomina = { ...empleado, id: crypto.randomUUID() }
     setEmpleados(prev => {
-      const nuevo: EmpleadoNomina = { ...empleado, id: crypto.randomUUID() }
       const updated = [...prev, nuevo]
       saveEmpleados(updated)
       return updated
     })
+    return nuevo
   }, [])
 
   const updateEmpleado = useCallback((empleado: EmpleadoNomina) => {

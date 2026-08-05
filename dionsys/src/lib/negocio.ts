@@ -327,6 +327,7 @@ export function getCostoHabitacion(
   const lavadero = costoLavaderoMes(year, month, liquidacionesLavadero)
   const desglose = [
     { label: 'Sueldos', monto: exp.sueldos },
+    { label: 'Cargas sociales', monto: exp.cargasSociales },
     { label: 'Impuestos y cargas', monto: exp.impuestosPagado },
     { label: 'Servicios (luz/gas/agua…)', monto: exp.serviciosPagado },
     { label: 'Profesionales y abonos', monto: exp.profesionalesPagado },
@@ -350,7 +351,9 @@ export function getCostoHabitacion(
     nochesEstimadas,
     costoPorHabNoche: nochesEstimadas > 0 ? Math.round(costoTotal / nochesEstimadas) : 0,
     desglose,
-    sueldosCargados: pagosSueldos.some(p => p.mes === mKey),
+    // Solo cuentan los pagos AL PERSONAL: un mes con las cargas sociales cargadas
+    // pero sin los sueldos sigue estando incompleto y hay que avisarlo.
+    sueldosCargados: pagosSueldos.some(p => p.mes === mKey && p.tipo !== 'cargas'),
     lavaderoCargado: lavadero != null,
   }
 }

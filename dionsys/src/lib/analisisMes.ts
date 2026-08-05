@@ -104,6 +104,7 @@ export function getAnalisisMes(year: number, month: number, d: AnalisisInputs, h
   const expPrev = getMonthlyExpenses(prev.year, prev.month, d.orders, d.pedidos, d.tasks, d.pagos, d.pagosSueldos, d.servicios)
   const egresosPorRubro = ([
     ['Sueldos', exp.sueldos, expPrev.sueldos],
+    ['Cargas sociales', exp.cargasSociales, expPrev.cargasSociales],
     ['Impuestos y cargas', exp.impuestosPagado, expPrev.impuestosPagado],
     ['Servicios (luz/gas/agua…)', exp.serviciosPagado, expPrev.serviciosPagado],
     ['Profesionales y abonos', exp.profesionalesPagado, expPrev.profesionalesPagado],

@@ -283,6 +283,19 @@ describe('getNochesHabitacion + getCostoHabitacion', () => {
     expect(c.sueldosCargados).toBe(false)
     expect(c.lavaderoCargado).toBe(false)
   })
+
+  // Tener las cargas sociales del mes no alcanza: sin los recibos del personal el
+  // costo por habitación sigue dando de menos y hay que seguir avisando.
+  it('las cargas sociales solas no dan por cargados los sueldos, pero sí suman al costo', () => {
+    const soloCargas: PagoSueldo[] = [{
+      id: 'c1', empleadoId: '', empleadoNombre: 'Cargas sociales (AFIP)', mes: '2026-06',
+      tipo: 'cargas', monto: 450000, fecha: '2026-06-12', medio: 'transferencia', periodo: '2026-05',
+    }]
+    const c = getCostoHabitacion(2026, 6, [], [], [], [], [], soloCargas, [], partes, [], [], new Date('2026-07-15T12:00:00'))
+    expect(c.sueldosCargados).toBe(false)
+    expect(c.costoTotal).toBe(450000)
+    expect(c.desglose.find(d => d.label === 'Cargas sociales')?.monto).toBe(450000)
+  })
 })
 
 describe('getAnalisisMes', () => {

@@ -91,6 +91,7 @@ export default function Negocio({ year, month }: { year: number; month: number }
   const maxProv = Math.max(...proveedores.map(p => p.monto), 1)
   const egresosCats = [
     { label: 'Sueldos', v: expenses.sueldos },
+    { label: 'Cargas sociales', v: expenses.cargasSociales },
     { label: 'Impuestos/cargas', v: expenses.impuestosPagado },
     { label: 'Servicios (luz/gas/agua)', v: expenses.serviciosPagado },
     { label: 'Profesionales/abonos', v: expenses.profesionalesPagado },
