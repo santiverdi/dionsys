@@ -10,7 +10,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import {
   Users, UserPlus, Plus, Save, Trash2, ChevronLeft, ChevronRight,
   Paperclip, X, Loader2, Eye, Download, Wallet,
-  ScanLine, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Landmark,
+  FileUp, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Landmark,
 } from 'lucide-react'
 import type {
   EmpleadoNomina, PagoSueldo, TipoPagoSueldo, MedioPagoSueldo, ReciboLinea,
@@ -527,10 +527,10 @@ export default function Sueldos() {
             onClick={() => scanInputRef.current?.click()}
             disabled={scanning}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-gold-400 text-navy-900 hover:bg-gold-300 disabled:opacity-50 transition-colors"
-            title="Sacale foto a los recibos de sueldo: la IA los lee y carga cada pago con su desglose"
+            title="Subí el PDF que manda la contadora (o una foto): la IA lee cada recibo y carga el neto de cada empleado con su desglose"
           >
-            {scanning ? <Loader2 size={16} className="animate-spin" /> : <ScanLine size={16} />}
-            {scanning ? 'Leyendo…' : 'Escanear recibos (IA)'}
+            {scanning ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
+            {scanning ? 'Leyendo…' : 'Subir recibos (PDF)'}
           </button>
           <input
             ref={vepInputRef}
@@ -693,7 +693,7 @@ export default function Sueldos() {
         <div className="bg-white rounded-xl shadow-sm border border-gold-300 p-4 space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-navy-800 text-sm flex items-center gap-1.5">
-              <ScanLine size={14} /> Recibos escaneados
+              <FileUp size={14} /> Recibos leídos
               {scanning && prepMsg && <span className="font-normal text-navy-400">— {prepMsg}</span>}
             </h3>
             {!scanning && (
