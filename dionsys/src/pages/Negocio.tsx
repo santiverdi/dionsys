@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
-  Truck, CalendarClock, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
-  ChevronDown, ChevronRight, Users, Building2, Croissant,
+  Truck, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
+  ChevronRight, Users, Building2, Croissant, LayoutGrid,
 } from 'lucide-react'
 import GruposPanel from '../components/GruposPanel'
 import RendimientoHabitaciones from '../components/RendimientoHabitaciones'
 import CostoDesayuno from '../components/CostoDesayuno'
+import RetirosDeCaja from '../components/RetirosDeCaja'
+import { CuentaCorrientePanel, GastoPorProveedorPanel } from '../components/ProveedoresPanel'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useOrders } from '../context/OrdersContext'
@@ -26,6 +28,21 @@ import { getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import { employees } from '../data/mock'
 
+// El dashboard es largo: en vez de un scroll infinito, cada tema es una pestaña.
+// "Resumen" es la portada, con una caja por tema para entrar de un toque.
+type TabId = 'resumen' | 'ingresos' | 'egresos' | 'caja' | 'habitaciones' | 'desayuno' | 'grupos' | 'proveedores'
+
+const TABS: { id: TabId; label: string; icon: typeof Scale }[] = [
+  { id: 'resumen', label: 'Resumen', icon: LayoutGrid },
+  { id: 'ingresos', label: 'Ingresos', icon: Banknote },
+  { id: 'egresos', label: 'Egresos', icon: ArrowUpCircle },
+  { id: 'caja', label: 'Caja', icon: Receipt },
+  { id: 'habitaciones', label: 'Habitaciones', icon: BedDouble },
+  { id: 'desayuno', label: 'Desayuno', icon: Croissant },
+  { id: 'grupos', label: 'Grupos', icon: Users },
+  { id: 'proveedores', label: 'Proveedores', icon: Truck },
+]
+
 function Section({ icon: Icon, title, children }: { icon: typeof Scale; title: string; children: React.ReactNode }) {
   return (
     <section className="bg-white rounded-xl border border-navy-100 p-4 mb-4">
@@ -37,11 +54,30 @@ function Section({ icon: Icon, title, children }: { icon: typeof Scale; title: s
   )
 }
 
-function fmtVto(s?: string): string {
-  if (!s) return 'sin vto.'
-  const d = new Date(s + 'T00:00:00')
-  if (isNaN(d.getTime())) return s
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+// Caja de la portada: el número que resume el tema y la puerta de entrada.
+function Box({ icon: Icon, title, valor, hint, alerta, onClick }: {
+  icon: typeof Scale; title: string; valor?: string; hint: string; alerta?: string; onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left bg-white rounded-xl border border-navy-100 p-3 hover:border-gold-400 hover:shadow-sm transition-all flex flex-col"
+    >
+      <p className="text-[10px] uppercase tracking-wide text-navy-500 flex items-center gap-1.5">
+        <Icon size={12} className="text-gold-600 shrink-0" /> {title}
+      </p>
+      {valor && <p className="text-base font-bold text-navy-800 leading-tight mt-0.5">{valor}</p>}
+      <p className="text-[10px] text-navy-400 mt-0.5 flex-1">{hint}</p>
+      {alerta && (
+        <p className="text-[10px] text-amber-700 font-semibold flex items-center gap-1 mt-1">
+          <AlertTriangle size={10} className="shrink-0" /> {alerta}
+        </p>
+      )}
+      <span className="text-[10px] font-semibold text-gold-600 inline-flex items-center gap-0.5 mt-1">
+        Ver <ChevronRight size={11} />
+      </span>
+    </button>
+  )
 }
 
 export default function Negocio({ year, month }: { year: number; month: number }) {
@@ -56,6 +92,8 @@ export default function Negocio({ year, month }: { year: number; month: number }
   const { pagos: pagosSueldos } = useSueldos()
   const { records } = useOccupancy()
   const { liquidaciones: lavaderoLiqs } = useLavadero()
+
+  const [tab, setTab] = useState<TabId>('resumen')
 
   const cur = useMemo(() => ({ year, month }), [year, month])
   const prev = useMemo(() => getPreviousMonth(cur.year, cur.month), [cur])
@@ -74,21 +112,12 @@ export default function Negocio({ year, month }: { year: number; month: number }
   )
   const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
   const retirosPorMes = useMemo(() => getRetirosDeCajaPorMes(cajas), [cajas])
-  // El acordeón de retiros arranca abierto en el mes que se está mirando, y se
-  // reacomoda solo cuando cambia el mes elegido (sin pisar lo que abra el usuario).
-  const [mesAbierto, setMesAbierto] = useState<string | null>(monthKey(cur.year, cur.month))
-  const [mesSeguido, setMesSeguido] = useState(monthKey(cur.year, cur.month))
-  if (mesSeguido !== monthKey(cur.year, cur.month)) {
-    setMesSeguido(monthKey(cur.year, cur.month))
-    setMesAbierto(monthKey(cur.year, cur.month))
-  }
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
   const revenue = useMemo(() => getRevenueOcupacion(cur.year, cur.month, cajas, records), [cur, cajas, records])
 
   const resDelta = resultado.resultado - resultadoPrev.resultado
   const maxTend = Math.max(...tendencia.flatMap(t => [t.ingresos, t.egresos]), 1)
-  const maxProv = Math.max(...proveedores.map(p => p.monto), 1)
   const egresosCats = [
     { label: 'Sueldos', v: expenses.sueldos },
     { label: 'Cargas sociales', v: expenses.cargasSociales },
@@ -103,6 +132,8 @@ export default function Negocio({ year, month }: { year: number; month: number }
   ].filter(c => c.v > 0).sort((a, b) => b.v - a.v)
 
   const sinDatos = ingresos.total === 0 && resultado.egresos === 0
+  const faltaCargar = !costoHab.sueldosCargados || !costoHab.lavaderoCargado
+  const totalRetiros = retirosPorMes.find(m => m.key === monthKey(cur.year, cur.month))?.total ?? 0
 
   function handleExport() {
     exportMonthlyReport(cur.year, cur.month, {
@@ -132,7 +163,7 @@ export default function Negocio({ year, month }: { year: number; month: number }
         </div>
       )}
 
-      {/* Resultado del mes */}
+      {/* Resultado del mes: se ve siempre, en todas las pestañas. */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="rounded-xl p-3 bg-green-50 border border-green-200">
           <p className="text-[10px] uppercase tracking-wide text-green-700 flex items-center gap-1"><ArrowDownCircle size={11} /> Ingresos</p>
@@ -150,48 +181,131 @@ export default function Negocio({ year, month }: { year: number; month: number }
           <p className={`text-[10px] ${resultado.resultado >= 0 ? 'text-cream/60' : 'text-amber-700'}`}>margen {resultado.margenPct}%</p>
         </div>
       </div>
-      <p className="text-xs text-navy-400 mb-4 flex items-center gap-1.5">
+      <p className="text-xs text-navy-400 mb-3 flex items-center gap-1.5">
         {resDelta >= 0 ? <TrendingUp size={13} className="text-green-600" /> : <TrendingDown size={13} className="text-red-600" />}
         Resultado {resDelta >= 0 ? 'mejor' : 'peor'} que {monthLabel(prev.year, prev.month)} en {formatMontoCurrency(Math.abs(resDelta))}.
       </p>
 
-      {/* Tendencia */}
-      <Section icon={TrendingUp} title="Tendencia (6 meses)">
-        <div className="space-y-2">
-          {tendencia.map(t => (
-            <div key={t.label} className="text-xs">
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-navy-500">{t.label}</span>
-                <span className={`font-semibold ${t.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                  {t.resultado >= 0 ? '+' : ''}{formatMontoCurrency(t.resultado)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="flex-1 h-2.5 bg-navy-50 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-400" style={{ width: `${(t.ingresos / maxTend) * 100}%` }} />
-                </div>
-                <div className="flex-1 h-2.5 bg-navy-50 rounded-full overflow-hidden">
-                  <div className="h-full bg-red-400" style={{ width: `${(t.egresos / maxTend) * 100}%` }} />
-                </div>
-              </div>
-            </div>
+      {/* Pestañas: una por tema. En celular se desplazan de costado. */}
+      <div className="overflow-x-auto -mx-1 px-1 mb-4">
+        <div className="flex gap-1 bg-navy-100 rounded-xl p-1 w-max min-w-full">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                tab === t.id ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
+              }`}
+            >
+              <t.icon size={14} /> {t.label}
+            </button>
           ))}
         </div>
-        <p className="text-[10px] text-navy-400 mt-2"><span className="text-green-600">█</span> ingresos · <span className="text-red-500">█</span> egresos</p>
-      </Section>
+      </div>
 
-      {/* Ingresos por medio + egresos por categoría */}
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Section icon={Banknote} title="Ingresos por medio de pago">
-          <div className="space-y-1 text-xs">
-            {([['Efectivo', ingresos.efectivo], ['Tarjetas', ingresos.tarjetas], ['Transf.', ingresos.transferencia], ['Cheques', ingresos.cheques], ['Otros', ingresos.otros]] as const).map(([l, v]) => (
-              <div key={l} className="flex items-center justify-between">
-                <span className="text-navy-600">{l}</span>
-                <span className="font-semibold text-navy-800">{formatMontoCurrency(v)}</span>
-              </div>
-            ))}
+      {tab === 'resumen' && (
+        <>
+          {/* Una caja por tema: el número que lo resume y la puerta de entrada. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+            <Box
+              icon={Banknote} title="Ingresos" valor={formatMontoCurrency(ingresos.total)}
+              hint={`${ingresos.cajas} caja(s) · por medio de pago y por ocupación`}
+              onClick={() => setTab('ingresos')}
+            />
+            <Box
+              icon={ArrowUpCircle} title="Egresos" valor={formatMontoCurrency(resultado.egresos)}
+              hint={`${egresosCats.length} rubro(s) con gasto este mes`}
+              alerta={expenses.impuestosPendiente > 0 ? `${formatMontoCurrency(expenses.impuestosPendiente)} sin pagar` : undefined}
+              onClick={() => setTab('egresos')}
+            />
+            <Box
+              icon={Receipt} title="Caja" valor={formatMontoCurrency(resultado.gastosCaja)}
+              hint={`${gastosCajaDetalle.length} gasto(s) pagados de la caja · retiros: ${formatMontoCurrency(totalRetiros)}`}
+              onClick={() => setTab('caja')}
+            />
+            <Box
+              icon={BedDouble} title="Habitaciones"
+              valor={costoHab.costoPorHabNoche > 0 ? formatMontoCurrency(costoHab.costoPorHabNoche) : '—'}
+              hint="costo por hab/noche, ingreso por ocupación y rendimiento de cada habitación"
+              alerta={faltaCargar ? 'faltan datos del mes' : undefined}
+              onClick={() => setTab('habitaciones')}
+            />
+            <Box
+              icon={Croissant} title="Desayuno"
+              hint="lo que se compra para el desayuno y lo que consume cada huésped"
+              onClick={() => setTab('desayuno')}
+            />
+            <Box
+              icon={Users} title="Grupos"
+              hint="los que cobra el dueño por fuera de la caja"
+              onClick={() => setTab('grupos')}
+            />
+            <Box
+              icon={Truck} title="Proveedores" valor={formatMontoCurrency(cc.totalPendiente)}
+              hint={`${cc.items.length} factura(s) en cuenta corriente · gasto del mes por proveedor`}
+              alerta={cc.vencidas > 0 ? `${formatMontoCurrency(cc.vencidas)} vencido` : undefined}
+              onClick={() => setTab('proveedores')}
+            />
           </div>
-        </Section>
+
+          <Section icon={TrendingUp} title="Tendencia (6 meses)">
+            <div className="space-y-2">
+              {tendencia.map(t => (
+                <div key={t.label} className="text-xs">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-navy-500">{t.label}</span>
+                    <span className={`font-semibold ${t.resultado >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                      {t.resultado >= 0 ? '+' : ''}{formatMontoCurrency(t.resultado)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="flex-1 h-2.5 bg-navy-50 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-400" style={{ width: `${(t.ingresos / maxTend) * 100}%` }} />
+                    </div>
+                    <div className="flex-1 h-2.5 bg-navy-50 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-400" style={{ width: `${(t.egresos / maxTend) * 100}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-navy-400 mt-2"><span className="text-green-600">█</span> ingresos · <span className="text-red-500">█</span> egresos</p>
+          </Section>
+        </>
+      )}
+
+      {tab === 'ingresos' && (
+        <>
+          <Section icon={Banknote} title="Ingresos por medio de pago">
+            <div className="space-y-1 text-xs">
+              {([['Efectivo', ingresos.efectivo], ['Tarjetas', ingresos.tarjetas], ['Transf.', ingresos.transferencia], ['Cheques', ingresos.cheques], ['Otros', ingresos.otros]] as const).map(([l, v]) => (
+                <div key={l} className="flex items-center justify-between">
+                  <span className="text-navy-600">{l}</span>
+                  <span className="font-semibold text-navy-800">{formatMontoCurrency(v)}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <Section icon={BedDouble} title="Ingreso por ocupación (aprox.)">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-navy-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase text-navy-500">Por huésped/noche</p>
+                <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(revenue.ingresoPorHuesped)}</p>
+              </div>
+              <div className="bg-navy-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase text-navy-500">Por habitación/noche</p>
+                <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(revenue.ingresoPorHabitacion)}</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-navy-400 mt-2">
+              Ingreso del mes repartido sobre {revenue.diasConDatos} día(s) con ocupación cargada. Aproximado.
+            </p>
+          </Section>
+        </>
+      )}
+
+      {tab === 'egresos' && (
         <Section icon={ArrowUpCircle} title="Egresos por rubro">
           <div className="space-y-1 text-xs">
             {egresosCats.length === 0 && (
@@ -211,201 +325,112 @@ export default function Negocio({ year, month }: { year: number; month: number }
             )}
           </div>
         </Section>
-      </div>
+      )}
 
-      {/* Desglose de gastos de caja del mes (NO incluye retiros a caja fuerte) */}
-      <Section icon={Receipt} title={`Gastos de caja — desglose (${gastosCajaDetalle.length})`}>
-        {gastosCajaDetalle.length === 0 ? (
-          <p className="text-xs text-navy-400">Sin gastos pagados de la caja este mes.</p>
-        ) : (
-          <ul className="space-y-1 text-xs">
-            {gastosCajaDetalle.map((g, i) => (
-              <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
-                <span className="min-w-0 truncate text-navy-700">
-                  {g.observacion}
-                  <span className="text-navy-400"> · Caja {g.nroCaja}{g.conserje ? ` · ${g.conserje}` : ''}</span>
-                </span>
-                <span className="shrink-0 font-semibold text-navy-800">{formatMontoCurrency(g.total)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="text-[10px] text-navy-400 mt-2">No incluye los retiros a la caja fuerte (no son gasto).</p>
-      </Section>
-
-      {/* Retiros de efectivo por mes (plata que va a la caja fuerte, NO es gasto) */}
-      <Section icon={Banknote} title="Retiros de efectivo por mes">
-        {retirosPorMes.length === 0 ? (
-          <p className="text-xs text-navy-400">Sin retiros de efectivo cargados todavía.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {retirosPorMes.map(mes => {
-              const abierto = mesAbierto === mes.key
-              return (
-                <div key={mes.key} className="rounded-lg border border-navy-100 overflow-hidden">
-                  <button
-                    onClick={() => setMesAbierto(abierto ? null : mes.key)}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-navy-50 hover:bg-navy-100 transition-colors"
-                  >
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-navy-700">
-                      {abierto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      {mes.label}
-                      <span className="text-navy-400 font-normal">· {mes.items.length} retiro(s)</span>
+      {tab === 'caja' && (
+        <>
+          {/* Desglose de gastos de caja del mes (NO incluye retiros a caja fuerte) */}
+          <Section icon={Receipt} title={`Gastos de caja — desglose (${gastosCajaDetalle.length})`}>
+            {gastosCajaDetalle.length === 0 ? (
+              <p className="text-xs text-navy-400">Sin gastos pagados de la caja este mes.</p>
+            ) : (
+              <ul className="space-y-1 text-xs">
+                {gastosCajaDetalle.map((g, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
+                    <span className="min-w-0 truncate text-navy-700">
+                      {g.observacion}
+                      <span className="text-navy-400"> · Caja {g.nroCaja}{g.conserje ? ` · ${g.conserje}` : ''}</span>
                     </span>
-                    <span className="text-sm font-bold text-navy-800 shrink-0">{formatMontoCurrency(mes.total)}</span>
-                  </button>
-                  {abierto && (
-                    <ul className="space-y-1 text-xs px-3 py-2">
-                      {mes.items.map((g, i) => (
-                        <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
-                          <span className="min-w-0 truncate text-navy-700">
-                            {g.observacion}
-                            <span className="text-navy-400"> · Caja {g.nroCaja}{g.conserje ? ` · ${g.conserje}` : ''}</span>
-                          </span>
-                          <span className="shrink-0 font-semibold text-navy-800">{formatMontoCurrency(g.total)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-        <p className="text-[10px] text-navy-400 mt-2">El retiro no es un gasto: es plata del hotel que va a la caja fuerte/oficina.</p>
-      </Section>
+                    <span className="shrink-0 font-semibold text-navy-800">{formatMontoCurrency(g.total)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[10px] text-navy-400 mt-2">No incluye los retiros a la caja fuerte (no son gasto).</p>
+          </Section>
 
-      {/* Costo por habitación ocupada */}
-      <Section icon={BedDouble} title="Costo por habitación (mes)">
-        {(!costoHab.sueldosCargados || !costoHab.lavaderoCargado) && (
-          <div className="flex items-start gap-2 rounded-lg border-2 border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 mb-3">
-            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-            <span>
-              <strong>El costo da incompleto:</strong> falta cargar
-              {!costoHab.sueldosCargados ? ' los sueldos del mes' : ''}
-              {!costoHab.sueldosCargados && !costoHab.lavaderoCargado ? ' y' : ''}
-              {!costoHab.lavaderoCargado ? ' la liquidación del lavadero' : ''}.
-            </span>
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-navy-800 rounded-lg p-3">
-            <p className="text-[10px] uppercase text-gold-300">Costo por habitación/noche</p>
-            <p className="text-lg font-bold text-cream">{costoHab.costoPorHabNoche > 0 ? formatMontoCurrency(costoHab.costoPorHabNoche) : '—'}</p>
-            <p className="text-[10px] text-cream/60">
-              {costoHab.noches.fuente === 'sin datos'
-                ? 'sin partes ni ocupación cargados'
-                : `${costoHab.nochesEstimadas} noches-hab (${costoHab.noches.dias} día(s) con dato, ${costoHab.noches.fuente === 'partes' ? 'de los partes' : 'de ocupación manual'})`}
-            </p>
-          </div>
-          <div className="bg-navy-50 rounded-lg p-3">
-            <p className="text-[10px] uppercase text-navy-500">Costos totales del mes</p>
-            <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(costoHab.costoTotal)}</p>
-            <p className="text-[10px] text-navy-400">vs ingreso por hab/noche: {formatMontoCurrency(revenue.ingresoPorHabitacion)}</p>
-          </div>
-        </div>
-        {costoHab.desglose.length > 0 && (
-          <div className="space-y-1 text-xs">
-            {costoHab.desglose.map(d => (
-              <div key={d.label} className="flex items-center justify-between">
-                <span className="text-navy-600">{d.label}</span>
-                <span className="font-semibold text-navy-800">{formatMontoCurrency(d.monto)}</span>
+          <Section icon={Banknote} title="Retiros de efectivo por mes">
+            <RetirosDeCaja meses={retirosPorMes} mesKey={monthKey(cur.year, cur.month)} />
+          </Section>
+        </>
+      )}
+
+      {tab === 'habitaciones' && (
+        <>
+          <Section icon={BedDouble} title="Costo por habitación (mes)">
+            {faltaCargar && (
+              <div className="flex items-start gap-2 rounded-lg border-2 border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 mb-3">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  <strong>El costo da incompleto:</strong> falta cargar
+                  {!costoHab.sueldosCargados ? ' los sueldos del mes' : ''}
+                  {!costoHab.sueldosCargados && !costoHab.lavaderoCargado ? ' y' : ''}
+                  {!costoHab.lavaderoCargado ? ' la liquidación del lavadero' : ''}.
+                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </Section>
+            )}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-navy-800 rounded-lg p-3">
+                <p className="text-[10px] uppercase text-gold-300">Costo por habitación/noche</p>
+                <p className="text-lg font-bold text-cream">{costoHab.costoPorHabNoche > 0 ? formatMontoCurrency(costoHab.costoPorHabNoche) : '—'}</p>
+                <p className="text-[10px] text-cream/60">
+                  {costoHab.noches.fuente === 'sin datos'
+                    ? 'sin partes ni ocupación cargados'
+                    : `${costoHab.nochesEstimadas} noches-hab (${costoHab.noches.dias} día(s) con dato, ${costoHab.noches.fuente === 'partes' ? 'de los partes' : 'de ocupación manual'})`}
+                </p>
+              </div>
+              <div className="bg-navy-50 rounded-lg p-3">
+                <p className="text-[10px] uppercase text-navy-500">Costos totales del mes</p>
+                <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(costoHab.costoTotal)}</p>
+                <p className="text-[10px] text-navy-400">vs ingreso por hab/noche: {formatMontoCurrency(revenue.ingresoPorHabitacion)}</p>
+              </div>
+            </div>
+            {costoHab.desglose.length > 0 && (
+              <div className="space-y-1 text-xs">
+                {costoHab.desglose.map(d => (
+                  <div key={d.label} className="flex items-center justify-between">
+                    <span className="text-navy-600">{d.label}</span>
+                    <span className="font-semibold text-navy-800">{formatMontoCurrency(d.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
 
-      {/* Revenue por ocupación */}
-      <Section icon={BedDouble} title="Ingreso por ocupación (aprox.)">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-navy-50 rounded-lg p-3">
-            <p className="text-[10px] uppercase text-navy-500">Por huésped/noche</p>
-            <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(revenue.ingresoPorHuesped)}</p>
-          </div>
-          <div className="bg-navy-50 rounded-lg p-3">
-            <p className="text-[10px] uppercase text-navy-500">Por habitación/noche</p>
-            <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(revenue.ingresoPorHabitacion)}</p>
-          </div>
-        </div>
-        <p className="text-[10px] text-navy-400 mt-2">
-          Ingreso del mes repartido sobre {revenue.diasConDatos} día(s) con ocupación cargada. Aproximado.
-        </p>
-      </Section>
-
-      {/* Lo mismo pero SIN promediar: cada cobro del PMS trae su habitación, así
-          que acá se ve cuál factura de verdad y cuál no se vende. */}
-      <Section icon={Building2} title="Rendimiento por habitación">
-        <RendimientoHabitaciones year={cur.year} month={cur.month} />
-      </Section>
+          {/* Lo mismo pero SIN promediar: cada cobro del PMS trae su habitación, así
+              que acá se ve cuál factura de verdad y cuál no se vende. */}
+          <Section icon={Building2} title="Rendimiento por habitación">
+            <RendimientoHabitaciones year={cur.year} month={cur.month} />
+          </Section>
+        </>
+      )}
 
       {/* El desayuno como unidad aparte: lo que se compra para él y lo que se
-          lleva cada huésped. Va acá porque es el otro costo que escala con la
-          gente, igual que el lavadero. */}
-      <Section icon={Croissant} title="Desayuno — gasto y consumo por huésped">
-        <CostoDesayuno year={cur.year} month={cur.month} />
-      </Section>
-
-      {/* Grupos: lo que cobra el dueño por fuera de la caja. Va antes de la
-          cuenta corriente porque es su espejo: acá lo que NOS deben. */}
-      <Section icon={Users} title="Grupos (cobrados por fuera de la caja)">
-        <GruposPanel />
-      </Section>
-
-      {/* Cuenta corriente */}
-      <Section icon={CalendarClock} title="Cuenta corriente con proveedores">
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-navy-50 rounded-lg p-3">
-            <p className="text-[10px] uppercase text-navy-500">Deuda pendiente</p>
-            <p className="text-lg font-bold text-navy-800">{formatMontoCurrency(cc.totalPendiente)}</p>
-            <p className="text-[10px] text-navy-400">{cc.items.length} factura(s)</p>
-          </div>
-          <div className={`rounded-lg p-3 ${cc.vencidas > 0 ? 'bg-red-50' : 'bg-navy-50'}`}>
-            <p className={`text-[10px] uppercase ${cc.vencidas > 0 ? 'text-red-600' : 'text-navy-500'}`}>Ya vencido</p>
-            <p className={`text-lg font-bold ${cc.vencidas > 0 ? 'text-red-700' : 'text-navy-800'}`}>{formatMontoCurrency(cc.vencidas)}</p>
-          </div>
-        </div>
-        {cc.proximos.length > 0 ? (
-          <>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mb-1.5">Vencen pronto (≤14 días)</p>
-            <ul className="space-y-1 text-xs">
-              {cc.proximos.map((d, i) => {
-                const vencida = d.diasParaVto != null && d.diasParaVto < 0
-                return (
-                  <li key={i} className={`flex items-center justify-between gap-2 rounded-lg border p-2 ${vencida ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
-                    <span className="min-w-0 truncate text-navy-700">
-                      {vencida && <AlertTriangle size={11} className="inline mr-1 text-red-600" />}
-                      {d.supplierName} <span className="text-navy-400">· {d.origen}</span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="font-semibold text-navy-800">{formatMontoCurrency(d.monto)}</span>
-                      <span className={`block text-[10px] ${vencida ? 'text-red-600' : 'text-amber-700'}`}>vto. {fmtVto(d.vencimiento)}{d.diasParaVto != null ? vencida ? ` (vencida ${-d.diasParaVto}d)` : ` (${d.diasParaVto}d)` : ''}</span>
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </>
-        ) : (
-          <p className="text-xs text-navy-400">Sin vencimientos próximos.</p>
-        )}
-      </Section>
-
-      {/* Gasto por proveedor */}
-      {proveedores.length > 0 && (
-        <Section icon={Truck} title="Gasto por proveedor (mes)">
-          <div className="space-y-1.5">
-            {proveedores.slice(0, 10).map(p => (
-              <div key={p.proveedor} className="flex items-center gap-2 text-xs">
-                <span className="w-28 sm:w-36 text-navy-600 shrink-0 truncate">{p.proveedor}</span>
-                <div className="flex-1 h-3 bg-navy-50 rounded-full overflow-hidden">
-                  <div className="h-full bg-gold-400 rounded-full" style={{ width: `${(p.monto / maxProv) * 100}%` }} />
-                </div>
-                <span className="w-28 text-right font-semibold text-navy-800 shrink-0 whitespace-nowrap">{formatMontoCurrency(p.monto)}</span>
-              </div>
-            ))}
-          </div>
+          lleva cada huésped. Es el otro costo que escala con la gente, igual
+          que el lavadero. */}
+      {tab === 'desayuno' && (
+        <Section icon={Croissant} title="Desayuno — gasto y consumo por huésped">
+          <CostoDesayuno year={cur.year} month={cur.month} />
         </Section>
+      )}
+
+      {/* Grupos: lo que cobra el dueño por fuera de la caja. Es el espejo de la
+          cuenta corriente: acá lo que NOS deben. */}
+      {tab === 'grupos' && (
+        <Section icon={Users} title="Grupos (cobrados por fuera de la caja)">
+          <GruposPanel />
+        </Section>
+      )}
+
+      {tab === 'proveedores' && (
+        <>
+          <Section icon={Truck} title="Cuenta corriente con proveedores">
+            <CuentaCorrientePanel cc={cc} />
+          </Section>
+          <Section icon={Truck} title="Gasto por proveedor (mes)">
+            <GastoPorProveedorPanel proveedores={proveedores} />
+          </Section>
+        </>
       )}
     </div>
   )
