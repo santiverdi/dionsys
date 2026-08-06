@@ -12,7 +12,13 @@ import {
 import { useLibroCaja } from '../context/LibroCajaContext'
 import { useAuth } from '../context/AuthContext'
 import { parseLibroCajaExcel } from '../lib/parseLibroCaja'
-import { useConceptosSalida, motivoNoContar, avisoConcepto } from '../lib/libroCajaConceptos'
+import { useConceptosSalida, motivoNoContar, avisoConcepto, yaEnSistema, type RubroSistema } from '../lib/libroCajaConceptos'
+import { useOrders } from '../context/OrdersContext'
+import { useStock } from '../context/StockContext'
+import { useMaintenance } from '../context/MaintenanceContext'
+import { useImpuestos } from '../context/ImpuestosContext'
+import { useSueldos } from '../context/SueldosContext'
+import { getMonthlyExpenses, type MonthlyExpenses } from '../utils/monthlyMetrics'
 import { formatMontoCurrency } from '../utils/validators'
 import { monthLabel } from '../utils/dateRange'
 import type { LibroCajaMes } from '../types'
@@ -27,10 +33,28 @@ function mesLabel(mes: string): string {
   return monthLabel(y, m)
 }
 
+/** Cuánto hay cargado en el sistema de ese rubro, en el mes que se está mirando. */
+function montoDelRubro(rubro: RubroSistema, exp: MonthlyExpenses): number {
+  switch (rubro) {
+    case 'sueldos': return exp.sueldos
+    case 'impuestos': return exp.impuestosPagado
+    case 'servicios': return exp.serviciosPagado
+    case 'profesionales': return exp.profesionalesPagado
+    case 'mantenimiento': return exp.mantenimiento
+    case 'compras': return exp.pedidosSemanales + exp.pedidosDistribuidor
+  }
+}
+
 export default function CajaAdmin() {
   const { meses, importarMes, borrarMes } = useLibroCaja()
   const { marcas, marcar, olvidar } = useConceptosSalida()
   const { employee } = useAuth()
+  // Para cruzar contra lo que ya está cargado en las otras pantallas.
+  const { orders } = useOrders()
+  const { pedidos } = useStock()
+  const { tasks } = useMaintenance()
+  const { pagos, servicios } = useImpuestos()
+  const { pagos: pagosSueldos } = useSueldos()
 
   const [subiendo, setSubiendo] = useState(false)
   const [error, setError] = useState('')
@@ -38,6 +62,8 @@ export default function CajaAdmin() {
   const [filtroMedio, setFiltroMedio] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [confirmBorrar, setConfirmBorrar] = useState(false)
+  // Concepto desplegado para ver el detalle que escribió Charo en cada fila.
+  const [conceptoAbierto, setConceptoAbierto] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Por defecto se mira el mes más nuevo que haya importado.
@@ -75,22 +101,34 @@ export default function CajaAdmin() {
     salidas: movimientos.filter(m => m.monto < 0).reduce((s, m) => s - m.monto, 0),
   }), [movimientos])
 
+  // Lo que el sistema ya tiene cargado en el mes del libro, por rubro.
+  const expensesMes = useMemo(() => {
+    const [y, m] = (mes?.mes ?? '0-0').split('-').map(Number)
+    return getMonthlyExpenses(y, m, orders, pedidos, tasks, pagos, pagosSueldos, servicios)
+  }, [mes, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
+
   // --- Qué de todo esto es una salida de plata del mes ---
   // Se decide por CONCEPTO y vale para todos los meses. Sin marcar no cuenta:
   // lo que falta decidir queda a la vista con su monto.
   const salidasPorConcepto = useMemo(() => {
     if (!mes) return []
-    const map = new Map<string, { concepto: string; total: number }>()
+    const map = new Map<string, { concepto: string; total: number; movs: typeof mes.movimientos }>()
     for (const m of mes.movimientos) {
       if (m.monto >= 0) continue
-      const acc = map.get(m.conceptoCod) ?? { concepto: m.concepto, total: 0 }
+      const acc = map.get(m.conceptoCod) ?? { concepto: m.concepto, total: 0, movs: [] }
       acc.total += -m.monto
+      acc.movs.push(m)
       map.set(m.conceptoCod, acc)
     }
     return [...map.entries()]
       .map(([cod, v]) => {
         const motivo = motivoNoContar(cod)
         const decidido = cod in marcas
+        // ¿El mismo gasto ya está cargado en otra pantalla ESTE mes? Si allá hay
+        // plata cargada, marcarlo acá lo contaría dos veces; si allá está en cero,
+        // este libro es el único que lo tiene.
+        const otra = yaEnSistema(cod)
+        const yaCargado = otra ? montoDelRubro(otra.rubro, expensesMes) : 0
         return {
           cod,
           ...v,
@@ -98,9 +136,11 @@ export default function CajaAdmin() {
           decidido,
           motivo,
           aviso: avisoConcepto(cod),
-          // "Sin decidir" es solo lo que no tiene ni marca ni sugerencia: los que
-          // ya se cargan en otra pantalla no hacen ruido todos los meses.
-          pendiente: !decidido && !motivo,
+          pantalla: otra?.pantalla ?? '',
+          yaCargado,
+          // "Sin decidir" es lo que no tiene ni marca, ni motivo, ni un monto
+          // cargado del otro lado: eso último ya es sugerencia suficiente.
+          pendiente: !decidido && !motivo && yaCargado === 0,
         }
       })
       // Primero lo que falta decidir, después lo que suma, al final lo que no cuenta.
@@ -108,7 +148,7 @@ export default function CajaAdmin() {
         const orden = (c: { pendiente: boolean; cuenta: boolean }) => c.pendiente ? 0 : c.cuenta ? 1 : 2
         return orden(a) - orden(b) || b.total - a.total
       })
-  }, [mes, marcas])
+  }, [mes, marcas, expensesMes])
 
   const salidasDelMes = useMemo(() => ({
     marcado: salidasPorConcepto.filter(c => c.cuenta).reduce((s, c) => s + c.total, 0),
@@ -260,14 +300,33 @@ export default function CajaAdmin() {
 
             <ul className="space-y-1">
               {salidasPorConcepto.map(c => (
-                <li key={c.cod} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1.5">
+                <li key={c.cod} className="border-b border-navy-50 last:border-0 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
                   <span className="min-w-0 flex-1">
-                    <span className="text-xs font-medium text-navy-700">{c.concepto}</span>
-                    {!c.decidido && c.aviso && (
+                    <button
+                      onClick={() => setConceptoAbierto(conceptoAbierto === c.cod ? null : c.cod)}
+                      className="text-xs font-medium text-navy-700 hover:text-gold-600 text-left"
+                      title="Ver qué anotó Charo en cada movimiento"
+                    >
+                      {c.concepto} <span className="text-navy-300">({c.movs.length})</span>
+                    </button>
+                    {c.aviso && (
                       <span className="block text-[10px] text-amber-700">{c.aviso}</span>
                     )}
-                    {!c.decidido && !c.aviso && c.motivo && (
+                    {c.motivo && (
                       <span className="block text-[10px] text-navy-400">no lo cuento: {c.motivo}</span>
+                    )}
+                    {/* El cruce con la otra pantalla: el dato que decide. */}
+                    {c.pantalla && c.yaCargado > 0 && (
+                      <span className="block text-[10px] text-amber-700">
+                        en {c.pantalla} ya hay {formatMontoCurrency(c.yaCargado)} cargados este mes —
+                        si lo marcás, se cuenta dos veces
+                      </span>
+                    )}
+                    {c.pantalla && c.yaCargado === 0 && (
+                      <span className="block text-[10px] text-navy-400">
+                        en {c.pantalla} no hay nada cargado este mes: acá está la única vez
+                      </span>
                     )}
                   </span>
                   <span className="shrink-0 text-xs font-semibold text-navy-800 whitespace-nowrap">
@@ -293,6 +352,22 @@ export default function CajaAdmin() {
                       No
                     </button>
                   </span>
+                  </div>
+                  {/* Lo que escribió Charo al lado del código: muchas veces es lo
+                      único que dice qué fue ese gasto. */}
+                  {conceptoAbierto === c.cod && (
+                    <ul className="mt-1 ml-2 border-l-2 border-navy-100 pl-2 space-y-0.5">
+                      {c.movs.map((m, j) => (
+                        <li key={j} className="flex items-center justify-between gap-2 text-[10px]">
+                          <span className="min-w-0 truncate text-navy-500">
+                            {fmtFecha(m.fecha)} · {m.medio}
+                            {m.detalle ? ` · ${m.detalle}` : ' · (sin detalle)'}
+                          </span>
+                          <span className="shrink-0 text-navy-600">{formatMontoCurrency(-m.monto)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
               {salidasPorConcepto.length === 0 && (

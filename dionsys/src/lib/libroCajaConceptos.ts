@@ -20,7 +20,7 @@ import { persist, useCloudSync } from './cloudStore'
 
 const KEY = 'dionsys_libro_caja_conceptos'
 
-/** Conceptos que casi seguro NO son una salida, con el motivo para mostrarlo. */
+/** Conceptos que NO son una salida de plata, con el motivo para mostrarlo. */
 const MOTIVO_NO: Record<string, string> = {
   '001': 'es el efectivo que entra de la caja del conserje',
   '002': 'son las tarjetas que entran de la caja del conserje',
@@ -30,11 +30,34 @@ const MOTIVO_NO: Record<string, string> = {
   '028': 'es plata guardada, sigue siendo del hotel',
   '029': 'es cambio, no sale plata',
   '032': 'es un retiro, la plata sigue siendo del hotel',
-  '006': 'ya se carga en Impuestos y Servicios',
-  '007': 'ya se carga en Impuestos y Servicios',
-  '008': 'ya se carga en Impuestos y Servicios',
-  '010': 'ya se carga en Sueldos',
-  '011': 'ya se carga en Sueldos',
+}
+
+/**
+ * Conceptos que SÍ son un gasto pero que además tienen su propia pantalla en el
+ * sistema. Marcarlos acá cuando allá ya está cargado lo cuenta dos veces — pero
+ * si ese mes allá no se cargó nada, este libro es el único que lo tiene.
+ *
+ * Por eso no se decide de fábrica: la pantalla muestra cuánto hay cargado del
+ * otro lado ESE mes y ahí se ve solo cuál de los dos casos es.
+ */
+export type RubroSistema =
+  | 'sueldos' | 'impuestos' | 'servicios' | 'profesionales' | 'mantenimiento' | 'compras'
+
+const YA_EN_SISTEMA: Record<string, { rubro: RubroSistema; pantalla: string }> = {
+  '010': { rubro: 'sueldos', pantalla: 'Sueldos' },
+  '011': { rubro: 'sueldos', pantalla: 'Sueldos' },
+  '006': { rubro: 'impuestos', pantalla: 'Impuestos y Servicios' },
+  '008': { rubro: 'impuestos', pantalla: 'Impuestos y Servicios' },
+  '007': { rubro: 'servicios', pantalla: 'Impuestos y Servicios' },
+  '023': { rubro: 'profesionales', pantalla: 'Impuestos y Servicios' },
+  '020': { rubro: 'mantenimiento', pantalla: 'Mantenimiento' },
+  '012': { rubro: 'compras', pantalla: 'Pedidos y facturas' },
+  '013': { rubro: 'compras', pantalla: 'Pedidos y facturas' },
+}
+
+/** En qué pantalla del sistema puede estar cargado el mismo gasto (o null). */
+export function yaEnSistema(conceptoCod: string): { rubro: RubroSistema; pantalla: string } | null {
+  return YA_EN_SISTEMA[conceptoCod] ?? null
 }
 
 /** Conceptos que hay que mirar con atención antes de contarlos como gasto. */

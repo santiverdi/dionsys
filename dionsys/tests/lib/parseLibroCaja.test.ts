@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseLibroCajaRows } from '../../src/lib/parseLibroCaja'
-import { motivoNoContar, avisoConcepto, salidasMarcadasPorMes } from '../../src/lib/libroCajaConceptos'
+import { motivoNoContar, avisoConcepto, salidasMarcadasPorMes, yaEnSistema } from '../../src/lib/libroCajaConceptos'
 
 // Copia reducida de la planilla real de Charo ("CAJA JULIO DION26.xls"): mismas
 // columnas, mismos códigos y los mismos saldos declarados arriba de todo.
@@ -93,11 +93,21 @@ describe('parseLibroCajaRows', () => {
 // La tabla de sugerencias es una regla de negocio: si mañana alguien la afloja,
 // los sueldos entrarían por dos lados al mismo tiempo.
 describe('qué conceptos NO se cuentan como salida', () => {
-  it('los rubros que ya tienen su pantalla avisan por qué no cuentan', () => {
-    expect(motivoNoContar('010')).toMatch(/Sueldos/i)   // SUELDOS
-    expect(motivoNoContar('011')).toMatch(/Sueldos/i)   // ADELANTO DE SUELDO
-    expect(motivoNoContar('006')).toMatch(/Impuestos/i) // IMPUESTOS
-    expect(motivoNoContar('007')).toMatch(/Impuestos/i) // SERVICIOS
+  it('los rubros que tienen su propia pantalla dicen cuál es', () => {
+    expect(yaEnSistema('010')?.pantalla).toBe('Sueldos')              // SUELDOS
+    expect(yaEnSistema('011')?.pantalla).toBe('Sueldos')              // ADELANTO DE SUELDO
+    expect(yaEnSistema('006')?.pantalla).toMatch(/Impuestos/)         // IMPUESTOS
+    expect(yaEnSistema('007')?.pantalla).toMatch(/Impuestos/)         // SERVICIOS
+    expect(yaEnSistema('023')?.rubro).toBe('profesionales')           // HONORARIOS
+    expect(yaEnSistema('020')?.rubro).toBe('mantenimiento')           // MANTENIMIENTO
+    expect(yaEnSistema('013')?.rubro).toBe('compras')                 // INSUMOS DESAYUNADOR
+  })
+
+  it('esos rubros NO se descartan de fábrica: se decide con lo cargado del otro lado', () => {
+    // Si en Sueldos ese mes no se cargó nada, este libro es el único que lo tiene:
+    // por eso el motivo fijo está vacío y la pantalla muestra el cruce del mes.
+    expect(motivoNoContar('010')).toBe('')
+    expect(motivoNoContar('020')).toBe('')
   })
 
   it('la plata que entra de la caja del conserje no es una salida', () => {
