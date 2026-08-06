@@ -1,13 +1,14 @@
 // El desayuno como unidad de negocio: qué se gastó, cuánto sale por huésped y
 // cuánto consume cada uno de cada producto. Ver src/lib/desayunoCosto.ts.
 
-import { useMemo } from 'react'
-import { AlertTriangle, Croissant, Milk, Package, TrendingUp } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { AlertTriangle, Croissant, Milk, Package, TrendingUp, Check, X, Plus } from 'lucide-react'
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { usePartes } from '../context/ParteContext'
 import { useCajas } from '../context/CajaContext'
-import { getCostoDesayuno } from '../lib/desayunoCosto'
+import { getCostoDesayuno, CAJA_DESAYUNO_FIJOS, sugerirProveedor } from '../lib/desayunoCosto'
+import { useProveedoresDesayuno } from '../lib/desayunoProveedores'
 import { getCosteoDeposito } from '../lib/costoUnitario'
 import { formatMontoCurrency } from '../utils/validators'
 
@@ -27,17 +28,31 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
   const { pedidos, movements, items, suppliers } = useStock()
   const { partes } = usePartes()
   const { cajas } = useCajas()
+  // Proveedores de desayuno marcados a mano (se suman a Piazza y El Amanecer).
+  const { proveedores, agregar, quitar } = useProveedoresDesayuno()
+
+  // Egreso que se está marcando como desayuno, con el término a guardar editable.
+  const [marcando, setMarcando] = useState<{ idx: number; termino: string } | null>(null)
 
   // Precios por unidad sacados de las facturas de los pedidos ya cargados.
   const costeo = useMemo(() => getCosteoDeposito(pedidos, items, movements), [pedidos, items, movements])
   const r = useMemo(
     () => getCostoDesayuno(year, month, {
-      orders, pedidos, movements, items, suppliers, partes, cajas, precios: costeo.precios,
+      orders, pedidos, movements, items, suppliers, partes, cajas,
+      precios: costeo.precios, proveedoresCaja: proveedores,
     }),
-    [year, month, orders, pedidos, movements, items, suppliers, partes, cajas, costeo],
+    [year, month, orders, pedidos, movements, items, suppliers, partes, cajas, costeo, proveedores],
   )
 
-  if (r.compras.total === 0 && r.consumo.length === 0) {
+  function confirmarMarca() {
+    if (!marcando) return
+    agregar(marcando.termino)
+    setMarcando(null)
+  }
+
+  // Con gastos de caja sin clasificar el panel se muestra igual: es la pantalla
+  // donde se marcan los proveedores de desayuno, y si no, no habría dónde hacerlo.
+  if (r.compras.total === 0 && r.consumo.length === 0 && r.cajaSinClasificar.length === 0) {
     return <p className="text-xs text-navy-400">Sin compras ni movimientos de desayunador en este mes.</p>
   }
 
@@ -164,27 +179,108 @@ export default function CostoDesayuno({ year, month }: { year: number; month: nu
         </>
       )}
 
-      {/* Lo que salió de la caja y NO se reconoció como desayuno. Está a la vista
-          para poder cazar el proveedor que falta en la lista. */}
-      {r.cajaSinClasificar.length > 0 && (
-        <details className="mt-3 rounded-lg bg-navy-50 p-2.5">
-          <summary className="text-[11px] font-bold uppercase tracking-wide text-navy-500 cursor-pointer">
-            Gastos de caja que no conté como desayuno ({r.cajaSinClasificar.length})
-          </summary>
-          <p className="text-[10px] text-navy-400 mt-1 mb-1.5">
-            Reconozco a Piazza (panadería) y El Amanecer (lácteos). Si acá abajo ves otro proveedor de
-            desayuno, decímelo y lo agrego — no lo adivino solo para no meter limpieza o mantenimiento
-            adentro del desayuno.
+      {/* Quién cuenta como desayuno, y lo que salió de la caja y no entró.
+          Se puede marcar acá mismo: no hace falta tocar código para sumar un
+          proveedor nuevo. */}
+      {(r.cajaSinClasificar.length > 0 || proveedores.length > 0) && (
+        <div className="mt-3 rounded-lg bg-navy-50 p-2.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-navy-500 mb-1">
+            Proveedores que cuento como desayuno
           </p>
-          <ul className="text-[11px] space-y-0.5 max-h-48 overflow-y-auto">
-            {r.cajaSinClasificar.slice(0, 25).map((g, i) => (
-              <li key={i} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-navy-600">{g.observacion}</span>
-                <span className="shrink-0 text-navy-700">{formatMontoCurrency(g.total)}</span>
-              </li>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {CAJA_DESAYUNO_FIJOS.map(t => (
+              <span
+                key={t}
+                className="inline-flex items-center rounded-full border border-navy-200 bg-white px-2 py-0.5 text-[10px] text-navy-500"
+                title="Viene de fábrica, no se puede sacar"
+              >
+                {t}
+              </span>
             ))}
-          </ul>
-        </details>
+            {proveedores.map(t => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800"
+              >
+                {t}
+                <button
+                  onClick={() => quitar(t)}
+                  className="text-green-600 hover:text-green-800"
+                  title={`Dejar de contar "${t}" como desayuno`}
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          {r.cajaSinClasificar.length > 0 && (
+            <details>
+              <summary className="text-[11px] font-bold uppercase tracking-wide text-navy-500 cursor-pointer">
+                Gastos de caja que no conté como desayuno ({r.cajaSinClasificar.length})
+              </summary>
+              <p className="text-[10px] text-navy-400 mt-1 mb-1.5">
+                Si alguno de estos es desayuno, tocá <strong>Es desayuno</strong>: guardo el nombre del
+                proveedor y desde ahí lo cuento siempre, también en los meses que vienen. No lo adivino
+                solo para no meter limpieza o mantenimiento adentro del desayuno.
+              </p>
+              <ul className="text-[11px] space-y-0.5 max-h-60 overflow-y-auto">
+                {r.cajaSinClasificar.slice(0, 25).map((g, i) => (
+                  <li key={i} className="border-b border-navy-100 last:border-0 py-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-navy-600">{g.observacion}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-navy-700">{formatMontoCurrency(g.total)}</span>
+                        <button
+                          onClick={() => setMarcando({ idx: i, termino: sugerirProveedor(g.observacion) })}
+                          className="inline-flex items-center gap-1 rounded-lg border border-navy-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-navy-600 hover:border-green-300 hover:text-green-700"
+                        >
+                          <Plus size={10} /> Es desayuno
+                        </button>
+                      </span>
+                    </div>
+                    {marcando?.idx === i && (
+                      <div className="mt-1 rounded-lg border border-green-200 bg-white p-1.5">
+                        <p className="text-[10px] text-navy-500 mb-1">
+                          ¿Con qué palabra reconozco a este proveedor? La busco adentro de cada egreso,
+                          así que conviene el nombre solo (sin fechas ni montos).
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={marcando.termino}
+                            onChange={e => setMarcando({ idx: i, termino: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Enter') confirmarMarca() }}
+                            autoFocus
+                            className="min-w-0 flex-1 rounded-lg border border-navy-200 px-2 py-1 text-[11px]"
+                            placeholder="ej: piazza"
+                          />
+                          <button
+                            onClick={confirmarMarca}
+                            disabled={marcando.termino.trim().length < 3}
+                            className="inline-flex items-center gap-1 rounded-lg bg-navy-800 px-2 py-1 text-[10px] font-semibold text-cream hover:bg-navy-700 disabled:opacity-40"
+                          >
+                            <Check size={11} /> Guardar
+                          </button>
+                          <button
+                            onClick={() => setMarcando(null)}
+                            className="rounded-lg px-2 py-1 text-[10px] text-navy-400 hover:bg-navy-50"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {r.cajaSinClasificar.length > 25 && (
+                <p className="text-[10px] text-navy-400 mt-1">
+                  Se muestran los 25 más grandes; quedan {r.cajaSinClasificar.length - 25} más.
+                </p>
+              )}
+            </details>
+          )}
+        </div>
       )}
 
       {/* Termómetro del costeo: de dónde salen los precios y cuánto falta. */}

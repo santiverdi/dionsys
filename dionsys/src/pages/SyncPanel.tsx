@@ -30,6 +30,7 @@ const LABELS: Record<SyncedKey, string> = {
   dionsys_lavadero_prendas_ocultas: 'Lavadero — prendas sacadas de la lista',
   dionsys_grupos: 'Grupos (cobrados por fuera)',
   dionsys_lavadero_base: 'Lavadero — stock base (ropa alquilada)',
+  dionsys_desayuno_proveedores: 'Desayuno — proveedores pagados de la caja',
 }
 
 function fmtDate(iso: string | null): string {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getCostoDesayuno, type DesayunoInputs } from '../../src/lib/desayunoCosto'
+import { getCostoDesayuno, sugerirProveedor, type DesayunoInputs } from '../../src/lib/desayunoCosto'
 import type {
   Order, PedidoSemanal, StockMovement, DepositoItem, DepositoSupplier,
   ParteHabitaciones, HabitacionOcupada, CajaParte, CajaMovimiento,
@@ -247,5 +247,47 @@ describe('getCostoDesayuno con lo pagado de la caja', () => {
 
     expect(r.compras.caja).toBe(100000)
     expect(r.cajaSinClasificar).toEqual([])
+  })
+
+  it('el proveedor que marca el usuario pasa a contar como desayuno', () => {
+    const cajas = [caja([
+      egreso('LA ESPIGA facturas', 60000),
+      egreso('Ferreteria', 40000),
+    ])]
+
+    const sinMarcar = getCostoDesayuno(2026, 7, inputs({ cajas }))
+    expect(sinMarcar.compras.caja).toBe(0)
+    expect(sinMarcar.cajaSinClasificar).toHaveLength(2)
+
+    const marcado = getCostoDesayuno(2026, 7, inputs({ cajas, proveedoresCaja: ['espiga'] }))
+    expect(marcado.compras.caja).toBe(60000)
+    expect(marcado.cajaSinClasificar).toEqual([{ observacion: 'Ferreteria', total: 40000 }])
+  })
+
+  it('el nombre marcado matchea sin importar acentos ni mayusculas', () => {
+    const r = getCostoDesayuno(2026, 7, inputs({
+      cajas: [caja([egreso('PANIFICACIÓN DEL SUR', 50000)])],
+      proveedoresCaja: ['panificacion'],
+    }))
+    expect(r.compras.caja).toBe(50000)
+  })
+
+  it('un termino de menos de 3 letras se ignora: matcharia cualquier cosa', () => {
+    const r = getCostoDesayuno(2026, 7, inputs({
+      cajas: [caja([egreso('Ferreteria', 40000)])],
+      proveedoresCaja: ['re'],
+    }))
+    expect(r.compras.caja).toBe(0)
+  })
+})
+
+describe('sugerirProveedor', () => {
+  it('propone la palabra mas larga que no sea relleno ni numero', () => {
+    expect(sugerirProveedor('PAGO PIAZZA 12/07')).toBe('piazza')
+    expect(sugerirProveedor('compra factura EL AMANECER')).toBe('amanecer')
+  })
+
+  it('sin ninguna palabra util devuelve vacio', () => {
+    expect(sugerirProveedor('12/07 $ 5000')).toBe('')
   })
 })

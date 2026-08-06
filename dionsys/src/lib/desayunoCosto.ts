@@ -48,13 +48,56 @@ const RECEPCION = { panaderia: 'panaderia', lacteos: 'lacteos', verduleria: 'ver
 // de mantenimiento que se cuela adentro del desayuno sin que se note. Lo que no
 // matchea queda listado como "sin clasificar" para poder revisarlo y sumar el
 // nombre que falte, en vez de adivinar.
-const CAJA_DESAYUNO = [
-  /piazza/i,                      // panadería
-  /amanecer/i,                    // lácteos
-  /panader[ií]a/i,
-  /medialuna/i,
-  /l[áa]cteos?/i,
-]
+//
+// Se comparan sin acentos ni mayúsculas, por eso "panaderia" también toma
+// "PANADERÍA" y "lacteo" toma "lácteos".
+export const CAJA_DESAYUNO_FIJOS = [
+  'piazza',      // panadería
+  'amanecer',    // lácteos
+  'panaderia',
+  'medialuna',
+  'lacteo',
+] as const
+
+// Además de los fijos, el usuario suma sus propios proveedores desde el panel de
+// Desayuno (Negocio) sin tocar código: se guardan aparte y llegan acá por
+// `proveedoresCaja`.
+
+/** Sin acentos, sin mayúsculas: así se comparan los nombres de proveedor. */
+export function normalizarTexto(s: string): string {
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+}
+
+/**
+ * ¿Este egreso de caja es desayuno? Matchea por nombre de proveedor: los fijos
+ * de arriba más los que agregó el usuario. Los términos de menos de 3 letras se
+ * ignoran: son demasiado cortos y matchean cualquier cosa.
+ */
+export function esGastoDesayuno(observacion: string, proveedores: readonly string[] = []): boolean {
+  const obs = normalizarTexto(observacion)
+  if (!obs) return false
+  const terminos = [...CAJA_DESAYUNO_FIJOS, ...proveedores.map(normalizarTexto)]
+  return terminos.some(t => t.length >= 3 && obs.includes(t))
+}
+
+// Palabras que aparecen en cualquier egreso y no identifican al proveedor.
+const RELLENO = new Set([
+  'pago', 'pagos', 'compra', 'compras', 'efectivo', 'factura', 'remito', 'gasto',
+  'caja', 'egreso', 'sin', 'observacion', 'del', 'para', 'por', 'con', 'los', 'las',
+])
+
+/**
+ * Adivina qué palabra del egreso nombra al proveedor: la más larga que no sea
+ * número ni relleno. Es solo una SUGERENCIA para precargar el campo — el usuario
+ * la confirma o la corrige antes de guardarla.
+ */
+export function sugerirProveedor(observacion: string): string {
+  const palabras = normalizarTexto(observacion)
+    .split(/[^a-z]+/)
+    .filter(p => p.length >= 3 && !RELLENO.has(p))
+  if (palabras.length === 0) return ''
+  return palabras.reduce((mejor, p) => (p.length > mejor.length ? p : mejor))
+}
 
 export interface ConsumoItem {
   item: string
@@ -124,6 +167,9 @@ export interface DesayunoInputs {
   // Precios por unidad de consumo, derivados de las facturas de los pedidos
   // (getCosteoDeposito). Sin esto el consumo se muestra solo en unidades.
   precios?: Map<string, PrecioItem>
+  // Proveedores de desayuno que el usuario fue marcando desde el panel, además
+  // de los fijos (CAJA_DESAYUNO_FIJOS).
+  proveedoresCaja?: readonly string[]
 }
 
 export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs): CostoDesayuno {
@@ -138,7 +184,7 @@ export function getCostoDesayuno(year: number, month: number, d: DesayunoInputs)
 
   // --- Lo pagado en efectivo de la caja ---
   const gastosCaja = getGastosDeCajaDetalle(year, month, d.cajas ?? [])
-  const esDesayunoCaja = (obs: string) => CAJA_DESAYUNO.some(re => re.test(obs))
+  const esDesayunoCaja = (obs: string) => esGastoDesayuno(obs, d.proveedoresCaja ?? [])
   const cajaDesayuno = gastosCaja.filter(g => esDesayunoCaja(g.observacion))
   const caja = cajaDesayuno.reduce((s, g) => s + g.total, 0)
   const cajaSinClasificar = gastosCaja
