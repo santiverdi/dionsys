@@ -14,6 +14,7 @@ import { useAuth } from '../context/AuthContext'
 import { parseLibroCajaExcel } from '../lib/parseLibroCaja'
 import { motivoNoContar } from '../lib/libroCajaConceptos'
 import { pagosDelSistema, cruzarLibro } from '../lib/libroCajaCruce'
+import { useMarcasLibroCaja, claveMovimiento } from '../lib/libroCajaMarcas'
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
@@ -36,6 +37,7 @@ function mesLabel(mes: string): string {
 export default function CajaAdmin() {
   const { meses, importarMes, borrarMes } = useLibroCaja()
   const { employee } = useAuth()
+  const { marcas, marcar } = useMarcasLibroCaja()
   // Para cruzar contra lo que ya está cargado en las otras pantallas.
   const { orders } = useOrders()
   const { pedidos } = useStock()
@@ -87,16 +89,31 @@ export default function CajaAdmin() {
     salidas: movimientos.filter(m => m.monto < 0).reduce((s, m) => s - m.monto, 0),
   }), [movimientos])
 
-  // --- Cruce automático contra lo que el sistema ya tiene cargado ---
-  // Cada salida del libro se aparea con un pago ya cargado (mismo monto, fecha
-  // cercana). Lo que aparea ya está contado; lo que no, es plata que el sistema
-  // no conocía y suma a los egresos del mes. Sin marcar nada a mano.
-  const cruce = useMemo(() => {
-    if (!mes) return null
+  // --- Las salidas, una por una, con lo que hace falta para decidir ---
+  // El apareo contra lo ya cargado en el sistema (mismo importe, fecha cercana)
+  // se muestra al lado de cada pago, pero NO decide nada: solo avisa.
+  const salidas = useMemo(() => {
+    if (!mes) return []
     const [y, m] = mes.mes.split('-').map(Number)
     const sistema = pagosDelSistema(y, m, { orders, pedidos, tasks, pagos, pagosSueldos, servicios })
-    return cruzarLibro(mes.movimientos, sistema)
-  }, [mes, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
+    const cruce = cruzarLibro(mes.movimientos, sistema)
+    const encontrado = new Map(cruce.yaCargados.map(x => [x.mov, x.pago]))
+    return cruce.yaCargados.map(x => x.mov).concat(cruce.soloLibro)
+      .map(mov => {
+        const clave = claveMovimiento(mov)
+        return { mov, clave, marcado: marcas[clave] === true, yaCargado: encontrado.get(mov) ?? null }
+      })
+      .sort((a, b) => a.mov.monto - b.mov.monto)   // el más caro arriba
+  }, [mes, marcas, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
+
+  const totalMarcado = useMemo(
+    () => Math.round(salidas.filter(s => s.marcado).reduce((s, x) => s - x.mov.monto, 0) * 100) / 100,
+    [salidas],
+  )
+  const totalSalidas = useMemo(
+    () => Math.round(salidas.reduce((s, x) => s - x.mov.monto, 0) * 100) / 100,
+    [salidas],
+  )
 
   // Lo que no es gasto (entradas, retiros, cambio): no se cruza ni suma.
   const noEsGasto = useMemo(() => {
@@ -228,112 +245,86 @@ export default function CajaAdmin() {
             </div>
           )}
 
-          {/* El cruce: qué de este libro ya estaba cargado y qué no. Se calcula
-              solo, apareando pago contra pago. */}
-          {cruce && (
-            <section className="bg-white rounded-xl border border-navy-100 p-4 mb-4">
-              <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500 mb-1">
-                Salidas del mes
-              </h3>
-              <p className="text-[11px] text-navy-400 mb-3">
-                Cada pago del libro se busca entre los que el sistema ya tiene cargados (mismo importe,
-                fecha cercana). Lo que aparece en los dos lados no se cuenta dos veces; lo que solo está
-                acá suma a los egresos del mes.
-              </p>
+          {/* Uno por uno: cuál de estos pagos va al Dashboard. Nada suma solo. */}
+          <section className="bg-white rounded-xl border border-navy-100 p-4 mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500 mb-1">
+              Qué va al Dashboard
+            </h3>
+            <p className="text-[11px] text-navy-400 mb-3">
+              Nada de este libro entra al resultado del mes hasta que lo marques acá. Al lado de cada pago
+              te digo si ya lo encontré cargado en otra pantalla, para que no lo cuentes dos veces.
+            </p>
 
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div className="rounded-lg bg-navy-800 p-3">
-                  <p className="text-[10px] uppercase text-gold-300">Suma a los egresos</p>
-                  <p className="text-lg font-bold text-cream leading-tight">{formatMontoCurrency(cruce.totalSoloLibro)}</p>
-                  <p className="text-[10px] text-cream/60">{cruce.soloLibro.length} pago(s) que el sistema no tenía</p>
-                </div>
-                <div className="rounded-lg bg-navy-50 border border-navy-100 p-3">
-                  <p className="text-[10px] uppercase text-navy-500">Ya estaba cargado</p>
-                  <p className="text-lg font-bold text-navy-800 leading-tight">{formatMontoCurrency(cruce.totalYaCargado)}</p>
-                  <p className="text-[10px] text-navy-400">{cruce.yaCargados.length} pago(s) que ya contaba el sistema</p>
-                </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="rounded-lg bg-navy-800 p-3">
+                <p className="text-[10px] uppercase text-gold-300">Va al Dashboard</p>
+                <p className="text-lg font-bold text-cream leading-tight">{formatMontoCurrency(totalMarcado)}</p>
+                <p className="text-[10px] text-cream/60">
+                  {salidas.filter(s => s.marcado).length} de {salidas.length} pago(s)
+                </p>
               </div>
+              <div className="rounded-lg bg-navy-50 border border-navy-100 p-3">
+                <p className="text-[10px] uppercase text-navy-500">Todas las salidas del libro</p>
+                <p className="text-lg font-bold text-navy-800 leading-tight">{formatMontoCurrency(totalSalidas)}</p>
+                <p className="text-[10px] text-navy-400">lo que salió de verdad, esté o no marcado</p>
+              </div>
+            </div>
 
-              {/* Lo que suma: acá está el detalle que escribió Charo, que es lo
-                  único que dice qué fue cada gasto. */}
-              <p className="text-[11px] font-bold uppercase tracking-wide text-navy-400 mb-1">
-                Solo en el libro — suman
-              </p>
-              <ul className="text-xs space-y-0.5 mb-3 max-h-56 overflow-y-auto">
-                {cruce.soloLibro.map((m, i) => (
-                  <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
-                    <span className="min-w-0 truncate text-navy-600">
-                      {fmtFecha(m.fecha)} · <span className="text-navy-700 font-medium">{m.detalle || m.concepto}</span>
-                      <span className="text-navy-400"> · {m.concepto}</span>
+            <ul className="space-y-0.5 max-h-[32rem] overflow-y-auto">
+              {salidas.map(s => (
+                <li
+                  key={s.clave}
+                  className={`flex items-start gap-2 border-b border-navy-50 last:border-0 py-1.5 ${s.marcado ? 'bg-gold-50/50' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={s.marcado}
+                    onChange={e => marcar(s.clave, e.target.checked)}
+                    className="mt-0.5 shrink-0 accent-navy-800 w-4 h-4 cursor-pointer"
+                    title="Contar este pago en los egresos del mes"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-xs text-navy-700">
+                      <span className="text-navy-400">{fmtFecha(s.mov.fecha)}</span>{' '}
+                      <span className="font-medium">{s.mov.detalle || s.mov.concepto}</span>
                     </span>
-                    <span className="shrink-0 font-semibold text-navy-800">{formatMontoCurrency(-m.monto)}</span>
-                  </li>
-                ))}
-                {cruce.soloLibro.length === 0 && (
-                  <li className="text-navy-400">Todo lo del libro ya estaba cargado en el sistema.</li>
-                )}
-              </ul>
-
-              <details className="mb-2">
-                <summary className="text-[11px] font-bold uppercase tracking-wide text-navy-400 cursor-pointer">
-                  Ya estaba cargado ({cruce.yaCargados.length})
-                </summary>
-                <ul className="text-xs space-y-0.5 mt-1 max-h-56 overflow-y-auto">
-                  {cruce.yaCargados.map((x, i) => (
-                    <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
-                      <span className="min-w-0 truncate text-navy-500">
-                        {fmtFecha(x.mov.fecha)} · {x.mov.detalle || x.mov.concepto}
-                        <span className="text-navy-400"> → {x.pago.fuente}: {x.pago.detalle}</span>
+                    <span className="block text-[10px] text-navy-400">
+                      {s.mov.concepto} · {s.mov.medio}
+                    </span>
+                    {s.yaCargado && (
+                      <span className="block text-[10px] text-amber-700">
+                        ya está cargado en {s.yaCargado.fuente}: {s.yaCargado.detalle} — marcarlo lo cuenta dos veces
                       </span>
-                      <span className="shrink-0 text-navy-600">{formatMontoCurrency(-x.mov.monto)}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-navy-800 whitespace-nowrap">
+                    {formatMontoCurrency(-s.mov.monto)}
+                  </span>
+                </li>
+              ))}
+              {salidas.length === 0 && (
+                <li className="text-xs text-navy-400">Este mes no tiene salidas de plata.</li>
+              )}
+            </ul>
+
+            {noEsGasto.length > 0 && (
+              <details className="mt-2">
+                <summary className="text-[11px] font-bold uppercase tracking-wide text-navy-400 cursor-pointer">
+                  No los pongo en la lista porque no son gasto ({noEsGasto.length})
+                </summary>
+                <ul className="text-xs space-y-0.5 mt-1">
+                  {noEsGasto.map(c => (
+                    <li key={c.concepto} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
+                      <span className="min-w-0 truncate text-navy-500">
+                        {c.concepto} <span className="text-navy-400">— {c.motivo}</span>
+                      </span>
+                      <span className="shrink-0 text-navy-600">{formatMontoCurrency(c.total)}</span>
                     </li>
                   ))}
                 </ul>
               </details>
-
-              {/* Al revés: cargado en el sistema y sin espejo en el libro. Puede
-                  ser un pago que Charo no anotó, o un monto que no coincide. */}
-              {cruce.soloSistema.length > 0 && (
-                <details className="mb-2">
-                  <summary className="text-[11px] font-bold uppercase tracking-wide text-amber-700 cursor-pointer">
-                    Cargado en el sistema pero no está en el libro ({cruce.soloSistema.length})
-                  </summary>
-                  <p className="text-[10px] text-navy-400 mt-1">
-                    O Charo no lo anotó, o el importe no coincide con el que se cargó. Vale la pena mirarlo.
-                  </p>
-                  <ul className="text-xs space-y-0.5 mt-1 max-h-56 overflow-y-auto">
-                    {cruce.soloSistema.map((p, i) => (
-                      <li key={i} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
-                        <span className="min-w-0 truncate text-navy-500">
-                          {fmtFecha(p.fecha)} · {p.detalle}
-                          <span className="text-navy-400"> · {p.fuente}</span>
-                        </span>
-                        <span className="shrink-0 text-navy-600">{formatMontoCurrency(p.monto)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-
-              {noEsGasto.length > 0 && (
-                <details>
-                  <summary className="text-[11px] font-bold uppercase tracking-wide text-navy-400 cursor-pointer">
-                    No son gasto ({noEsGasto.length})
-                  </summary>
-                  <ul className="text-xs space-y-0.5 mt-1">
-                    {noEsGasto.map(c => (
-                      <li key={c.concepto} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1">
-                        <span className="min-w-0 truncate text-navy-500">
-                          {c.concepto} <span className="text-navy-400">— {c.motivo}</span>
-                        </span>
-                        <span className="shrink-0 text-navy-600">{formatMontoCurrency(c.total)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </section>
-          )}
+            )}
+          </section>
 
           {/* Filtros */}
           <div className="flex items-center gap-2 flex-wrap mb-3">
