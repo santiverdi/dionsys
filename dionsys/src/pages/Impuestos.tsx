@@ -49,6 +49,12 @@ function getMesStr(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
+// El pago pertenece al mes de su vencimiento, no al mes que muestra el calendario.
+// Si la fecha todavia no esta completa, cae en el mes de respaldo (el del calendario).
+function mesDeVto(fechaVto: string, fallback: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(fechaVto) ? fechaVto.slice(0, 7) : fallback
+}
+
 // Parsear YYYY-MM-DD sin timezone issues
 function parseDateStr(s: string): { year: number; month: number; day: number } {
   const [y, m, d] = s.split('-').map(Number)
@@ -136,12 +142,25 @@ export default function Impuestos() {
     })
   }, [servicios, pagos, now.getFullYear(), now.getMonth()])
 
-  // Servicios que todavia no tienen pago cargado en el mes seleccionado (para el dropdown)
-  const serviciosSinPagoMesSeleccionado = useMemo(() => {
+  // Mes al que va a ir el pago que se esta cargando: el del vencimiento elegido.
+  const mesDestino = mesDeVto(pagoVto, mesStr)
+  const mesDestinoParsed = { year: Number(mesDestino.slice(0, 4)), month: Number(mesDestino.slice(5, 7)) }
+  const mesDestinoEsOtro = mesDestino !== mesStr
+
+  // Servicios que todavia no tienen pago cargado en el mes destino (para el dropdown).
+  // El que ya esta elegido nunca se saca de la lista, asi no se pierde la seleccion
+  // cuando se cambia la fecha de vencimiento.
+  const serviciosSinPagoMesDestino = useMemo(() => {
     return servicios.filter(srv =>
-      !pagos.some(p => p.impuestoId === srv.id && p.mes === mesStr)
+      srv.id === pagoServicioId || !pagos.some(p => p.impuestoId === srv.id && p.mes === mesDestino)
     )
-  }, [servicios, pagos, mesStr])
+  }, [servicios, pagos, mesDestino, pagoServicioId])
+
+  // Aviso: el servicio elegido ya tiene un pago en el mes destino y se va a pisar.
+  const pagoExistenteEnDestino = useMemo(() => {
+    if (!pagoServicioId) return null
+    return pagos.find(p => p.impuestoId === pagoServicioId && p.mes === mesDestino) ?? null
+  }, [pagos, pagoServicioId, mesDestino])
 
   function handleMes(delta: number) {
     setMesActual(prev => {
@@ -170,7 +189,9 @@ export default function Impuestos() {
     }
     addPago({
       impuestoId: pagoServicioId,
-      mes: mesStr,
+      // Va al mes del vencimiento: cargar en agosto una factura que vence en julio
+      // la tiene que dejar en julio, no en el mes que estaba abierto el calendario.
+      mes: mesDestino,
       monto: result.value!,
       vtoActual: pagoVto,
       vtoSiguiente: pagoVtoSig || '',
@@ -180,6 +201,8 @@ export default function Impuestos() {
       facturaUrl: pagoFacturaUrl || undefined,
       facturaNombre: pagoFacturaNombre || undefined,
     })
+    // Si quedo en otro mes, movemos el calendario ahi para que se vea donde entro.
+    if (mesDestinoEsOtro) setMesActual(mesDestinoParsed)
     setPagoServicioId('')
     setPagoMonto('')
     setPagoVto('')
@@ -277,9 +300,8 @@ export default function Impuestos() {
 
   // Precarga el formulario "Cargar Pago" con los datos extraídos de la factura.
   function prefillPagoDesdeFactura(servicioId: string, monto: string, vtoActual: string, vtoSiguiente: string) {
-    // El pago se archiva en el mes que muestra el calendario (mesStr). Por eso, al venir
-    // de una factura, llevamos el calendario al mes del vencimiento para que NO quede
-    // cargado en el mes actual si la factura es de otro mes (ej: factura de mayo en junio).
+    // El pago se archiva en el mes de su vencimiento. Llevamos igual el calendario a ese
+    // mes para que se vea el contexto correcto (ej: factura de mayo cargada en junio).
     if (/^\d{4}-\d{2}-\d{2}$/.test(vtoActual)) {
       const { year, month } = parseDateStr(vtoActual)
       setMesActual({ year, month })
@@ -358,7 +380,12 @@ export default function Impuestos() {
       setEditPagoError(result.error ?? 'Monto inválido')
       return
     }
-    updatePago({ ...pago, vtoActual: editPagoVto, monto: result.value!, vtoSiguiente: editPagoVtoSig })
+    // Si le cambian el vencimiento a otro mes, el pago se muda a ese mes.
+    const nuevoMes = mesDeVto(editPagoVto, pago.mes)
+    updatePago({ ...pago, mes: nuevoMes, vtoActual: editPagoVto, monto: result.value!, vtoSiguiente: editPagoVtoSig })
+    if (nuevoMes !== pago.mes) {
+      setMesActual({ year: Number(nuevoMes.slice(0, 4)), month: Number(nuevoMes.slice(5, 7)) })
+    }
     setEditingPagoId(null)
   }
 
@@ -545,8 +572,30 @@ export default function Impuestos() {
       {/* Form: Cargar pago mensual */}
       {showCargarPago && (
         <div className="bg-white rounded-xl shadow-sm border border-navy-300 p-4 space-y-3">
-          <h3 className="font-semibold text-navy-800 text-sm">Cargar Pago - {mesLabel(mesActual.year, mesActual.month)}</h3>
-          {serviciosSinPagoMesSeleccionado.length === 0 ? (
+          <h3 className="font-semibold text-navy-800 text-sm">Cargar Pago - {mesLabel(mesDestinoParsed.year, mesDestinoParsed.month)}</h3>
+          {/* El pago entra en el mes de su vencimiento. Lo decimos siempre para que no
+              haya sorpresas, y avisamos fuerte cuando no es el mes que se esta viendo. */}
+          {mesDestinoEsOtro ? (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg p-2">
+              Por la fecha de vencimiento, este pago se va a guardar en{' '}
+              <strong>{mesLabel(mesDestinoParsed.year, mesDestinoParsed.month)}</strong> (no en{' '}
+              {mesLabel(mesActual.year, mesActual.month)}, que es el mes que estás viendo).
+              Al guardar te llevo a ese mes.
+            </p>
+          ) : (
+            <p className="text-[11px] text-navy-500 bg-navy-50 border border-navy-100 rounded-lg p-2">
+              Se va a guardar en <strong>{mesLabel(mesDestinoParsed.year, mesDestinoParsed.month)}</strong>,
+              según la fecha de vencimiento que pongas abajo.
+            </p>
+          )}
+          {pagoExistenteEnDestino && (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg p-2">
+              Ojo: este servicio ya tiene un pago cargado en{' '}
+              {mesLabel(mesDestinoParsed.year, mesDestinoParsed.month)} de{' '}
+              {formatMonto(pagoExistenteEnDestino.monto)}. Si guardás, se actualiza con estos datos.
+            </p>
+          )}
+          {serviciosSinPagoMesDestino.length === 0 ? (
             <p className="text-sm text-navy-400">Todos los servicios ya tienen pago cargado en este mes.</p>
           ) : (
             <>
@@ -559,7 +608,7 @@ export default function Impuestos() {
                     className="w-full text-sm border border-navy-200 rounded-lg px-3 py-2 mt-0.5"
                   >
                     <option value="">Elegir servicio...</option>
-                    {serviciosSinPagoMesSeleccionado.map(srv => (
+                    {serviciosSinPagoMesDestino.map(srv => (
                       <option key={srv.id} value={srv.id}>{srv.nombre}</option>
                     ))}
                   </select>

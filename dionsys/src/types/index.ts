@@ -333,7 +333,7 @@ export interface ImpuestoServicio {
 export interface PagoMensual {
   id: string
   impuestoId: string
-  mes: string // YYYY-MM
+  mes: string // YYYY-MM — el mes de vtoActual, no el mes en que se cargó
   monto: number
   vtoActual: string // YYYY-MM-DD
   vtoSiguiente: string // YYYY-MM-DD
