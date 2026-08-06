@@ -64,6 +64,21 @@ describe('getResultadoMes', () => {
     expect(r.resultado).toBe(40000)
     expect(r.margenPct).toBe(40)
   })
+
+  it('las salidas marcadas del libro de Administración suman a los egresos', () => {
+    const cajas = [mkCaja({ aperturaAt: '2026-06-10T07:00:00.000Z',
+      ingresos: [mov({ efectivo: 100000, total: 100000 })], egresos: [] })]
+    const libro = new Map([['2026-06', 25000], ['2026-07', 999999]])
+
+    const sinLibro = getResultadoMes(2026, 6, cajas, [], [], [], [])
+    expect(sinLibro.libro).toBe(0)
+    expect(sinLibro.egresos).toBe(0)
+
+    const conLibro = getResultadoMes(2026, 6, cajas, [], [], [], [], [], [], libro)
+    expect(conLibro.libro).toBe(25000)          // solo el mes que se está mirando
+    expect(conLibro.egresos).toBe(25000)
+    expect(conLibro.resultado).toBe(75000)
+  })
 })
 
 describe('getCuentaCorriente', () => {

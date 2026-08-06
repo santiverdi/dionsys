@@ -12,6 +12,7 @@ import {
 import { useLibroCaja } from '../context/LibroCajaContext'
 import { useAuth } from '../context/AuthContext'
 import { parseLibroCajaExcel } from '../lib/parseLibroCaja'
+import { useConceptosSalida, motivoNoContar, avisoConcepto } from '../lib/libroCajaConceptos'
 import { formatMontoCurrency } from '../utils/validators'
 import { monthLabel } from '../utils/dateRange'
 import type { LibroCajaMes } from '../types'
@@ -28,6 +29,7 @@ function mesLabel(mes: string): string {
 
 export default function CajaAdmin() {
   const { meses, importarMes, borrarMes } = useLibroCaja()
+  const { marcas, marcar, olvidar } = useConceptosSalida()
   const { employee } = useAuth()
 
   const [subiendo, setSubiendo] = useState(false)
@@ -72,6 +74,47 @@ export default function CajaAdmin() {
     entradas: movimientos.filter(m => m.monto > 0).reduce((s, m) => s + m.monto, 0),
     salidas: movimientos.filter(m => m.monto < 0).reduce((s, m) => s - m.monto, 0),
   }), [movimientos])
+
+  // --- Qué de todo esto es una salida de plata del mes ---
+  // Se decide por CONCEPTO y vale para todos los meses. Sin marcar no cuenta:
+  // lo que falta decidir queda a la vista con su monto.
+  const salidasPorConcepto = useMemo(() => {
+    if (!mes) return []
+    const map = new Map<string, { concepto: string; total: number }>()
+    for (const m of mes.movimientos) {
+      if (m.monto >= 0) continue
+      const acc = map.get(m.conceptoCod) ?? { concepto: m.concepto, total: 0 }
+      acc.total += -m.monto
+      map.set(m.conceptoCod, acc)
+    }
+    return [...map.entries()]
+      .map(([cod, v]) => {
+        const motivo = motivoNoContar(cod)
+        const decidido = cod in marcas
+        return {
+          cod,
+          ...v,
+          cuenta: marcas[cod] === true,
+          decidido,
+          motivo,
+          aviso: avisoConcepto(cod),
+          // "Sin decidir" es solo lo que no tiene ni marca ni sugerencia: los que
+          // ya se cargan en otra pantalla no hacen ruido todos los meses.
+          pendiente: !decidido && !motivo,
+        }
+      })
+      // Primero lo que falta decidir, después lo que suma, al final lo que no cuenta.
+      .sort((a, b) => {
+        const orden = (c: { pendiente: boolean; cuenta: boolean }) => c.pendiente ? 0 : c.cuenta ? 1 : 2
+        return orden(a) - orden(b) || b.total - a.total
+      })
+  }, [mes, marcas])
+
+  const salidasDelMes = useMemo(() => ({
+    marcado: salidasPorConcepto.filter(c => c.cuenta).reduce((s, c) => s + c.total, 0),
+    pendiente: salidasPorConcepto.filter(c => c.pendiente).reduce((s, c) => s + c.total, 0),
+    sinDecidir: salidasPorConcepto.filter(c => c.pendiente).length,
+  }), [salidasPorConcepto])
 
   async function handleArchivo(file: File) {
     setError('')
@@ -187,6 +230,76 @@ export default function CajaAdmin() {
               </ul>
             </div>
           )}
+
+          {/* Qué de este libro es una salida de plata del mes. Se decide una vez
+              por concepto y vale para todos los meses. */}
+          <section className="bg-white rounded-xl border border-navy-100 p-4 mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500 mb-1">
+              Salidas del mes
+            </h3>
+            <p className="text-[11px] text-navy-400 mb-3">
+              No todo lo que sale en el libro es un gasto del hotel, y algunas cosas ya se cargan en otra
+              pantalla. Marcá una vez qué concepto cuenta como salida: la decisión queda para todos los meses.
+            </p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="rounded-lg bg-navy-800 p-3">
+                <p className="text-[10px] uppercase text-gold-300">Salidas marcadas</p>
+                <p className="text-lg font-bold text-cream leading-tight">{formatMontoCurrency(salidasDelMes.marcado)}</p>
+                <p className="text-[10px] text-cream/60">de {mesLabel(mes.mes)}</p>
+              </div>
+              <div className={`rounded-lg p-3 border ${salidasDelMes.sinDecidir > 0 ? 'bg-amber-50 border-amber-300' : 'bg-navy-50 border-navy-100'}`}>
+                <p className={`text-[10px] uppercase ${salidasDelMes.sinDecidir > 0 ? 'text-amber-700' : 'text-navy-500'}`}>Sin decidir</p>
+                <p className={`text-lg font-bold leading-tight ${salidasDelMes.sinDecidir > 0 ? 'text-amber-900' : 'text-navy-800'}`}>
+                  {formatMontoCurrency(salidasDelMes.pendiente)}
+                </p>
+                <p className={`text-[10px] ${salidasDelMes.sinDecidir > 0 ? 'text-amber-700' : 'text-navy-400'}`}>
+                  {salidasDelMes.sinDecidir} concepto(s) sin marcar
+                </p>
+              </div>
+            </div>
+
+            <ul className="space-y-1">
+              {salidasPorConcepto.map(c => (
+                <li key={c.cod} className="flex items-center justify-between gap-2 border-b border-navy-50 last:border-0 py-1.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="text-xs font-medium text-navy-700">{c.concepto}</span>
+                    {!c.decidido && c.aviso && (
+                      <span className="block text-[10px] text-amber-700">{c.aviso}</span>
+                    )}
+                    {!c.decidido && !c.aviso && c.motivo && (
+                      <span className="block text-[10px] text-navy-400">no lo cuento: {c.motivo}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-navy-800 whitespace-nowrap">
+                    {formatMontoCurrency(c.total)}
+                  </span>
+                  <span className="shrink-0 flex rounded-lg border border-navy-200 overflow-hidden">
+                    <button
+                      onClick={() => c.decidido && c.cuenta ? olvidar(c.cod) : marcar(c.cod, true)}
+                      title="Cuenta como salida de plata del mes"
+                      className={`px-2 py-1 text-[10px] font-semibold transition-colors ${
+                        c.decidido && c.cuenta ? 'bg-navy-800 text-cream' : 'bg-white text-navy-500 hover:bg-navy-50'
+                      }`}
+                    >
+                      Es salida
+                    </button>
+                    <button
+                      onClick={() => c.decidido && !c.cuenta ? olvidar(c.cod) : marcar(c.cod, false)}
+                      title="No cuenta: no es un gasto del hotel, o ya se carga en otra pantalla"
+                      className={`px-2 py-1 text-[10px] font-semibold border-l border-navy-200 transition-colors ${
+                        c.decidido && !c.cuenta ? 'bg-navy-200 text-navy-700' : 'bg-white text-navy-500 hover:bg-navy-50'
+                      }`}
+                    >
+                      No
+                    </button>
+                  </span>
+                </li>
+              ))}
+              {salidasPorConcepto.length === 0 && (
+                <li className="text-xs text-navy-400">Este mes no tiene salidas cargadas.</li>
+              )}
+            </ul>
+          </section>
 
           {/* Filtros */}
           <div className="flex items-center gap-2 flex-wrap mb-3">

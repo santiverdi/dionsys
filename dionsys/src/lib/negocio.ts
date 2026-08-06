@@ -92,19 +92,29 @@ export function getRetirosDeCajaPorMes(cajas: CajaParte[]): RetirosDeCajaMesGrup
 // ===== Resultado del mes (ingresos − egresos) =====
 export interface ResultadoMes {
   ingresos: number
-  egresos: number       // compras/impuestos/sueldos/mant + gastos de caja + lavadero
+  egresos: number       // compras/impuestos/sueldos/mant + gastos de caja + lavadero + libro
   gastosCompras: number // sueldos/proveedores/pedidos/mantenimiento/impuestos (getMonthlyExpenses)
   gastosCaja: number    // egresos de caja (sin retiros)
   lavadero: number      // costo mensual del lavadero (0 si no está cargado)
+  libro: number         // salidas del libro de Administración marcadas como gasto
   resultado: number
   margenPct: number     // resultado / ingresos
 }
+
+/**
+ * Salidas del libro de caja de Administración (el Excel de Charo), por mes
+ * "YYYY-MM". Llega ya resuelto: QUÉ concepto cuenta como salida lo decide el
+ * usuario en la pantalla del libro (ver libroCajaConceptos), acá solo se suma.
+ * Sin el mapa, o sin nada marcado, suma 0 y todo queda como antes.
+ */
+export type LibroSalidasPorMes = Map<string, number>
 
 export function getResultadoMes(
   year: number, month: number,
   cajas: CajaParte[], orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[], pagos: PagoMensual[],
   pagosSueldos: PagoSueldo[] = [],
   liquidacionesLavadero: LavaderoLiquidacion[] = [],
+  libroSalidas?: LibroSalidasPorMes,
 ): ResultadoMes {
   const ingresos = getIngresosMes(year, month, cajas).total
   // Los sueldos SÍ son un egreso del mes. Solo llegan con un admin logueado
@@ -112,10 +122,11 @@ export function getResultadoMes(
   const gastosCompras = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos, pagosSueldos).total
   const gastosCaja = getGastosDeCajaMes(year, month, cajas)
   const lavadero = costoLavaderoMes(year, month, liquidacionesLavadero) ?? 0
-  const egresos = gastosCompras + gastosCaja + lavadero
+  const libro = libroSalidas?.get(monthKey(year, month)) ?? 0
+  const egresos = gastosCompras + gastosCaja + lavadero + libro
   const resultado = ingresos - egresos
   return {
-    ingresos, egresos, gastosCompras, gastosCaja, lavadero, resultado,
+    ingresos, egresos, gastosCompras, gastosCaja, lavadero, libro, resultado,
     margenPct: ingresos > 0 ? Math.round((resultado / ingresos) * 100) : 0,
   }
 }
@@ -136,12 +147,13 @@ export function getTendencia(
   hoy: Date = new Date(),
   pagosSueldos: PagoSueldo[] = [],
   liquidacionesLavadero: LavaderoLiquidacion[] = [],
+  libroSalidas?: LibroSalidasPorMes,
 ): TendenciaMes[] {
   const out: TendenciaMes[] = []
   let y = hoy.getFullYear()
   let m = hoy.getMonth() + 1
   for (let i = 0; i < meses; i++) {
-    const res = getResultadoMes(y, m, cajas, orders, pedidos, tasks, pagos, pagosSueldos, liquidacionesLavadero)
+    const res = getResultadoMes(y, m, cajas, orders, pedidos, tasks, pagos, pagosSueldos, liquidacionesLavadero, libroSalidas)
     out.unshift({ year: y, month: m, label: monthLabel(y, m), ingresos: res.ingresos, egresos: res.egresos, resultado: res.resultado })
     const prev = getPreviousMonth(y, m)
     y = prev.year; m = prev.month
@@ -321,10 +333,13 @@ export function getCostoHabitacion(
   partes: ParteHabitaciones[], records: OccupancyRecord[],
   liquidacionesLavadero: LavaderoLiquidacion[],
   hoy: Date = new Date(),
+  libroSalidas?: LibroSalidasPorMes,
 ): CostoHabitacion {
+  const mKey = monthKey(year, month)
   const exp = getMonthlyExpenses(year, month, orders, pedidos, tasks, pagos, pagosSueldos, servicios)
   const gastosCaja = getGastosDeCajaMes(year, month, cajas)
   const lavadero = costoLavaderoMes(year, month, liquidacionesLavadero)
+  const libro = libroSalidas?.get(mKey) ?? 0
   const desglose = [
     { label: 'Sueldos', monto: exp.sueldos },
     { label: 'Cargas sociales', monto: exp.cargasSociales },
@@ -336,15 +351,15 @@ export function getCostoHabitacion(
     { label: 'Mantenimiento', monto: exp.mantenimiento },
     { label: 'Gastos de caja', monto: gastosCaja },
     { label: 'Lavadero (ropa)', monto: lavadero ?? 0 },
+    { label: 'Caja Administración', monto: libro },
   ].filter(d => d.monto > 0).sort((a, b) => b.monto - a.monto)
-  const costoTotal = exp.total + gastosCaja + (lavadero ?? 0)
+  const costoTotal = exp.total + gastosCaja + (lavadero ?? 0) + libro
   const noches = getNochesHabitacion(year, month, partes, records)
   // Días del período: el mes completo si ya pasó; los transcurridos si es el actual.
   const esMesActual = hoy.getFullYear() === year && hoy.getMonth() + 1 === month
   const diasPeriodo = esMesActual ? hoy.getDate() : new Date(year, month, 0).getDate()
   const promedio = noches.dias > 0 ? noches.noches / noches.dias : 0
   const nochesEstimadas = Math.round(promedio * diasPeriodo)
-  const mKey = monthKey(year, month)
   return {
     costoTotal,
     noches,

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseLibroCajaRows } from '../../src/lib/parseLibroCaja'
+import { motivoNoContar, avisoConcepto, salidasMarcadasPorMes } from '../../src/lib/libroCajaConceptos'
 
 // Copia reducida de la planilla real de Charo ("CAJA JULIO DION26.xls"): mismas
 // columnas, mismos códigos y los mismos saldos declarados arriba de todo.
@@ -86,5 +87,55 @@ describe('parseLibroCajaRows', () => {
 
   it('se planta si el archivo no es un libro de caja', () => {
     expect(() => parseLibroCajaRows([['hola', 'mundo']], [], 'x.xls')).toThrow(/encabezado/i)
+  })
+})
+
+// La tabla de sugerencias es una regla de negocio: si mañana alguien la afloja,
+// los sueldos entrarían por dos lados al mismo tiempo.
+describe('qué conceptos NO se cuentan como salida', () => {
+  it('los rubros que ya tienen su pantalla avisan por qué no cuentan', () => {
+    expect(motivoNoContar('010')).toMatch(/Sueldos/i)   // SUELDOS
+    expect(motivoNoContar('011')).toMatch(/Sueldos/i)   // ADELANTO DE SUELDO
+    expect(motivoNoContar('006')).toMatch(/Impuestos/i) // IMPUESTOS
+    expect(motivoNoContar('007')).toMatch(/Impuestos/i) // SERVICIOS
+  })
+
+  it('la plata que entra de la caja del conserje no es una salida', () => {
+    expect(motivoNoContar('001')).toBeTruthy()          // CAJA
+    expect(motivoNoContar('002')).toBeTruthy()          // CAJA DEBITO
+    expect(motivoNoContar('014')).toBeTruthy()          // SEÑAS
+  })
+
+  it('los conceptos con nombre de persona quedan marcados para mirarlos', () => {
+    expect(avisoConcepto('027')).toMatch(/due/i)        // SANTI
+    expect(motivoNoContar('027')).toBe('')              // pero no se decide solo
+  })
+
+  it('un concepto cualquiera no trae sugerencia: lo decide el usuario', () => {
+    expect(motivoNoContar('031')).toBe('')              // PUBLICIDAD Y PROPAGANDA
+    expect(avisoConcepto('031')).toBe('')
+  })
+})
+
+describe('salidasMarcadasPorMes', () => {
+  const julio = parseLibroCajaRows(CAJA, CODIGOS, 'x.xls')
+
+  it('sin nada marcado no suma nada: el resultado del mes queda igual', () => {
+    expect(salidasMarcadasPorMes([julio], {})).toEqual(new Map())
+  })
+
+  it('suma solo los conceptos marcados', () => {
+    const r = salidasMarcadasPorMes([julio], { '020': true })
+    expect(r.get('2026-07')).toBe(300)          // solo mantenimiento
+    const r2 = salidasMarcadasPorMes([julio], { '020': true, '010': true })
+    expect(r2.get('2026-07')).toBe(2300)        // + sueldos
+  })
+
+  it('marcar un concepto que solo tiene entradas no suma: no es una salida', () => {
+    expect(salidasMarcadasPorMes([julio], { '001': true })).toEqual(new Map())
+  })
+
+  it('un concepto marcado en falso no suma', () => {
+    expect(salidasMarcadasPorMes([julio], { '020': false })).toEqual(new Map())
   })
 })

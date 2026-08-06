@@ -18,6 +18,8 @@ import { useImpuestos } from '../context/ImpuestosContext'
 import { useSueldos } from '../context/SueldosContext'
 import { useOccupancy } from '../context/OccupancyContext'
 import { useLavadero } from '../context/LavaderoContext'
+import { useLibroCaja } from '../context/LibroCajaContext'
+import { useConceptosSalida, salidasMarcadasPorMes } from '../lib/libroCajaConceptos'
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
   getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle, getRetirosDeCajaPorMes, getCostoHabitacion,
@@ -92,6 +94,14 @@ export default function Negocio({ year, month }: { year: number; month: number }
   const { pagos: pagosSueldos } = useSueldos()
   const { records } = useOccupancy()
   const { liquidaciones: lavaderoLiqs } = useLavadero()
+  // Libro de caja de Administración: suman solo los conceptos marcados como
+  // salida (se marcan en Administración → Caja de Administración).
+  const { meses: libroMeses } = useLibroCaja()
+  const { marcas: libroMarcas } = useConceptosSalida()
+  const libroSalidas = useMemo(
+    () => salidasMarcadasPorMes(libroMeses, libroMarcas),
+    [libroMeses, libroMarcas],
+  )
 
   const [tab, setTab] = useState<TabId>('resumen')
 
@@ -101,14 +111,14 @@ export default function Negocio({ year, month }: { year: number; month: number }
   // retroceder de mes se ven los 6 meses que llegan hasta ese mes.
   const finTendencia = useMemo(() => new Date(cur.year, cur.month - 1, 15), [cur])
 
-  const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs), [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
-  const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs), [prev, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
+  const resultado = useMemo(() => getResultadoMes(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs, libroSalidas), [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs, libroSalidas])
+  const resultadoPrev = useMemo(() => getResultadoMes(prev.year, prev.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs, libroSalidas), [prev, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs, libroSalidas])
   const ingresos = useMemo(() => getIngresosMes(cur.year, cur.month, cajas), [cur, cajas])
   const expenses = useMemo(() => getMonthlyExpenses(cur.year, cur.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios), [cur, orders, pedidos, tasks, pagos, pagosSueldos, servicios])
-  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, finTendencia, pagosSueldos, lavaderoLiqs), [finTendencia, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs])
+  const tendencia = useMemo(() => getTendencia(6, cajas, orders, pedidos, tasks, pagos, finTendencia, pagosSueldos, lavaderoLiqs, libroSalidas), [finTendencia, cajas, orders, pedidos, tasks, pagos, pagosSueldos, lavaderoLiqs, libroSalidas])
   const costoHab = useMemo(
-    () => getCostoHabitacion(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs),
-    [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs],
+    () => getCostoHabitacion(cur.year, cur.month, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs, undefined, libroSalidas),
+    [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs, libroSalidas],
   )
   const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
   const retirosPorMes = useMemo(() => getRetirosDeCajaPorMes(cajas), [cajas])
@@ -129,6 +139,7 @@ export default function Negocio({ year, month }: { year: number; month: number }
     { label: 'Mantenimiento', v: expenses.mantenimiento },
     { label: 'Gastos de caja', v: resultado.gastosCaja },
     { label: 'Lavadero (ropa)', v: resultado.lavadero },
+    { label: 'Caja Administración (libro)', v: resultado.libro },
   ].filter(c => c.v > 0).sort((a, b) => b.v - a.v)
 
   const sinDatos = ingresos.total === 0 && resultado.egresos === 0
