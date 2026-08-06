@@ -19,7 +19,7 @@ import { useSueldos } from '../context/SueldosContext'
 import { useOccupancy } from '../context/OccupancyContext'
 import { useLavadero } from '../context/LavaderoContext'
 import { useLibroCaja } from '../context/LibroCajaContext'
-import { useConceptosSalida, salidasMarcadasPorMes } from '../lib/libroCajaConceptos'
+import { salidasDelLibroPorMes } from '../lib/libroCajaCruce'
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
   getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle, getRetirosDeCajaPorMes, getCostoHabitacion,
@@ -94,13 +94,12 @@ export default function Negocio({ year, month }: { year: number; month: number }
   const { pagos: pagosSueldos } = useSueldos()
   const { records } = useOccupancy()
   const { liquidaciones: lavaderoLiqs } = useLavadero()
-  // Libro de caja de Administración: suman solo los conceptos marcados como
-  // salida (se marcan en Administración → Caja de Administración).
+  // Libro de caja de Administración: suma SOLO lo que el sistema no tenía ya
+  // cargado. Se aparea pago contra pago (ver libroCajaCruce), sin marcar nada.
   const { meses: libroMeses } = useLibroCaja()
-  const { marcas: libroMarcas } = useConceptosSalida()
   const libroSalidas = useMemo(
-    () => salidasMarcadasPorMes(libroMeses, libroMarcas),
-    [libroMeses, libroMarcas],
+    () => salidasDelLibroPorMes(libroMeses, { orders, pedidos, tasks, pagos, pagosSueldos, servicios }),
+    [libroMeses, orders, pedidos, tasks, pagos, pagosSueldos, servicios],
   )
 
   const [tab, setTab] = useState<TabId>('resumen')
