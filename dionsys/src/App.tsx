@@ -17,6 +17,7 @@ import { TarifasProvider } from './context/TarifasContext'
 import { PrismaProvider } from './context/PrismaContext'
 import { LavaderoProvider } from './context/LavaderoContext'
 import { GruposProvider } from './context/GruposContext'
+import { LibroCajaProvider } from './context/LibroCajaContext'
 import { canAccess, getDefaultRoute } from './utils/permissions'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -35,6 +36,7 @@ import CerrarTurno from './pages/CerrarTurno'
 import Lavadero from './pages/Lavadero'
 import Hotel from './pages/Hotel'
 import SyncPanel from './pages/SyncPanel'
+import CajaAdmin from './pages/CajaAdmin'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { employee } = useAuth()
@@ -83,6 +85,7 @@ function AppRoutes() {
         <Route path="lavadero" element={<RoleRoute path="/lavadero"><Lavadero /></RoleRoute>} />
         <Route path="hotel" element={<RoleRoute path="/hotel"><Hotel /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
+        <Route path="caja-admin" element={<RoleRoute path="/caja-admin"><CajaAdmin /></RoleRoute>} />
         <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Solo admin. */}
         <Route path="sync" element={<RoleRoute path="/sync"><SyncPanel /></RoleRoute>} />
@@ -150,7 +153,9 @@ export default function App() {
                         <PrismaProvider>
                           <LavaderoProvider>
                             <GruposProvider>
-                              <AppRoutes />
+                              <LibroCajaProvider>
+                                <AppRoutes />
+                              </LibroCajaProvider>
                             </GruposProvider>
                           </LavaderoProvider>
                         </PrismaProvider>

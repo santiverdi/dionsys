@@ -17,6 +17,9 @@ import { persist, purgeAdminOnlyKeys, setAdminAccess, ADMIN_ONLY_KEYS } from '..
 
 const NOMINA = 'dionsys_nomina_empleados'
 const PAGOS = 'dionsys_sueldos_pagos'
+// El libro de caja de Administración trae los sueldos con nombre y apellido:
+// va con la misma protección que la nómina.
+const LIBRO = 'dionsys_libro_caja'
 
 describe('cloudStore — keys solo-admin (sueldos)', () => {
   beforeEach(() => {
@@ -24,8 +27,21 @@ describe('cloudStore — keys solo-admin (sueldos)', () => {
     setAdminAccess(false)
   })
 
-  it('ADMIN_ONLY_KEYS son exactamente las dos keys de sueldos', () => {
-    expect([...ADMIN_ONLY_KEYS].sort()).toEqual([NOMINA, PAGOS].sort())
+  it('ADMIN_ONLY_KEYS son exactamente las keys con datos de sueldos', () => {
+    expect([...ADMIN_ONLY_KEYS].sort()).toEqual([NOMINA, PAGOS, LIBRO].sort())
+  })
+
+  it('el libro de caja no se escribe sin admin y se purga como el resto', () => {
+    persist(LIBRO, [{ mes: '2026-07' }])
+    expect(localStorage.getItem(LIBRO)).toBeNull()
+
+    setAdminAccess(true)
+    persist(LIBRO, [{ mes: '2026-07' }])
+    expect(localStorage.getItem(LIBRO)).not.toBeNull()
+
+    setAdminAccess(false)
+    purgeAdminOnlyKeys()
+    expect(localStorage.getItem(LIBRO)).toBeNull()
   })
 
   it('persist NO escribe las keys de sueldos si no hay admin', () => {

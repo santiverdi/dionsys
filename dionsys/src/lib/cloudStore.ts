@@ -48,6 +48,7 @@ export const SYNCED_KEYS = [
   'dionsys_lavadero_base',
   'dionsys_grupos',
   'dionsys_desayuno_proveedores',
+  'dionsys_libro_caja',
 ] as const
 
 export type SyncedKey = (typeof SYNCED_KEYS)[number]
@@ -67,6 +68,8 @@ export type SyncedKey = (typeof SYNCED_KEYS)[number]
 export const ADMIN_ONLY_KEYS: readonly SyncedKey[] = [
   'dionsys_nomina_empleados',
   'dionsys_sueldos_pagos',
+  // El libro de caja de Administración trae los sueldos con nombre y apellido.
+  'dionsys_libro_caja',
 ]
 
 function isAdminOnlyKey(k: SyncedKey): boolean {

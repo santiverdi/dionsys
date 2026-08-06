@@ -502,3 +502,38 @@ export interface Grupo {
   importedAt: string        // ISO
   sourceFileName?: string
 }
+
+// --- Libro de caja de Administración (la plata FUERA de la caja del conserje) ---
+// Charo lleva un libro de caja propio en Excel ("CAJA JULIO DION26.xls"): ahí
+// entra el efectivo que retira el conserje, lo que liquidan las tarjetas y lo
+// que se mueve por banco, y de ahí salen sueldos, impuestos y pagos. Ese Excel
+// se IMPORTA tal cual (misma regla que la caja y los grupos: no se recarga a
+// mano) y el sistema solo lo lee.
+
+export interface LibroCajaMedio {
+  cod: string                    // '001'
+  nombre: string                 // EFECTIVO / TARJETAS / BANCOS
+  saldoInicial: number
+  saldoFinalDeclarado?: number   // el que muestra la planilla arriba de todo
+  saldoFinalCalculado: number    // inicial + movimientos (lo que da la cuenta)
+}
+
+export interface LibroCajaMovimiento {
+  fecha: string          // YYYY-MM-DD
+  conceptoCod: string    // '010'
+  concepto: string       // SUELDOS
+  medioCod: string       // '003'
+  medio: string          // BANCOS
+  monto: number          // + entra, − sale
+  detalle: string        // texto libre de la planilla
+}
+
+export interface LibroCajaMes {
+  mes: string            // YYYY-MM
+  archivo: string        // nombre del archivo importado
+  importadoBy?: string
+  importadoAt: string    // ISO
+  medios: LibroCajaMedio[]
+  movimientos: LibroCajaMovimiento[]
+  avisos: string[]       // descuadres y filas salteadas, para no callarlos
+}
