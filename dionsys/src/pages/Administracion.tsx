@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Receipt, FileText, Wallet, Users, Landmark } from 'lucide-react'
+import { ClipboardList, Receipt, FileText, Wallet, Users, Landmark, Globe } from 'lucide-react'
 
 export default function Administracion() {
   const navigate = useNavigate()
@@ -75,6 +75,17 @@ export default function Administracion() {
           </div>
           <h3 className="font-bold text-navy-800 text-lg">Sueldos</h3>
           <p className="text-sm text-navy-500 mt-1">Nómina del personal, sueldos, adelantos y aguinaldos por mes, con recibo adjunto.</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/landing')}
+          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
+            <Globe size={24} />
+          </div>
+          <h3 className="font-bold text-navy-800 text-lg">Página web</h3>
+          <p className="text-sm text-navy-500 mt-1">La landing de reservas: publicá el tarifario del calculador y mirá las consultas que llegan con nombre y WhatsApp.</p>
         </button>
       </div>
     </div>
