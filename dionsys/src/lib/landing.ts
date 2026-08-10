@@ -1,12 +1,17 @@
 // La landing pública (hotel-dion-landing.vercel.app) vive en otro repo, pero se
 // alimenta de este Supabase:
-//   - tarifario_publico (1 fila, columna data jsonb): el tarifario completo que
-//     el calculador de la landing lee al cargar (cada visitante lo cachea 30 min).
+//   - tarifario_publico: VISTA de solo lectura que arma un JSON único desde las
+//     tablas reales (temporadas, tarifas, findes_largos, fechas_bloqueadas,
+//     promociones, config_tarifario). El calculador de la landing la lee al
+//     cargar (cada visitante la cachea 30 min).
 //   - leads: cada consulta con nombre y teléfono que la landing inserta cuando
 //     alguien toca "Reservar por WhatsApp" (o se va con el formulario completo).
-// Acá viven los tipos de ese contrato, la validación antes de publicar y el
-// acceso a datos. La ESTRUCTURA la define el script de la landing: cambiarla acá
-// sin cambiar la landing rompe el calculador público.
+// Las tablas NO se pueden escribir con la anon key (a propósito: nadie puede
+// tocar los precios desde el navegador). Publicar y leer leads pasa por los
+// endpoints /api/tarifario y /api/leads, que usan la service role key y piden
+// el código de acceso (LANDING_TOKEN). Acá viven los tipos de ese contrato, la
+// validación antes de publicar y el acceso a datos. La ESTRUCTURA la define el
+// script de la landing: cambiarla acá sin cambiar la landing rompe el calculador.
 
 import { supabase } from './supabase'
 
@@ -76,6 +81,19 @@ export interface Lead {
 }
 
 export const LANDING_URL = 'https://hotel-dion-landing.vercel.app'
+
+// Código de acceso de los endpoints /api/tarifario y /api/leads (el LANDING_TOKEN
+// configurado en Vercel). Se guarda por dispositivo, a propósito FUERA del sync
+// en la nube: la tabla app_state es legible con la anon key y quedaría público.
+export const LS_LANDING_TOKEN = 'dionsys_landing_leads_token'
+
+export function landingToken(): string {
+  return (localStorage.getItem(LS_LANDING_TOKEN) ?? '').trim()
+}
+
+export function guardarLandingToken(token: string) {
+  localStorage.setItem(LS_LANDING_TOKEN, token.trim())
+}
 
 // ── Fechas (aritmética en UTC para no depender del huso del equipo) ─────────
 
@@ -271,25 +289,32 @@ export async function fetchTarifarioPublicado(): Promise<{ tarifario: TarifarioP
 }
 
 /**
- * Publica el tarifario: pisa la fila única de tarifario_publico. La landing lo
- * toma en la próxima visita (o hasta 30 min después por el caché del visitante).
+ * Publica el tarifario vía /api/tarifario, que reescribe las tablas reales con
+ * la service role key (la anon key no puede, a propósito). La landing lo toma
+ * en la próxima visita (o hasta 30 min después por el caché del visitante).
  * Validar con validarTarifario() ANTES de llamar acá.
  */
 export async function publicarTarifario(t: TarifarioPublico): Promise<{ error: string | null }> {
-  if (!supabase) return { error: 'Nube no configurada.' }
-  const limpio = normalizarTarifario(t)
-  const { data, error } = await supabase
-    .from('tarifario_publico')
-    .update({ data: limpio })
-    .not('data', 'is', null)
-    .select('data')
-  if (error) return { error: error.message }
-  if (!data?.length) {
-    // La tabla estaba vacía (primera publicación): creamos la fila.
-    const ins = await supabase.from('tarifario_publico').insert({ data: limpio })
-    if (ins.error) return { error: ins.error.message }
+  const token = landingToken()
+  if (!token) {
+    return { error: 'Falta el código de acceso: cargalo en la pestaña Consultas → "Código de acceso" (es el LANDING_TOKEN configurado en Vercel).' }
   }
-  return { error: null }
+  try {
+    const r = await fetch('/api/tarifario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-landing-token': token },
+      body: JSON.stringify(normalizarTarifario(t)),
+    })
+    if (r.ok) return { error: null }
+    if (r.status === 401) return { error: 'El código de acceso no coincide con el LANDING_TOKEN configurado en Vercel.' }
+    if (r.status === 404 || r.status === 501) {
+      return { error: 'El endpoint /api/tarifario no está disponible: hace falta deployar en Vercel y configurar SUPABASE_SERVICE_ROLE_KEY y LANDING_TOKEN.' }
+    }
+    const j = await r.json().catch(() => null) as { error?: string } | null
+    return { error: j?.error ?? `Error ${r.status} al publicar.` }
+  } catch {
+    return { error: 'No se pudo llegar a /api/tarifario. El endpoint solo existe en el sitio deployado en Vercel (con npm run dev no está disponible).' }
+  }
 }
 
 export interface LeadsResult {
@@ -314,7 +339,7 @@ export async function fetchLeads(token: string): Promise<LeadsResult> {
         return { leads: ordenarLeads(j.leads ?? []), via: 'api', error: null }
       }
       if (r.status === 401) {
-        return { leads: [], via: 'api', error: 'El código de acceso no coincide con el configurado en Vercel (LANDING_LEADS_TOKEN).' }
+        return { leads: [], via: 'api', error: 'El código de acceso no coincide con el LANDING_TOKEN configurado en Vercel.' }
       }
       // 404 (npm run dev) o 501 (sin variables): probamos la lectura directa.
     } catch {

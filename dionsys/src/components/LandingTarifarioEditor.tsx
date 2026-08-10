@@ -121,7 +121,7 @@ export default function LandingTarifarioEditor() {
     const { error } = await publicarTarifario(draft)
     setPublicando(false)
     if (error) {
-      setEstado({ tipo: 'error', msg: `Supabase rechazó la publicación: ${error}. Si es un tema de permisos, corré scripts/landing-supabase.sql.` })
+      setEstado({ tipo: 'error', msg: `No se publicó: ${error}` })
       return
     }
     setDraft(normalizarTarifario(draft))

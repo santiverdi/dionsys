@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, KeyRound, MessageCircle } from 'lucide-react'
-import { fetchLeads, type Lead, type LeadsResult } from '../lib/landing'
-
-// Código de acceso del endpoint /api/leads. Se guarda por dispositivo, a
-// propósito FUERA del sync en la nube: la tabla app_state es legible con la
-// anon key y el código quedaría público.
-const LS_TOKEN = 'dionsys_landing_leads_token'
+import { fetchLeads, guardarLandingToken, landingToken, type Lead, type LeadsResult } from '../lib/landing'
 
 const money = (n: number) => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
 
@@ -23,7 +18,7 @@ function frecibida(s: string | undefined): string {
 }
 
 export default function LandingLeads() {
-  const [token, setToken] = useState(() => localStorage.getItem(LS_TOKEN) ?? '')
+  const [token, setToken] = useState(() => landingToken())
   const [tokenAbierto, setTokenAbierto] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [resultado, setResultado] = useState<LeadsResult>({ leads: [], via: null, error: null })
@@ -37,7 +32,7 @@ export default function LandingLeads() {
   // Carga inicial: el estado arranca en "cargando", acá solo llega el resultado.
   useEffect(() => {
     let activo = true
-    void fetchLeads(localStorage.getItem(LS_TOKEN) ?? '').then(r => {
+    void fetchLeads(landingToken()).then(r => {
       if (!activo) return
       setResultado(r)
       setCargando(false)
@@ -46,7 +41,7 @@ export default function LandingLeads() {
   }, [])
 
   function guardarToken() {
-    localStorage.setItem(LS_TOKEN, token.trim())
+    guardarLandingToken(token)
     setTokenAbierto(false)
     void cargar(token)
   }
@@ -81,7 +76,7 @@ export default function LandingLeads() {
         <div className="mb-4 p-4 bg-white rounded-xl border border-navy-100 flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[220px]">
             <label className="block text-xs font-medium text-navy-500 mb-1">
-              Código de acceso (el LANDING_LEADS_TOKEN configurado en Vercel)
+              Código de acceso (el LANDING_TOKEN configurado en Vercel — sirve para ver consultas y publicar el tarifario)
             </label>
             <input
               type="password"

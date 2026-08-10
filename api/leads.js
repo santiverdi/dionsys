@@ -6,11 +6,12 @@
 //
 // Setup (una sola vez), Vercel -> Project Settings -> Environment Variables:
 //   SUPABASE_SERVICE_ROLE_KEY = service_role key (supabase.com -> Project Settings -> API)
-//   LANDING_LEADS_TOKEN       = un código inventado por vos; el mismo se carga en
-//                               DionSys -> Página web -> Consultas -> Código de acceso.
+//   LANDING_TOKEN             = un código inventado por vos; el mismo se carga en
+//                               DionSys -> Página web -> Consultas -> Código de acceso
+//                               (compartido con /api/tarifario).
 //   (la URL del proyecto sale de VITE_SUPABASE_URL, ya configurada para la app)
 //
-// Request:  GET con header  x-landing-token: <LANDING_LEADS_TOKEN>
+// Request:  GET con header  x-landing-token: <LANDING_TOKEN>
 // Response (200): { leads: [{ nombre, telefono, fecha_in, fecha_out, ... }] }
 
 module.exports = async (req, res) => {
@@ -20,9 +21,9 @@ module.exports = async (req, res) => {
   }
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const token = process.env.LANDING_LEADS_TOKEN
+  const token = process.env.LANDING_TOKEN || process.env.LANDING_LEADS_TOKEN
   if (!url || !serviceKey || !token) {
-    res.status(501).json({ error: 'Faltan configurar SUPABASE_SERVICE_ROLE_KEY y/o LANDING_LEADS_TOKEN en Vercel.' })
+    res.status(501).json({ error: 'Faltan configurar SUPABASE_SERVICE_ROLE_KEY y/o LANDING_TOKEN en Vercel.' })
     return
   }
   if ((req.headers['x-landing-token'] || '') !== token) {
