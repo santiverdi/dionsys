@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
-import { Croissant, Milk, Trash2, Users, AlertTriangle, CalendarDays, Apple, ClipboardList, ChevronLeft, Clock, CheckCircle2 } from 'lucide-react'
+import { Croissant, Milk, Trash2, Users, AlertTriangle, CalendarDays, Apple, ClipboardList, ChevronLeft, Clock, CheckCircle2, CircleDollarSign } from 'lucide-react'
+import TarifasCalendario from '../components/TarifasCalendario'
 import PanaderiaCalc from '../components/PanaderiaCalc'
 import LacteosOrder from '../components/LacteosOrder'
 import BasuraTracker from '../components/BasuraTracker'
@@ -9,7 +10,7 @@ import VerduleriaOrder from '../components/VerduleriaOrder'
 import { useOccupancy, TURNO_LABELS } from '../context/OccupancyContext'
 import { useOrders } from '../context/OrdersContext'
 
-type Section = 'menu' | 'panaderia' | 'lacteos' | 'basura' | 'ocupacion' | 'turnos' | 'verduleria' | 'historial'
+type Section = 'menu' | 'panaderia' | 'lacteos' | 'basura' | 'ocupacion' | 'turnos' | 'verduleria' | 'historial' | 'tarifas'
 
 export default function PedidosRecepcion() {
   const [section, setSection] = useState<Section>('menu')
@@ -26,6 +27,10 @@ export default function PedidosRecepcion() {
   const today = getToday()
   const isNoche = currentTurno === 'noche'
   const blocked = isNoche && !today
+
+  if (section === 'tarifas') {
+    return <TarifasCalendario onBack={() => setSection('menu')} />
+  }
 
   if (section === 'panaderia') {
     return <PanaderiaCalc onBack={() => setSection('menu')} />
@@ -155,6 +160,19 @@ export default function PedidosRecepcion() {
           <p className={`text-xs mt-2 font-medium ${blocked ? 'text-indigo-600' : 'text-emerald-600'}`}>
             {today ? `Cargado: ${today.guests} huespedes, ${today.rooms} hab.` : 'Proyeccion de compras por huesped'}
           </p>
+        </button>
+
+        {/* Tarifas: siempre habilitado — el huésped pregunta a cualquier hora */}
+        <button
+          onClick={() => setSection('tarifas')}
+          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
+            <CircleDollarSign size={24} />
+          </div>
+          <h3 className="font-bold text-navy-800 text-lg">Tarifas</h3>
+          <p className="text-sm text-navy-500 mt-1">El precio de cada noche en un calendario. Marca llegada y salida y cotiza igual que la pagina de reservas.</p>
+          <p className="text-xs text-teal-600 mt-2 font-medium">Para responder consultas en el mostrador</p>
         </button>
 
         <button
