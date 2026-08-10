@@ -27,12 +27,14 @@ module.exports = async (req, res) => {
   }
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const token = process.env.LANDING_TOKEN || process.env.LANDING_LEADS_TOKEN
+  // trim: un espacio o salto de línea pegado sin querer en la env var de Vercel
+  // no puede dejar el código "que no coincide" para siempre.
+  const token = String(process.env.LANDING_TOKEN || process.env.LANDING_LEADS_TOKEN || '').trim()
   if (!url || !serviceKey || !token) {
     res.status(501).json({ error: 'Faltan configurar SUPABASE_SERVICE_ROLE_KEY y/o LANDING_TOKEN en Vercel.' })
     return
   }
-  if ((req.headers['x-landing-token'] || '') !== token) {
+  if (String(req.headers['x-landing-token'] || '').trim() !== token) {
     res.status(401).json({ error: 'Código de acceso incorrecto.' })
     return
   }
