@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { CloudDownload, CloudUpload, Plus, Trash2 } from 'lucide-react'
-import { persist, useCloudSync } from '../lib/cloudStore'
 import {
   DIAS_SEMANA, PAXES, expandirRango, fetchTarifarioPublicado, normalizarTarifario,
   publicarTarifario, tarifarioVacio, validarTarifario,
   type FindeLargo, type PromocionPublica, type TarifarioPublico, type TemporadaPublica,
 } from '../lib/landing'
 
-// Borrador local del tarifario (sincronizado entre dispositivos). Lo publicado
-// vive en Supabase (tarifario_publico) y solo cambia al tocar "Publicar".
+// Borrador del tarifario, LOCAL de este dispositivo a propósito: cuando se
+// sincronizaba por la nube, cada tecla subía a Supabase y los ecos del Realtime
+// volvían tarde pisando lo recién tipeado. Lo compartido entre dispositivos es
+// lo PUBLICADO (tarifario_publico), que solo cambia al tocar "Publicar".
 const LS_DRAFT = 'dionsys_landing_tarifario'
 
 const money = (n: number) => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -67,8 +68,6 @@ export default function LandingTarifarioEditor() {
   const [bloqDesde, setBloqDesde] = useState('')
   const [bloqHasta, setBloqHasta] = useState('')
 
-  useCloudSync<TarifarioPublico>(LS_DRAFT, setDraft)
-
   // Sin borrador local: arrancamos desde lo que ya está publicado en la nube.
   useEffect(() => {
     if (draft) return
@@ -78,7 +77,7 @@ export default function LandingTarifarioEditor() {
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (draft) persist(LS_DRAFT, draft)
+    if (draft) localStorage.setItem(LS_DRAFT, JSON.stringify(draft))
   }, [draft])
 
   if (!draft) return <p className="text-sm text-navy-400 py-8 text-center">Cargando tarifario…</p>
