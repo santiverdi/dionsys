@@ -60,6 +60,21 @@ export function tarifaVigente(fecha: string, tarifas: TarifaPeriodo[] = TARIFAS_
   return tarifas.find(t => t.desde <= dia && dia <= t.hasta)
 }
 
+// ¿Con qué precio pactado cuadra un total (n noches × tarifa)? Misma regla que
+// getTarifaFlags: precios redondos, n hasta MAX_NOCHES. 'lista' gana si cuadra
+// con ambos. undefined = no cuadra con ninguno (cobro fuera de tarifa).
+export function cuadraConTarifa(total: number, plazas: number, periodo: TarifaPeriodo): 'lista' | 'efectivo' | undefined {
+  const base = plazas === 1
+    ? periodo.single
+    : { lista: periodo.porPersona.lista * plazas, efectivo: periodo.porPersona.efectivo * plazas }
+  for (const [tarifa, tipo] of [[base.lista, 'lista'], [base.efectivo, 'efectivo']] as const) {
+    for (let n = 1; n <= MAX_NOCHES; n++) {
+      if (Math.abs(total - n * tarifa) <= EPS) return tipo
+    }
+  }
+  return undefined
+}
+
 // Ventana hacia atrás que se controla para el aviso de cobertura de tarifas.
 const VENTANA_SIN_TARIFA_MS = 15 * 24 * 3_600_000
 

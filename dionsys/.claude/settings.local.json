@@ -3,11 +3,16 @@
     "allow": [
       "Bash(npx @claude-flow/cli@latest swarm init:*)",
       "Bash(npx @claude-flow/cli@latest doctor:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:dionsys.vercel.app)",
+      "Bash(curl:*)",
+      "Bash(npx vitest *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "claude-flow"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

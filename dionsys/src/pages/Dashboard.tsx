@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react'
-import { Wallet, Scale, Sparkles, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
+import { Wallet, Scale, Sparkles, Tag, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import Panorama from './Panorama'
 import Negocio from './Negocio'
 import AnalisisMes from './AnalisisMes'
+import AnalisisTarifa from './AnalisisTarifa'
 import { getCurrentMonth, getPreviousMonth, getNextMonth, monthLabel } from '../utils/dateRange'
 
-type Tab = 'negocio' | 'analisis' | 'control'
+type Tab = 'negocio' | 'analisis' | 'tarifa' | 'control'
 
 const TABS: { id: Tab; label: string; icon: typeof Wallet }[] = [
   { id: 'negocio', label: 'Negocio', icon: Scale },
   { id: 'analisis', label: 'Análisis', icon: Sparkles },
+  { id: 'tarifa', label: 'Tarifa', icon: Tag },
   { id: 'control', label: 'Caja & partes', icon: Wallet },
 ]
 
@@ -21,8 +23,9 @@ export default function Dashboard() {
   const actual = useMemo(() => getCurrentMonth(), [])
   const [{ year, month }, setMes] = useState(actual)
   const esMesActual = year === actual.year && month === actual.month
-  // Panorama no está partido por mes (agrega todas las cajas y partes cargados).
-  const mostrarSelector = tab !== 'control'
+  // Panorama y Tarifa no están partidos por mes (Tarifa compara por período de
+  // tarifa, no por mes calendario).
+  const mostrarSelector = tab !== 'control' && tab !== 'tarifa'
 
   return (
     <div>
@@ -80,7 +83,9 @@ export default function Dashboard() {
         ? <Negocio year={year} month={month} />
         : tab === 'analisis'
           ? <AnalisisMes year={year} month={month} />
-          : <Panorama />}
+          : tab === 'tarifa'
+            ? <AnalisisTarifa />
+            : <Panorama />}
     </div>
   )
 }
