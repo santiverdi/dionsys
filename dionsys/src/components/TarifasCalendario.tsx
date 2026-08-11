@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Eraser } from 'lucide-react'
-import { fetchTarifarioPublicado, type TarifarioPublico } from '../lib/landing'
+import { expandirRango, fetchTarifarioPublicado, type TarifarioPublico } from '../lib/landing'
 import { cotizarEstadia, diaSemana, infoDia } from '../lib/tarifaDiaria'
+
+const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
 // Calendario de tarifas para el conserje: cada día muestra el precio de esa
 // noche (mismas cuentas que el calculador de la landing) y marcando llegada y
@@ -210,6 +212,57 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                       </p>
                     )}
                   </div>
+
+                  {/* Detalle noche por noche: para explicar en el mostrador por qué
+                      una noche sale más cara que otra (vie/sáb o finde largo). */}
+                  <div className="mt-3 border-t border-navy-100 pt-3">
+                    <p className="text-xs font-medium text-navy-500 mb-1.5">Detalle por noche</p>
+                    <div className="max-h-64 overflow-y-auto pr-1 space-y-1">
+                      {(() => {
+                        const noches = expandirRango(llegada, fin!).slice(0, -1).map(f => ({ f, info: infoDia(f, pax, tarifario) }))
+                        const precios = noches.map(n => n.info.precio).filter((p): p is number => p !== null)
+                        const masBarata = precios.length ? Math.min(...precios) : 0
+                        return noches.map(({ f, info }) => {
+                          const masCara = info.precio !== null && info.precio > masBarata
+                          return (
+                            <div
+                              key={f}
+                              className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm ${
+                                masCara ? 'bg-amber-50 border border-amber-200' : 'bg-navy-50/60'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-medium text-navy-700 whitespace-nowrap">
+                                  {DIAS_CORTOS[diaSemana(f)]} {fmtDia(f)}
+                                </span>
+                                {info.findeLargo && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 text-gold-700 whitespace-nowrap">{info.findeLargo}</span>
+                                )}
+                                {!info.findeLargo && info.caro && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-navy-100 text-navy-500 whitespace-nowrap">vie/sáb</span>
+                                )}
+                                {info.bloqueada && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 whitespace-nowrap">sin disponibilidad</span>
+                                )}
+                              </div>
+                              <div className="text-right whitespace-nowrap">
+                                {info.precio === null ? (
+                                  <span className="text-navy-300">—</span>
+                                ) : (
+                                  <>
+                                    <span className={`font-bold ${masCara ? 'text-amber-800' : 'text-navy-800'}`}>
+                                      {pax === 1 ? money(info.precio) : `${money(info.precio)} × ${pax} = ${money(info.precio * pax)}`}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-700 ml-1.5">ef. -{Math.round(info.descEfectivo * 100)}%</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -241,7 +294,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
             onPointerDown={alPresionar}
             onPointerMove={alMover}
           >
-            <div className="grid grid-cols-7 text-center text-[11px] font-medium text-navy-400 mb-1">
+            <div className="grid grid-cols-7 text-center text-xs sm:text-sm font-medium text-navy-400 mb-1">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => <div key={d} className="py-1">{d}</div>)}
             </div>
             <div className="grid grid-cols-7 gap-1">
@@ -262,13 +315,17 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                   <div
                     key={fecha}
                     data-fecha={fecha}
-                    className={`rounded-lg border px-0.5 py-1.5 text-center transition-colors ${cls} ${sinPrecio ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
+                    className={`rounded-lg border px-0.5 py-2 sm:py-3.5 text-center transition-colors ${cls} ${sinPrecio ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
                   >
-                    <p className={`text-xs font-bold leading-none ${info.bloqueada && !enNoches ? 'line-through' : ''}`}>
+                    <p className={`text-sm sm:text-base font-bold leading-none ${info.bloqueada && !enNoches ? 'line-through' : ''}`}>
                       {Number(fecha.slice(8, 10))}
                     </p>
-                    <p className="text-[10px] leading-tight mt-0.5 font-medium">
+                    {/* En el celu entra la forma corta (50k); en escritorio, el precio completo. */}
+                    <p className="text-[11px] leading-tight mt-1 font-medium sm:hidden">
                       {sinPrecio ? '—' : precioCorto(info.precio!)}
+                    </p>
+                    <p className="hidden sm:block text-sm leading-tight mt-1.5 font-medium">
+                      {sinPrecio ? '—' : money(info.precio!)}
                     </p>
                   </div>
                 )
