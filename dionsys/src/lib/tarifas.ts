@@ -17,6 +17,8 @@
 import type { CajaParte, ParteHabitaciones, CajaMovimiento } from '../types'
 import { fechaConfiable, ingresosNetos, type CajaFlag } from './cajaControl'
 import { getHabitacion, tipoDeHabitacion, haySobreocupacion } from '../data/hotel'
+import type { TarifarioPublico } from './landing'
+import { cuadraConTarifarioPublico } from './tarifaDiaria'
 
 export interface TarifaPeriodo {
   desde: string   // YYYY-MM-DD inclusive
@@ -170,6 +172,11 @@ export function getTarifaFlags(
   caja: CajaParte,
   partes: ParteHabitaciones[],
   tarifas: TarifaPeriodo[] = TARIFAS_PACTADAS,
+  // El tarifario PUBLICADO de la landing (vista tarifario_publico). Un cobro que
+  // no cuadra con las tarifas pactadas planas pero SÍ con lo que cotiza la
+  // página (vie/sáb, findes largos, tope, descuento por día) también está bien:
+  // el conserje cobró exactamente lo que la web le mostró al huésped.
+  tarifarioPublico?: TarifarioPublico | null,
 ): CajaFlag[] {
   const flags: CajaFlag[] = []
   const yaAvisadas = new Set<string>()
@@ -185,14 +192,35 @@ export function getTarifaFlags(
     // que se controla antes de decidir nada sobre la tarifa.
     flags.push(...flagsDeOcupacion(habs, yaAvisadas))
 
-    const periodo = tarifaVigente(m.fechaHora || caja.aperturaAt, tarifas)
-    if (!periodo) continue
+    // El precio de efectivo solo vale si el cobro fue TODO en efectivo.
+    const pagoEfectivo = m.efectivo > 0 && Math.abs(m.efectivo - m.total) <= EPS
+    const fechaCobro = m.fechaHora || caja.aperturaAt
+
+    const periodo = tarifaVigente(fechaCobro, tarifas)
+    if (!periodo) {
+      // Sin tarifa pactada para esa fecha: si el tarifario de la landing cubre
+      // el día, la web queda como única referencia pactada. Fuera de su
+      // vigencia, el cobro no se controla (igual que siempre).
+      const v = tarifarioPublico?.config?.vigencia
+      const dia = (fechaCobro || '').slice(0, 10)
+      if (!tarifarioPublico || !v || !dia || dia < v.desde || dia > v.hasta) continue
+      const web = cuadraConTarifarioPublico(m.total, plazas, dia, tarifarioPublico)
+      if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
+      const quienWeb = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
+        + `${m.reserva ? ` · reserva ${m.reserva}` : ''} (${plazas} pax)`
+      flags.push({
+        level: 'warn',
+        tipo: 'tarifa',
+        mensaje: web
+          ? `${quienWeb}: cobro de ${fmt(m.total)} al precio de efectivo de la página de reservas, pero no se pagó en efectivo.`
+          : `${quienWeb}: cobro de ${fmt(m.total)} no cuadra con el tarifario de la página de reservas para ninguna estadía que empiece o termine ese día (no hay tarifa pactada cargada para la fecha).`,
+      })
+      continue
+    }
 
     const base = plazas === 1
       ? periodo.single
       : { lista: periodo.porPersona.lista * plazas, efectivo: periodo.porPersona.efectivo * plazas }
-    // El precio de efectivo solo vale si el cobro fue TODO en efectivo.
-    const pagoEfectivo = m.efectivo > 0 && Math.abs(m.efectivo - m.total) <= EPS
 
     // ¿El total es n noches × alguna tarifa? Se registra el múltiplo más cercano
     // (con signo) para saber si cobró de más o de menos.
@@ -209,6 +237,13 @@ export function getTarifaFlags(
       }
     }
     if (cuadraLista || (cuadraEfectivo && pagoEfectivo)) continue
+
+    // Última chance antes de marcar: ¿cuadra con el tarifario de la landing?
+    // (solo se calcula para los cobros que las pactadas no explican).
+    if (tarifarioPublico) {
+      const web = cuadraConTarifarioPublico(m.total, plazas, fechaCobro, tarifarioPublico)
+      if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
+    }
 
     // Con una sola habitación se nombra su tipo real (del maestro): ayuda a
     // entender el cobro sin ir a buscar cuántas camas tiene ese cuarto.

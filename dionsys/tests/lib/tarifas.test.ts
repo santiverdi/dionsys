@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getTarifaFlags, tarifaVigente, mesesSinTarifa, TARIFAS_PACTADAS } from '../../src/lib/tarifas'
+import type { TarifarioPublico } from '../../src/lib/landing'
 import type { CajaParte, CajaMovimiento, ParteHabitaciones } from '../../src/types'
 
 function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
@@ -36,11 +37,78 @@ const soloTarifa = (...args: Parameters<typeof getTarifaFlags>) =>
 const soloOcupacion = (...args: Parameters<typeof getTarifaFlags>) =>
   getTarifaFlags(...args).filter(f => f.tipo === 'ocupacion')
 
+// Tarifario publicado de la landing (diciembre): tarifas por día con vie/sáb
+// caro, Navidad +50% y tope. Las TARIFAS_PACTADAS de la semilla solo cubren
+// julio, así que estos cobros de diciembre no tienen período pactado.
+const TARIFARIO_WEB: TarifarioPublico = {
+  temporadas: [{
+    nombre: 'Diciembre', desde: '2026-12-01', hasta: '2026-12-31',
+    tarifas: { 1: 80000, 2: 40000, 3: 40000, 4: 40000, 5: 40000 },
+    tarifasCaras: { 1: 100000, 2: 60000, 3: 60000, 4: 60000, 5: 60000 },
+    diasCaros: [5, 6], efectivoCaro: 0.1, efectivoBarato: 0.1, minNoches: 3, sena: 0.3,
+  }],
+  findesLargos: [{ n: 'Navidad', desde: '2026-12-24', hasta: '2026-12-26', recargo: 0.5 }],
+  bloqueadas: [],
+  config: { tope_por_persona: 60000, cuotas: [3, 6], vigencia: { desde: '2026-12-01', hasta: '2026-12-31' } },
+  promociones: [],
+}
+
+function movDic(p: Partial<CajaMovimiento>): CajaMovimiento {
+  return mov({ fechaHora: '2026-12-27T10:00:00.000Z', ...p })
+}
+const cajaDic = (ingresos: CajaMovimiento[]): CajaParte =>
+  mkCaja({ aperturaAt: '2026-12-27T07:00:00.000Z', cierreAt: '2026-12-27T15:00:00.000Z', ingresos })
+
 describe('tarifaVigente', () => {
   it('elige el período por fecha (julio parte en dos)', () => {
     expect(tarifaVigente('2026-07-05T12:00:00.000Z')?.porPersona.lista).toBe(35_000)
     expect(tarifaVigente('2026-07-20T12:00:00.000Z')?.porPersona.lista).toBe(37_500)
     expect(tarifaVigente('2026-06-30T12:00:00.000Z')).toBeUndefined()
+  })
+})
+
+describe('getTarifaFlags con el tarifario de la landing', () => {
+  it('un cobro que es exactamente lo que cotizó la web no marca nada (sin pactadas para la fecha)', () => {
+    // Las 3 noches de Navidad (24 al 27) para 2 personas: $360.000 de lista.
+    const caja = cajaDic([movDic({ reserva: '500', habitacion: '101', tarjetas: 360_000, total: 360_000 })])
+    expect(soloTarifa(caja, [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB)).toEqual([])
+  })
+
+  it('el precio de efectivo de la web solo vale pagado en efectivo', () => {
+    const enEfectivo = cajaDic([movDic({ reserva: '500', habitacion: '101', efectivo: 324_000, total: 324_000 })])
+    expect(soloTarifa(enEfectivo, [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB)).toEqual([])
+    const conTarjeta = cajaDic([movDic({ reserva: '500', habitacion: '101', tarjetas: 324_000, total: 324_000 })])
+    const flags = soloTarifa(conTarjeta, [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB)
+    expect(flags).toHaveLength(1)
+    expect(flags[0].mensaje).toContain('no se pagó en efectivo')
+  })
+
+  it('un cobro que no cuadra con ninguna estadía de la web se marca', () => {
+    const caja = cajaDic([movDic({ reserva: '500', habitacion: '101', tarjetas: 999_000, total: 999_000 })])
+    const flags = soloTarifa(caja, [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB)
+    expect(flags).toHaveLength(1)
+    expect(flags[0].mensaje).toContain('página de reservas')
+  })
+
+  it('si las pactadas no explican el cobro pero la web sí, no marca', () => {
+    // Pactada plana de diciembre a $40.000/persona: $360.000 no es múltiplo
+    // de $80.000/noche, pero sí es la cotización web (Navidad +50% con tope).
+    const pactadas = [{
+      desde: '2026-12-01', hasta: '2026-12-31',
+      single: { lista: 80_000, efectivo: 72_000 },
+      porPersona: { lista: 40_000, efectivo: 36_000 },
+    }]
+    const caja = cajaDic([movDic({ reserva: '500', habitacion: '101', tarjetas: 360_000, total: 360_000 })])
+    expect(soloTarifa(caja, [mkParte(2)], pactadas, TARIFARIO_WEB)).toEqual([])
+    // Sin el tarifario web, ese mismo cobro sí es una imperfección.
+    expect(soloTarifa(caja, [mkParte(2)], pactadas)).toHaveLength(1)
+  })
+
+  it('fuera de la vigencia de la web y sin pactadas, el cobro no se controla (como siempre)', () => {
+    const caja = mkCaja({ aperturaAt: '2027-06-10T07:00:00.000Z', ingresos: [
+      mov({ fechaHora: '2027-06-10T10:00:00.000Z', reserva: '500', habitacion: '101', tarjetas: 999_000, total: 999_000 }),
+    ] })
+    expect(soloTarifa(caja, [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB)).toEqual([])
   })
 })
 

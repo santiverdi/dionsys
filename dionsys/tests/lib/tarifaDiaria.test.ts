@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cotizarEstadia, diaSemana, infoDia } from '../../src/lib/tarifaDiaria'
+import { cotizarEstadia, cuadraConTarifarioPublico, diaSemana, infoDia } from '../../src/lib/tarifaDiaria'
 import type { TarifarioPublico } from '../../src/lib/landing'
 
 // El tarifario REAL 2026/2027 pasado por el dueño. Los casos de abajo son los
@@ -125,5 +125,38 @@ describe('cotizarEstadia — ejemplos del tarifario', () => {
     const c = cotizarEstadia('2026-09-10', '2026-09-13', 2, t)  // jue (20%) + vie y sáb (10%)
     expect(c.n20).toBe(1)
     expect(c.n10).toBe(2)
+  })
+})
+
+// El cruce que usa el control de caja: ¿este cobro es lo que la web cotizó?
+describe('cuadraConTarifarioPublico', () => {
+  const t = tarifario()
+
+  it('reconoce el pago al hacer el check out (las 3 noches de Navidad)', () => {
+    const r = cuadraConTarifarioPublico(360_000, 2, '2026-12-27', t)
+    expect(r).toMatchObject({ tipo: 'lista', noches: 3, llegada: '2026-12-24' })
+  })
+
+  it('reconoce el precio de efectivo', () => {
+    expect(cuadraConTarifarioPublico(324_000, 2, '2026-12-27', t)?.tipo).toBe('efectivo')
+  })
+
+  it('reconoce el pago al llegar (estadía que empieza el día del cobro)', () => {
+    // vie 11 + sáb 12 de sept × 2 pax × 35.000 = 140.000
+    const r = cuadraConTarifarioPublico(140_000, 2, '2026-09-11', t)
+    expect(r?.tipo).toBe('lista')
+    expect(r?.noches).toBe(2)
+  })
+
+  it('un total que no es de ninguna estadía posible no cuadra', () => {
+    expect(cuadraConTarifarioPublico(123_456, 2, '2026-09-11', t)).toBeUndefined()
+  })
+
+  it('más de 5 personas queda fuera del modelo de la landing', () => {
+    expect(cuadraConTarifarioPublico(140_000, 6, '2026-09-11', t)).toBeUndefined()
+  })
+
+  it('una fecha fuera de la vigencia no cuadra con nada', () => {
+    expect(cuadraConTarifarioPublico(140_000, 2, '2027-06-10', t)).toBeUndefined()
   })
 })

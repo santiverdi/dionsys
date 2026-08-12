@@ -288,6 +288,19 @@ export async function fetchTarifarioPublicado(): Promise<{ tarifario: TarifarioP
   return { tarifario: fila?.data ?? null, error: null }
 }
 
+// Caché en memoria para las pantallas que consultan el tarifario publicado al
+// pasar (Control de Caja, Cerrar Turno, Panorama): una consulta cada tanto
+// alcanza — el tarifario cambia un par de veces por temporada.
+let publicadoCache: { at: number; tarifario: TarifarioPublico | null } | null = null
+
+export async function fetchTarifarioPublicadoCached(maxAgeMs = 10 * 60_000): Promise<TarifarioPublico | null> {
+  if (publicadoCache && Date.now() - publicadoCache.at < maxAgeMs) return publicadoCache.tarifario
+  const { tarifario } = await fetchTarifarioPublicado()
+  // Un fallo de red no pisa un tarifario ya conocido.
+  if (tarifario || !publicadoCache) publicadoCache = { at: Date.now(), tarifario }
+  return publicadoCache.tarifario
+}
+
 /**
  * Publica el tarifario vía /api/tarifario, que reescribe las tablas reales con
  * la service role key (la anon key no puede, a propósito). La landing lo toma

@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { BadgeDollarSign, ChevronDown, ChevronUp, Plus, Save, Trash2, X } from 'lucide-react'
+import { BadgeDollarSign, ChevronDown, ChevronUp, Globe, Plus, Save, Trash2, X } from 'lucide-react'
 import { useTarifas } from '../context/TarifasContext'
 import type { TarifaPeriodo } from '../lib/tarifas'
+import { useTarifarioPublico } from '../lib/useTarifarioPublico'
 import { formatMontoCurrency } from '../utils/validators'
 
 // Editor de las tarifas pactadas (solo admin). El control de caja cruza cada
 // cobro contra estos valores: mantenerlos al día cuando cambian los precios.
 export default function TarifasEditor() {
   const { tarifas, saveTarifas } = useTarifas()
+  const tarifarioWeb = useTarifarioPublico()
   const [open, setOpen] = useState(false)
   // null = viendo lo guardado; con valor = editando (se guarda con el botón).
   const [draft, setDraft] = useState<TarifaPeriodo[] | null>(null)
@@ -140,6 +142,36 @@ export default function TarifasEditor() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {/* El tarifario de la página de reservas también cuenta como pactado:
+              el control lo cruza automáticamente, acá solo se muestra. */}
+          {tarifarioWeb && (
+            <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50/60 p-2.5">
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-teal-700 mb-1">
+                <Globe size={13} /> Tarifario de la página de reservas
+              </p>
+              <p className="text-[11px] text-navy-500 mb-1.5">
+                Un cobro que coincide con lo que cotiza la landing (vie/sáb más caros, findes largos con recargo,
+                tope por persona y descuento por efectivo según el día) también se da por bien pactado, automáticamente.
+                Se edita desde Administración → Página web.
+              </p>
+              <ul className="text-[11px] text-navy-500 space-y-0.5">
+                {tarifarioWeb.temporadas.map((t, i) => (
+                  <li key={i}>
+                    {t.desde} al {t.hasta} · {t.nombre}: single {formatMontoCurrency(t.tarifas[1] ?? 0)} ·
+                    por persona {formatMontoCurrency(t.tarifas[2] ?? 0)}
+                    {t.tarifasCaras ? ` (vie/sáb ${formatMontoCurrency(t.tarifasCaras[2] ?? 0)})` : ''}
+                    {` · ef. -${Math.round(t.efectivoBarato * 100)}%${t.efectivoCaro !== t.efectivoBarato ? ` / vie-sáb -${Math.round(t.efectivoCaro * 100)}%` : ''}`}
+                  </li>
+                ))}
+                {tarifarioWeb.findesLargos.length > 0 && (
+                  <li>
+                    Findes largos: {tarifarioWeb.findesLargos.map(f => `${f.n} +${Math.round(f.recargo * 100)}%`).join(' · ')}
+                  </li>
+                )}
+              </ul>
+            </div>
           )}
         </div>
       )}

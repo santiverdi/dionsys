@@ -102,3 +102,57 @@ export function cotizarEstadia(llegada: string, salida: string, pax: number, t: 
 
   return { noches, total, efectivo: Math.round(efectivo), n20, n10, minNoches, sena, findes: [...findes], bloqueadas, incompleta }
 }
+
+// ── Cuadre de un cobro de caja contra el tarifario de la landing ────────────
+
+const EPS = 1           // los precios publicados son redondos: el cobro debe dar exacto
+const MAX_NOCHES = 31   // hasta cuántas noches se prueba la ventana
+
+function sumarDias(fecha: string, n: number): string {
+  return new Date(aDia(fecha) + n * 86_400_000).toISOString().slice(0, 10)
+}
+
+export interface CuadreWeb {
+  tipo: 'lista' | 'efectivo'
+  noches: number
+  llegada: string
+}
+
+/**
+ * ¿El total de un cobro coincide con lo que la landing cotiza para ALGUNA
+ * estadía que empiece o termine el día del cobro? Se prueban ventanas de 1 a
+ * 31 noches ancladas al día del cobro: [f-n, f) —pago al hacer el check out—
+ * y [f, f+n) —pago al llegar—. A diferencia de las tarifas pactadas planas,
+ * acá entran los vie/sáb más caros, los findes largos con recargo, el tope por
+ * persona y el descuento por efectivo noche a noche.
+ * 'lista' gana si cuadra con ambos. undefined = no cuadra con ninguna ventana.
+ */
+export function cuadraConTarifarioPublico(
+  total: number,
+  plazas: number,
+  fechaCobro: string,
+  t: TarifarioPublico,
+): CuadreWeb | undefined {
+  if (!Number.isInteger(plazas) || plazas < 1 || plazas > 5) return undefined
+  const f = (fechaCobro || '').slice(0, 10)
+  if (!f || isNaN(aDia(f))) return undefined
+
+  const ventanas: Array<[string, string]> = []
+  for (let n = 1; n <= MAX_NOCHES; n++) {
+    ventanas.push([sumarDias(f, -n), f])   // el cobro es la salida
+    ventanas.push([f, sumarDias(f, n)])    // el cobro es la llegada
+  }
+
+  let efectivoMatch: CuadreWeb | undefined
+  for (const [a, b] of ventanas) {
+    const c = cotizarEstadia(a, b, plazas, t)
+    if (c.incompleta) continue
+    if (Math.abs(total - c.total) <= EPS) {
+      return { tipo: 'lista', noches: c.noches, llegada: a }
+    }
+    if (!efectivoMatch && Math.abs(total - c.efectivo) <= EPS) {
+      efectivoMatch = { tipo: 'efectivo', noches: c.noches, llegada: a }
+    }
+  }
+  return efectivoMatch
+}
