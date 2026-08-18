@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { LANDING_URL } from '../lib/landing'
 import LandingLeads from '../components/LandingLeads'
+import LandingMetricas from '../components/LandingMetricas'
 import LandingTarifarioEditor from '../components/LandingTarifarioEditor'
 
 // La página web pública del hotel (repo aparte, deployada en Vercel) se maneja
 // desde acá: qué tarifario muestra su calculador y qué consultas llegaron.
 export default function Landing() {
-  const [tab, setTab] = useState<'consultas' | 'tarifario'>('consultas')
+  const [tab, setTab] = useState<'consultas' | 'tarifario' | 'metricas'>('consultas')
 
   const tabCls = (activa: boolean) =>
     `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -32,9 +33,10 @@ export default function Landing() {
       <div className="flex gap-2 mb-6">
         <button onClick={() => setTab('consultas')} className={tabCls(tab === 'consultas')}>Consultas</button>
         <button onClick={() => setTab('tarifario')} className={tabCls(tab === 'tarifario')}>Tarifario público</button>
+        <button onClick={() => setTab('metricas')} className={tabCls(tab === 'metricas')}>Métricas</button>
       </div>
 
-      {tab === 'consultas' ? <LandingLeads /> : <LandingTarifarioEditor />}
+      {tab === 'consultas' ? <LandingLeads /> : tab === 'tarifario' ? <LandingTarifarioEditor /> : <LandingMetricas />}
     </div>
   )
 }

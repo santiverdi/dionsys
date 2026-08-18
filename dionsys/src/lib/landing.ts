@@ -330,6 +330,39 @@ export async function publicarTarifario(t: TarifarioPublico): Promise<{ error: s
   }
 }
 
+// Una fila de la vista eventos_landing_diario: cuántos eventos de ese tipo,
+// fuente y dispositivo hubo ese día en la landing.
+export interface EventoDiario {
+  dia: string          // YYYY-MM-DD
+  tipo: string         // visita | cotizo | reservar | wa_directo
+  fuente: string       // utm_source, dominio que refirió, o 'directo'
+  dispositivo: string  // movil | escritorio
+  cantidad: number
+}
+
+/**
+ * Métricas de la landing vía /api/metricas (service role + código de acceso).
+ * No hay lectura directa: la vista está cerrada para la anon key.
+ */
+export async function fetchMetricas(dias = 60): Promise<{ eventos: EventoDiario[]; error: string | null }> {
+  const token = landingToken()
+  if (!token) {
+    return { eventos: [], error: 'Falta el código de acceso: cargalo en la pestaña Consultas → "Código de acceso".' }
+  }
+  try {
+    const r = await fetch(`/api/metricas?dias=${dias}`, { headers: { 'x-landing-token': token } })
+    if (r.ok) {
+      const j = await r.json() as { eventos?: EventoDiario[] }
+      return { eventos: j.eventos ?? [], error: null }
+    }
+    if (r.status === 401) return { eventos: [], error: 'El código de acceso no coincide con el LANDING_TOKEN configurado en Vercel.' }
+    const j = await r.json().catch(() => null) as { error?: string } | null
+    return { eventos: [], error: j?.error ?? `Error ${r.status} al leer las métricas.` }
+  } catch {
+    return { eventos: [], error: 'No se pudo llegar a /api/metricas (solo existe en el sitio deployado en Vercel).' }
+  }
+}
+
 export interface LeadsResult {
   leads: Lead[]
   via: 'api' | 'directa' | null   // 'directa' = la tabla sigue legible con la anon key
