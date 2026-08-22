@@ -9,7 +9,9 @@ const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 // noche (mismas cuentas que el calculador de la landing) y marcando llegada y
 // salida —tocando o arrastrando— aparece el total, el efectivo y la seña.
 // Los precios salen del tarifario PUBLICADO (vista tarifario_publico), así el
-// mostrador cotiza exactamente lo mismo que ve un huésped en la página.
+// mostrador cotiza exactamente lo mismo que ve un huésped en la página, salvo
+// las fechas con tarifa pactada aparte (src/lib/tarifasEspeciales.ts), que
+// mandan sobre lo publicado.
 
 const money = (n: number) => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
 
@@ -185,10 +187,21 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                   </div>
                   <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 mt-2">
                     <p className="text-2xl font-bold text-navy-800">{money(cotizacion.total)}</p>
-                    <p className="text-sm text-emerald-700 font-medium">
-                      {money(cotizacion.efectivo)} en efectivo
-                      {cotizacion.n20 > 0 && cotizacion.n10 === 0 ? ' (20% off)' : cotizacion.n10 > 0 && cotizacion.n20 === 0 ? ' (10% off)' : ''}
-                    </p>
+                    {/* Descuento que vale con cualquier medio de pago: va antes
+                        que el de efectivo para no hacerle creer al huésped que
+                        tiene que pagar en efectivo para conseguirlo. */}
+                    {cotizacion.conDescuento < cotizacion.total && (
+                      <p className="text-sm text-emerald-700 font-medium">
+                        {money(cotizacion.conDescuento)} con descuento (
+                        {Math.round(cotizacion.descGeneral * 100)}% con cualquier medio de pago)
+                      </p>
+                    )}
+                    {cotizacion.efectivo < cotizacion.conDescuento && (
+                      <p className="text-sm text-emerald-700 font-medium">
+                        {money(cotizacion.efectivo)} en efectivo
+                        {cotizacion.n20 > 0 && cotizacion.n10 === 0 ? ' (20% off)' : cotizacion.n10 > 0 && cotizacion.n20 === 0 ? ' (10% off)' : ''}
+                      </p>
+                    )}
                     {cotizacion.sena > 0 && (
                       <p className="text-sm text-navy-500">
                         Seña {Math.round(cotizacion.sena * 100)}%: <b>{money(Math.round(cotizacion.total * cotizacion.sena))}</b>
@@ -209,6 +222,11 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                     {cotizacion.findes.length > 0 && (
                       <p className="text-xs text-gold-700 bg-gold-50 border border-gold-200 rounded px-2 py-1 inline-block">
                         Incluye finde largo de {cotizacion.findes.join(' y ')} (tarifa especial ya aplicada).
+                      </p>
+                    )}
+                    {cotizacion.especiales.length > 0 && (
+                      <p className="text-xs text-gold-700 bg-gold-50 border border-gold-200 rounded px-2 py-1 inline-block">
+                        Incluye {cotizacion.especiales.join(' y ')}: tarifa pactada, precio fijo por noche.
                       </p>
                     )}
                   </div>
@@ -235,10 +253,10 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                                 <span className="font-medium text-navy-700 whitespace-nowrap">
                                   {DIAS_CORTOS[diaSemana(f)]} {fmtDia(f)}
                                 </span>
-                                {info.findeLargo && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 text-gold-700 whitespace-nowrap">{info.findeLargo}</span>
+                                {(info.especial || info.findeLargo) && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 text-gold-700 whitespace-nowrap">{info.especial ?? info.findeLargo}</span>
                                 )}
-                                {!info.findeLargo && info.caro && (
+                                {!info.especial && !info.findeLargo && info.caro && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-navy-100 text-navy-500 whitespace-nowrap">vie/sáb</span>
                                 )}
                                 {info.bloqueada && (
@@ -253,7 +271,13 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                                     <span className={`font-bold ${masCara ? 'text-amber-800' : 'text-navy-800'}`}>
                                       {pax === 1 ? money(info.precio) : `${money(info.precio)} × ${pax} = ${money(info.precio * pax)}`}
                                     </span>
-                                    <span className="text-[10px] text-emerald-700 ml-1.5">ef. -{Math.round(info.descEfectivo * 100)}%</span>
+                                    {info.descGeneral > 0 ? (
+                                      <span className="text-[10px] text-emerald-700 ml-1.5">-{Math.round(info.descGeneral * 100)}% (todo medio)</span>
+                                    ) : info.descEfectivo > 0 ? (
+                                      <span className="text-[10px] text-emerald-700 ml-1.5">ef. -{Math.round(info.descEfectivo * 100)}%</span>
+                                    ) : (
+                                      <span className="text-[10px] text-navy-400 ml-1.5">sin descuento</span>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -309,7 +333,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                 else if (enNoches) cls = 'bg-navy-800 border-navy-800 text-cream'
                 else if (esSalida) cls = 'bg-navy-100 border-navy-300 text-navy-700'
                 else if (info.bloqueada) cls = 'bg-red-50 border-red-200 text-red-400'
-                else if (info.findeLargo) cls = 'bg-gold-50 border-gold-300 text-navy-800'
+                else if (info.especial || info.findeLargo) cls = 'bg-gold-50 border-gold-300 text-navy-800'
                 else if (info.caro) cls = 'bg-navy-50 border-navy-100 text-navy-700'
                 return (
                   <div
@@ -336,12 +360,12 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
           {/* Referencias */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-navy-500">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-navy-50 border border-navy-200 inline-block" /> Vie/Sáb</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gold-50 border border-gold-300 inline-block" /> Finde largo (recargo ya incluido)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gold-50 border border-gold-300 inline-block" /> Tarifa especial / finde largo (ya aplicada)</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-50 border border-red-200 inline-block" /> Sin disponibilidad</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded ring-2 ring-gold-400 inline-block" /> Hoy</span>
           </div>
           <p className="text-[11px] text-navy-400 mt-1">
-            Precios de lista por noche{pax === 1 ? ' (habitación single completa)' : ' por persona'}. El descuento por efectivo aparece al cotizar.
+            Precios de lista por noche{pax === 1 ? ' (habitación single completa)' : ' por persona'}. Los descuentos aparecen al cotizar.
           </p>
         </>
       )}
