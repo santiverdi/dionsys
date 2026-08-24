@@ -2,7 +2,7 @@ import type { Role } from '../types'
 
 export const ROLE_ROUTES: Record<Role, string[]> = {
   // Admin (Charo): entra por Administración pero mantiene acceso total.
-  admin:         ['/administracion', '/dashboard', '/hotel', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin', '/impuestos', '/sueldos', '/facturas-proveedores', '/control-caja', '/caja-admin', '/lavadero', '/landing', '/sync'],
+  admin:         ['/administracion', '/dashboard', '/hotel', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin', '/impuestos', '/sueldos', '/facturas-proveedores', '/control-caja', '/caja-admin', '/lavadero', '/landing', '/usuarios', '/sync'],
   // Recepcionista (conserje): recepción + depósito (incluye armar el pedido semanal) + cierre de turno (caja + parte).
   // /landing: solo ven las consultas de la página web (la pestaña de tarifas es de admin).
   concierge:     ['/recepcion', '/hotel', '/deposito', '/cerrar-turno', '/lavadero', '/landing'],

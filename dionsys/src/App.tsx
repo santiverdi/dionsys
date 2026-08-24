@@ -38,6 +38,7 @@ import Hotel from './pages/Hotel'
 import SyncPanel from './pages/SyncPanel'
 import CajaAdmin from './pages/CajaAdmin'
 import Landing from './pages/Landing'
+import Usuarios from './pages/Usuarios'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { employee } = useAuth()
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
         <Route path="caja-admin" element={<RoleRoute path="/caja-admin"><CajaAdmin /></RoleRoute>} />
         <Route path="landing" element={<RoleRoute path="/landing"><Landing /></RoleRoute>} />
+        <Route path="usuarios" element={<RoleRoute path="/usuarios"><Usuarios /></RoleRoute>} />
         <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
         {/* Herramienta de unificación de datos (oculta del menú). Solo admin. */}
         <Route path="sync" element={<RoleRoute path="/sync"><SyncPanel /></RoleRoute>} />

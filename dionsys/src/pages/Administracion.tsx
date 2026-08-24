@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList, Receipt, FileText, Wallet, Users, Landmark, Globe } from 'lucide-react'
+import { ClipboardList, Receipt, FileText, Wallet, Users, Landmark, Globe, KeyRound } from 'lucide-react'
 
 export default function Administracion() {
   const navigate = useNavigate()
@@ -86,6 +86,17 @@ export default function Administracion() {
           </div>
           <h3 className="font-bold text-navy-800 text-lg">Página web</h3>
           <p className="text-sm text-navy-500 mt-1">La landing de reservas: publicá el tarifario del calculador y mirá las consultas que llegan con nombre y WhatsApp.</p>
+        </button>
+
+        <button
+          onClick={() => navigate('/usuarios')}
+          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
+            <KeyRound size={24} />
+          </div>
+          <h3 className="font-bold text-navy-800 text-lg">Usuarios</h3>
+          <p className="text-sm text-navy-500 mt-1">Quiénes entran al sistema, con qué rol y con qué PIN de acceso.</p>
         </button>
       </div>
     </div>
