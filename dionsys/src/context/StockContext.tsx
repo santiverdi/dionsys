@@ -125,6 +125,7 @@ interface StockContextType {
   deleteFacturaManual: (id: string) => void
   setPedidoMonto: (pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => void
   recibirPedido: (pedidoId: string, recibidoBy: string, recibidos: { itemId: string; cantidad: number }[]) => void
+  revertirRecepcion: (pedidoId: string) => void
   addItem: (data: Omit<DepositoItem, 'id'>) => void
   updateItem: (id: string, data: Partial<Omit<DepositoItem, 'id'>>) => void
   deleteItem: (id: string) => void
@@ -412,6 +413,57 @@ export function StockProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // Deshace una recepción marcada por error. Si el pedido había sumado al
+  // depósito, resta de vuelta lo recibido y borra sus movimientos de entrada;
+  // si se había cerrado sin stock, no toca el depósito. El pedido vuelve a
+  // "esperando recepción" (o "armado" si nunca se había marcado como pedido).
+  // Las facturas ya cargadas se conservan.
+  const revertirRecepcion = useCallback((pedidoId: string) => {
+    let pedido: PedidoSemanal | undefined
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_PEDIDOS) || '[]') as PedidoSemanal[]
+      pedido = saved.find(p => p.id === pedidoId)
+    } catch { /* almacenamiento ilegible: no revertimos a ciegas */ }
+    if (!pedido || pedido.status !== 'recibido') return
+
+    if (!pedido.cerradoSinStock) {
+      const recibidoPacksById = new Map(
+        pedido.items.filter(it => (it.recibido ?? 0) > 0).map(it => [it.itemId, it.recibido as number]),
+      )
+      setItems(prev => {
+        const updated = prev.map(item => {
+          const packs = recibidoPacksById.get(item.id)
+          if (!packs || packs <= 0) return item
+          const base = +(packs * getPackSize(item)).toFixed(2)
+          return { ...item, stock: +(item.stock - base).toFixed(2) }
+        })
+        persist(LS_DEPOSITO, updated)
+        return updated
+      })
+      setMovements(prev => {
+        const updated = prev.filter(m => !(m.pedidoId === pedidoId && m.type === 'entrada'))
+        persist(LS_MOVEMENTS, updated)
+        return updated
+      })
+    }
+
+    setPedidos(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== pedidoId) return p
+        return {
+          ...p,
+          status: (p.pedidoAt ? 'pedido' : 'armado') as PedidoSemanal['status'],
+          recibidoAt: undefined,
+          recibidoBy: undefined,
+          cerradoSinStock: undefined,
+          items: p.items.map(it => ({ ...it, recibido: undefined })),
+        }
+      })
+      persist(LS_PEDIDOS, updated)
+      return updated
+    })
+  }, [])
+
   const setPedidoMonto = useCallback((pedidoId: string, monto: number, cargadoBy: string, receiptPhoto?: string) => {
     setPedidos(prev => {
       const updated = prev.map(p =>
@@ -498,7 +550,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   return (
     <StockContext.Provider value={{
       items, movements, pedidos, suppliers, facturasManuales,
-      addMovement, savePedido, marcarPedido, cerrarPedidoSinStock, deletePedido, removeSupplierFromPedido, setFacturaProveedor, saveFacturaManual, deleteFacturaManual, setPedidoMonto, recibirPedido,
+      addMovement, savePedido, marcarPedido, cerrarPedidoSinStock, deletePedido, removeSupplierFromPedido, setFacturaProveedor, saveFacturaManual, deleteFacturaManual, setPedidoMonto, recibirPedido, revertirRecepcion,
       addItem, updateItem, deleteItem,
       addSupplier, updateSupplier, deleteSupplier, clearAllStock, resetStock,
     }}>

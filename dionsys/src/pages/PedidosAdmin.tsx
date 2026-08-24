@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Send, Clock, Package, MessageCircle, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle, Trash2 } from 'lucide-react'
+import { Send, Clock, Package, MessageCircle, PackageCheck, CheckCircle2, Truck, Plus, Pencil, AlertTriangle, Trash2, Undo2 } from 'lucide-react'
 import { useStock } from '../context/StockContext'
 import { useAuth } from '../context/AuthContext'
 import { resolveSupplierId } from '../utils/deposito'
@@ -15,7 +15,7 @@ function formatDate(iso: string) {
   })
 }
 
-function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onCerrarSinStock, onDeletePedido, onRemoveSupplier }: { pedido: PedidoSemanal; isAdmin: boolean; onRecibir: () => void; onMarcarPedido: () => void; onCerrarSinStock: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void }) {
+function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onCerrarSinStock, onDeletePedido, onRemoveSupplier, onRevertir }: { pedido: PedidoSemanal; isAdmin: boolean; onRecibir: () => void; onMarcarPedido: () => void; onCerrarSinStock: () => void; onDeletePedido: () => void; onRemoveSupplier: (supplierId: string, supplierName: string) => void; onRevertir: () => void }) {
   const { items, suppliers } = useStock()
   const isArmado = pedido.status === 'armado'
   const isPedido = pedido.status === 'pedido'
@@ -200,6 +200,14 @@ function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onCerrarSinSto
           Ya se pidió y la mercadería se cargó a mano — cerrar sin sumar stock
         </button>
       )}
+      {isAdmin && isRecibido && (
+        <button
+          onClick={onRevertir}
+          className="w-full mt-2 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-navy-500 border border-navy-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200 transition-colors"
+        >
+          <Undo2 size={14} /> Revertir recepción
+        </button>
+      )}
     </div>
   )
 }
@@ -207,11 +215,12 @@ function PedidoCard({ pedido, isAdmin, onRecibir, onMarcarPedido, onCerrarSinSto
 export default function PedidosAdmin() {
   const { employee } = useAuth()
   const {
-    pedidos, recibirPedido, marcarPedido, cerrarPedidoSinStock, deletePedido, removeSupplierFromPedido,
+    pedidos, recibirPedido, marcarPedido, cerrarPedidoSinStock, revertirRecepcion, deletePedido, removeSupplierFromPedido,
     suppliers, addSupplier, updateSupplier, deleteSupplier,
   } = useStock()
   const [recibirTarget, setRecibirTarget] = useState<PedidoSemanal | null>(null)
   const [cerrarSinStockTarget, setCerrarSinStockTarget] = useState<PedidoSemanal | null>(null)
+  const [revertirTarget, setRevertirTarget] = useState<PedidoSemanal | null>(null)
   const [deletePedidoTarget, setDeletePedidoTarget] = useState<PedidoSemanal | null>(null)
   const [removeSupplierTarget, setRemoveSupplierTarget] = useState<{ pedidoId: string; supplierId: string; supplierName: string } | null>(null)
   // Distribuidoras: undefined = panel cerrado-modal cerrado; modal target separado
@@ -247,6 +256,12 @@ export default function PedidosAdmin() {
     if (!cerrarSinStockTarget || !employee) return
     cerrarPedidoSinStock(cerrarSinStockTarget.id, employee.name)
     setCerrarSinStockTarget(null)
+  }
+
+  function confirmRevertir() {
+    if (!revertirTarget) return
+    revertirRecepcion(revertirTarget.id)
+    setRevertirTarget(null)
   }
 
   function confirmDeletePedido() {
@@ -355,6 +370,7 @@ export default function PedidosAdmin() {
                   onCerrarSinStock={() => setCerrarSinStockTarget(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
                   onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
+                  onRevertir={() => setRevertirTarget(pedido)}
                 />
               ))}
             </>
@@ -375,6 +391,7 @@ export default function PedidosAdmin() {
                   onCerrarSinStock={() => setCerrarSinStockTarget(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
                   onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
+                  onRevertir={() => setRevertirTarget(pedido)}
                 />
               ))}
             </>
@@ -395,6 +412,7 @@ export default function PedidosAdmin() {
                   onCerrarSinStock={() => setCerrarSinStockTarget(pedido)}
                   onDeletePedido={() => setDeletePedidoTarget(pedido)}
                   onRemoveSupplier={(supplierId, supplierName) => setRemoveSupplierTarget({ pedidoId: pedido.id, supplierId, supplierName })}
+                  onRevertir={() => setRevertirTarget(pedido)}
                 />
               ))}
             </>
@@ -426,6 +444,17 @@ export default function PedidosAdmin() {
         confirmLabel="Cerrar sin sumar"
         onConfirm={confirmCerrarSinStock}
         onCancel={() => setCerrarSinStockTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={revertirTarget !== null}
+        title="Revertir recepción"
+        message={revertirTarget?.cerradoSinStock
+          ? 'El pedido vuelve a "esperando recepción". No se había sumado nada al depósito, así que el stock no cambia. Las facturas ya cargadas se conservan.'
+          : 'El pedido vuelve a "esperando recepción" y se resta del depósito lo que se había sumado al recibirlo. Las facturas ya cargadas se conservan.'}
+        confirmLabel="Revertir recepción"
+        onConfirm={confirmRevertir}
+        onCancel={() => setRevertirTarget(null)}
       />
 
       <ConfirmDialog
