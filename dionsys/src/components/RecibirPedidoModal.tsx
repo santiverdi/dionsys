@@ -8,12 +8,15 @@ interface RecibirPedidoModalProps {
   pedido: PedidoSemanal
   onClose: () => void
   onConfirm: (recibidos: { itemId: string; cantidad: number }[]) => void
+  // Solo admin: marca el pedido como recibido SIN sumar nada al depósito
+  // (la mercadería no se controla por stock). Ausente para el resto de los roles.
+  onConfirmSinStock?: () => void
 }
 
 type Editable = PedidoSemanalItem & { recibidoInput: number }
 
 export default function RecibirPedidoModal({
-  pedido, onClose, onConfirm,
+  pedido, onClose, onConfirm, onConfirmSinStock,
 }: RecibirPedidoModalProps) {
   const { items, suppliers } = useStock()
   const [editable, setEditable] = useState<Editable[]>(() =>
@@ -159,6 +162,20 @@ export default function RecibirPedidoModal({
             <PackageCheck size={18} />
             {submitting ? 'Guardando...' : 'Confirmar y sumar al depósito'}
           </button>
+          {onConfirmSinStock && (
+            <>
+              <button
+                onClick={() => { if (!submitting) { setSubmitting(true); onConfirmSinStock() } }}
+                disabled={submitting}
+                className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-navy-200 text-navy-600 font-semibold text-sm hover:bg-navy-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Recibido — no cargar al depósito
+              </button>
+              <p className="text-[11px] text-navy-400 mt-2 text-center leading-snug">
+                Marca el pedido como recibido sin sumar nada al stock. Solo para el admin.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

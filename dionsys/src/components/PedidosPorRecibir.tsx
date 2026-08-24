@@ -5,22 +5,30 @@ import { useAuth } from '../context/AuthContext'
 import RecibirPedidoModal from './RecibirPedidoModal'
 import type { PedidoSemanal } from '../types'
 
-// Roles que reciben mercadería (no admin: ese pide desde Proveedores).
-const RECEIVER_ROLES = new Set(['concierge', 'mucama', 'encargada'])
+// Roles que reciben mercadería. El admin también, para poder marcar "recibido
+// sin cargar al depósito" (opción que solo aparece para su rol dentro del modal).
+const RECEIVER_ROLES = new Set(['concierge', 'mucama', 'encargada', 'admin'])
 
 export default function PedidosPorRecibir() {
   const { employee } = useAuth()
-  const { pedidos, recibirPedido } = useStock()
+  const { pedidos, recibirPedido, cerrarPedidoSinStock } = useStock()
   const [expanded, setExpanded] = useState(false)
   const [target, setTarget] = useState<PedidoSemanal | null>(null)
 
   const role = employee?.role
+  const esAdmin = role === 'admin'
   const porRecibir = pedidos.filter(p => p.status === 'pedido')
   if (!role || !RECEIVER_ROLES.has(role) || porRecibir.length === 0) return null
 
   function handleConfirm(recibidos: { itemId: string; cantidad: number }[]) {
     if (!target || !employee) return
     recibirPedido(target.id, employee.name, recibidos)
+    setTarget(null)
+  }
+
+  function handleConfirmSinStock() {
+    if (!target || !employee) return
+    cerrarPedidoSinStock(target.id, employee.name)
     setTarget(null)
   }
 
@@ -72,6 +80,7 @@ export default function PedidosPorRecibir() {
           pedido={target}
           onClose={() => setTarget(null)}
           onConfirm={handleConfirm}
+          onConfirmSinStock={esAdmin ? handleConfirmSinStock : undefined}
         />
       )}
     </div>
