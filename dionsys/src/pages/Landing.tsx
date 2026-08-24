@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ExternalLink } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 import { LANDING_URL } from '../lib/landing'
 import LandingLeads from '../components/LandingLeads'
 import LandingMetricas from '../components/LandingMetricas'
@@ -7,7 +8,11 @@ import LandingTarifarioEditor from '../components/LandingTarifarioEditor'
 
 // La página web pública del hotel (repo aparte, deployada en Vercel) se maneja
 // desde acá: qué tarifario muestra su calculador y qué consultas llegaron.
+// Los conserjes entran solo a Consultas, para responder a quien no llegó a
+// abrir WhatsApp; el tarifario y las métricas quedan para admin.
 export default function Landing() {
+  const { employee } = useAuth()
+  const esAdmin = employee?.role === 'admin'
   const [tab, setTab] = useState<'consultas' | 'tarifario' | 'metricas'>('consultas')
 
   const tabCls = (activa: boolean) =>
@@ -30,13 +35,15 @@ export default function Landing() {
         Las consultas que llegan desde la página de reservas y el tarifario que muestra su calculador.
       </p>
 
-      <div className="flex gap-2 mb-6">
-        <button onClick={() => setTab('consultas')} className={tabCls(tab === 'consultas')}>Consultas</button>
-        <button onClick={() => setTab('tarifario')} className={tabCls(tab === 'tarifario')}>Tarifario público</button>
-        <button onClick={() => setTab('metricas')} className={tabCls(tab === 'metricas')}>Métricas</button>
-      </div>
+      {esAdmin && (
+        <div className="flex gap-2 mb-6">
+          <button onClick={() => setTab('consultas')} className={tabCls(tab === 'consultas')}>Consultas</button>
+          <button onClick={() => setTab('tarifario')} className={tabCls(tab === 'tarifario')}>Tarifario público</button>
+          <button onClick={() => setTab('metricas')} className={tabCls(tab === 'metricas')}>Métricas</button>
+        </div>
+      )}
 
-      {tab === 'consultas' ? <LandingLeads /> : tab === 'tarifario' ? <LandingTarifarioEditor /> : <LandingMetricas />}
+      {!esAdmin || tab === 'consultas' ? <LandingLeads /> : tab === 'tarifario' ? <LandingTarifarioEditor /> : <LandingMetricas />}
     </div>
   )
 }

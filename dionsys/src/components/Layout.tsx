@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
-import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase, ClipboardCheck, Shirt, Building2 } from 'lucide-react'
+import { ShoppingCart, Menu, X, LogOut, ConciergeBell, Warehouse, Wrench, LayoutDashboard, Briefcase, ClipboardCheck, Shirt, Building2, MessageCircle } from 'lucide-react'
 import type { Role } from '../types'
 import OccupancyReminder from './OccupancyReminder'
 import CierreTurnoReminder from './CierreTurnoReminder'
@@ -15,6 +15,7 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof ShoppingCart }[] = [
   { to: '/recepcion', label: 'Recepcion', icon: ConciergeBell },
   { to: '/hotel', label: 'Mapa del hotel', icon: Building2 },
   { to: '/cerrar-turno', label: 'Cerrar turno', icon: ClipboardCheck },
+  { to: '/landing', label: 'Consultas web', icon: MessageCircle },
   { to: '/deposito', label: 'Pedido Semanal', icon: Warehouse },
   { to: '/lavadero', label: 'Lavadero', icon: Shirt },
   { to: '/mantenimiento', label: 'Mantenimiento', icon: Wrench },

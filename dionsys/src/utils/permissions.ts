@@ -4,7 +4,8 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
   // Admin (Charo): entra por Administración pero mantiene acceso total.
   admin:         ['/administracion', '/dashboard', '/hotel', '/recepcion', '/deposito', '/mantenimiento', '/pedidos-admin', '/impuestos', '/sueldos', '/facturas-proveedores', '/control-caja', '/caja-admin', '/lavadero', '/landing', '/sync'],
   // Recepcionista (conserje): recepción + depósito (incluye armar el pedido semanal) + cierre de turno (caja + parte).
-  concierge:     ['/recepcion', '/hotel', '/deposito', '/cerrar-turno', '/lavadero'],
+  // /landing: solo ven las consultas de la página web (la pestaña de tarifas es de admin).
+  concierge:     ['/recepcion', '/hotel', '/deposito', '/cerrar-turno', '/lavadero', '/landing'],
   // Mucamas y gobernanta manejan la ropa con el lavadero.
   mucama:        ['/recepcion', '/hotel', '/deposito', '/lavadero'],
   mantenimiento: ['/recepcion', '/hotel', '/mantenimiento'],
