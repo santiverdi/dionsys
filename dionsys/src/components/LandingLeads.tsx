@@ -17,7 +17,11 @@ function frecibida(s: string | undefined): string {
     d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function LandingLeads() {
+// `admin` decide qué se ve: el código de acceso y los avisos de configuración
+// son tarea de administración. Al conserje entra por las consultas y nada más
+// —pedirle que corra un script en Supabase no le sirve de nada— así que los
+// problemas se le cuentan en una línea, para que avise y siga trabajando.
+export default function LandingLeads({ admin }: { admin: boolean }) {
   const [token, setToken] = useState(() => landingToken())
   const [tokenAbierto, setTokenAbierto] = useState(false)
   const [cargando, setCargando] = useState(true)
@@ -55,13 +59,15 @@ export default function LandingLeads() {
           Cada consulta que la landing manda a WhatsApp queda guardada acá, con nombre y teléfono.
         </p>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTokenAbierto(!tokenAbierto)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border border-navy-200 text-navy-600 hover:bg-navy-50"
-            title="Código de acceso del endpoint /api/leads"
-          >
-            <KeyRound size={16} /> Código de acceso
-          </button>
+          {admin && (
+            <button
+              onClick={() => setTokenAbierto(!tokenAbierto)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border border-navy-200 text-navy-600 hover:bg-navy-50"
+              title="Código de acceso del endpoint /api/leads"
+            >
+              <KeyRound size={16} /> Código de acceso
+            </button>
+          )}
           <button
             onClick={() => void cargar(token)}
             disabled={cargando}
@@ -72,7 +78,7 @@ export default function LandingLeads() {
         </div>
       </div>
 
-      {tokenAbierto && (
+      {admin && tokenAbierto && (
         <div className="mb-4 p-4 bg-white rounded-xl border border-navy-100 flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[220px]">
             <label className="block text-xs font-medium text-navy-500 mb-1">
@@ -92,7 +98,7 @@ export default function LandingLeads() {
         </div>
       )}
 
-      {via === 'directa' && (
+      {admin && via === 'directa' && (
         <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
           Estas consultas se están leyendo con la clave pública: cualquiera que mire el código de la
           landing puede verlas también. Para cerrarlo, corré <code>scripts/landing-supabase.sql</code> en
@@ -102,7 +108,9 @@ export default function LandingLeads() {
       )}
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          {admin ? error : 'No se pudieron traer las consultas de la página. Avisale a administración.'}
+        </div>
       )}
 
       {cargando ? (

@@ -32,7 +32,9 @@ export default function Landing() {
         </a>
       </div>
       <p className="text-sm text-navy-500 mb-4">
-        Las consultas que llegan desde la página de reservas y el tarifario que muestra su calculador.
+        {esAdmin
+          ? 'Las consultas que llegan desde la página de reservas y el tarifario que muestra su calculador.'
+          : 'Las consultas que llegan desde la página de reservas, para contestarle a quien no llegó a escribir por WhatsApp.'}
       </p>
 
       {esAdmin && (
@@ -43,7 +45,7 @@ export default function Landing() {
         </div>
       )}
 
-      {!esAdmin || tab === 'consultas' ? <LandingLeads /> : tab === 'tarifario' ? <LandingTarifarioEditor /> : <LandingMetricas />}
+      {!esAdmin || tab === 'consultas' ? <LandingLeads admin={esAdmin} /> : tab === 'tarifario' ? <LandingTarifarioEditor /> : <LandingMetricas />}
     </div>
   )
 }
