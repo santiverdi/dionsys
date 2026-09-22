@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
   Truck, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
-  ChevronRight, Users, Building2, Croissant, LayoutGrid,
+  ChevronRight, ChevronDown, Users, Building2, Croissant, LayoutGrid,
 } from 'lucide-react'
 import GruposPanel from '../components/GruposPanel'
 import RendimientoHabitaciones from '../components/RendimientoHabitaciones'
 import CostoDesayuno from '../components/CostoDesayuno'
 import RetirosDeCaja from '../components/RetirosDeCaja'
 import { CuentaCorrientePanel, GastoPorProveedorPanel } from '../components/ProveedoresPanel'
+import AvisoLibroPendiente from '../components/AvisoLibroPendiente'
 import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useOrders } from '../context/OrdersContext'
@@ -23,6 +24,7 @@ import { useMarcasLibroCaja, salidasMarcadasPorMes } from '../lib/libroCajaMarca
 import {
   getResultadoMes, getIngresosMes, getTendencia, getCuentaCorriente,
   getGastoPorProveedor, getRevenueOcupacion, getGastosDeCajaDetalle, getRetirosDeCajaPorMes, getCostoHabitacion,
+  getEgresosDetallePorRubro, type EgresoDetalleItem,
 } from '../lib/negocio'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { exportMonthlyReport } from '../utils/monthlyExport'
@@ -121,6 +123,11 @@ export default function Negocio({ year, month }: { year: number; month: number }
     [cur, cajas, orders, pedidos, tasks, pagos, pagosSueldos, servicios, partes, records, lavaderoLiqs, libroSalidas],
   )
   const gastosCajaDetalle = useMemo(() => getGastosDeCajaDetalle(cur.year, cur.month, cajas), [cur, cajas])
+  const egresosDetalle = useMemo(
+    () => getEgresosDetallePorRubro(cur.year, cur.month, orders, pedidos, tasks, pagos, pagosSueldos, servicios, lavaderoLiqs, libroMeses, libroMarcas),
+    [cur, orders, pedidos, tasks, pagos, pagosSueldos, servicios, lavaderoLiqs, libroMeses, libroMarcas],
+  )
+  const [rubroAbierto, setRubroAbierto] = useState<string | null>(null)
   const retirosPorMes = useMemo(() => getRetirosDeCajaPorMes(cajas), [cajas])
   const cc = useMemo(() => getCuentaCorriente(orders, pedidos), [orders, pedidos])
   const proveedores = useMemo(() => getGastoPorProveedor(cur.year, cur.month, orders, pedidos), [cur, orders, pedidos])
@@ -128,18 +135,23 @@ export default function Negocio({ year, month }: { year: number; month: number }
 
   const resDelta = resultado.resultado - resultadoPrev.resultado
   const maxTend = Math.max(...tendencia.flatMap(t => [t.ingresos, t.egresos]), 1)
+  const gastosCajaItems: EgresoDetalleItem[] = gastosCajaDetalle.map(g => ({
+    label: g.observacion,
+    monto: g.total,
+    sub: `Caja ${g.nroCaja}${g.conserje ? ` · ${g.conserje}` : ''}`,
+  }))
   const egresosCats = [
-    { label: 'Sueldos', v: expenses.sueldos },
-    { label: 'Cargas sociales', v: expenses.cargasSociales },
-    { label: 'Impuestos/cargas', v: expenses.impuestosPagado },
-    { label: 'Servicios (luz/gas/agua)', v: expenses.serviciosPagado },
-    { label: 'Profesionales/abonos', v: expenses.profesionalesPagado },
-    { label: 'Pedido semanal', v: expenses.pedidosSemanales },
-    { label: 'Recepción diaria', v: expenses.pedidosDistribuidor },
-    { label: 'Mantenimiento', v: expenses.mantenimiento },
-    { label: 'Gastos de caja', v: resultado.gastosCaja },
-    { label: 'Lavadero (ropa)', v: resultado.lavadero },
-    { label: 'Caja Administración (libro)', v: resultado.libro },
+    { label: 'Sueldos', v: expenses.sueldos, items: egresosDetalle['Sueldos'] },
+    { label: 'Cargas sociales', v: expenses.cargasSociales, items: egresosDetalle['Cargas sociales'] },
+    { label: 'Impuestos/cargas', v: expenses.impuestosPagado, items: egresosDetalle['Impuestos/cargas'] },
+    { label: 'Servicios (luz/gas/agua)', v: expenses.serviciosPagado, items: egresosDetalle['Servicios (luz/gas/agua)'] },
+    { label: 'Profesionales/abonos', v: expenses.profesionalesPagado, items: egresosDetalle['Profesionales/abonos'] },
+    { label: 'Pedido semanal', v: expenses.pedidosSemanales, items: egresosDetalle['Pedido semanal'] },
+    { label: 'Recepción diaria', v: expenses.pedidosDistribuidor, items: egresosDetalle['Recepción diaria'] },
+    { label: 'Mantenimiento', v: expenses.mantenimiento, items: egresosDetalle['Mantenimiento'] },
+    { label: 'Gastos de caja', v: resultado.gastosCaja, items: gastosCajaItems },
+    { label: 'Lavadero (ropa)', v: resultado.lavadero, items: egresosDetalle['Lavadero (ropa)'] },
+    { label: 'Caja Administración (libro)', v: resultado.libro, items: egresosDetalle['Caja Administración (libro)'] },
   ].filter(c => c.v > 0).sort((a, b) => b.v - a.v)
 
   const sinDatos = ingresos.total === 0 && resultado.egresos === 0
@@ -173,6 +185,10 @@ export default function Negocio({ year, month }: { year: number; month: number }
           <p className="text-navy-400 text-sm">Sin cajas ni gastos cargados en {monthLabel(cur.year, cur.month)}.</p>
         </div>
       )}
+
+      {/* Antes de los números: la plata del libro que todavía no está en ellos.
+          Si esto no se ve acá, los egresos dan de menos y nadie se entera. */}
+      <AvisoLibroPendiente mes={monthKey(cur.year, cur.month)} />
 
       {/* Resultado del mes: se ve siempre, en todas las pestañas. */}
       <div className="grid grid-cols-3 gap-2 mb-4">
@@ -322,12 +338,38 @@ export default function Negocio({ year, month }: { year: number; month: number }
             {egresosCats.length === 0 && (
               <p className="text-navy-400">Sin egresos cargados este mes.</p>
             )}
-            {egresosCats.map(c => (
-              <div key={c.label} className="flex items-center justify-between">
-                <span className="text-navy-600">{c.label}</span>
-                <span className="font-semibold text-navy-800">{formatMontoCurrency(c.v)}</span>
-              </div>
-            ))}
+            {egresosCats.map(c => {
+              const tieneDetalle = c.items.length > 0
+              const abierto = rubroAbierto === c.label
+              return (
+                <div key={c.label} className="border-b border-navy-50 last:border-0">
+                  <button
+                    onClick={() => tieneDetalle && setRubroAbierto(abierto ? null : c.label)}
+                    className={`w-full flex items-center justify-between gap-2 py-1.5 ${tieneDetalle ? 'cursor-pointer' : 'cursor-default'}`}
+                  >
+                    <span className="flex items-center gap-1 text-navy-600">
+                      {tieneDetalle && (abierto ? <ChevronDown size={12} className="text-navy-400 shrink-0" /> : <ChevronRight size={12} className="text-navy-400 shrink-0" />)}
+                      {c.label}
+                      {tieneDetalle && <span className="text-navy-300">({c.items.length})</span>}
+                    </span>
+                    <span className="font-semibold text-navy-800">{formatMontoCurrency(c.v)}</span>
+                  </button>
+                  {abierto && tieneDetalle && (
+                    <ul className="pl-4 pb-2 space-y-1">
+                      {c.items.map((it, i) => (
+                        <li key={i} className="flex items-center justify-between gap-2 text-navy-500">
+                          <span className="min-w-0 truncate">
+                            {it.label}
+                            {it.sub && <span className="text-navy-400"> · {it.sub}</span>}
+                          </span>
+                          <span className="shrink-0 font-medium text-navy-700">{formatMontoCurrency(it.monto)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
             {expenses.impuestosPendiente > 0 && (
               <div className="flex items-center justify-between text-amber-700 pt-1 border-t border-navy-50">
                 <span>Impuestos pendientes</span>

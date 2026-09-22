@@ -9,12 +9,14 @@
 
 import type {
   CajaParte, Order, PedidoSemanal, MaintenanceTask, PagoMensual, PagoSueldo, FacturaProveedor,
-  ParteHabitaciones, LavaderoLiquidacion, ImpuestoServicio,
+  ParteHabitaciones, LavaderoLiquidacion, ImpuestoServicio, LibroCajaMes, CategoriaServicio,
 } from '../types'
+import { TIPO_PAGO_SUELDO_LABELS } from '../types'
 import type { OccupancyRecord } from '../context/OccupancyContext'
 import { getCajaResumen, fechaConfiable } from './cajaControl'
 import { getGastosCaja, getRetirosCaja, type GastoItem } from './panorama'
 import { costoLavaderoMes } from './lavadero'
+import { claveMovimiento } from './libroCajaMarcas'
 import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { isInMonth, getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
 
@@ -54,6 +56,87 @@ export function getGastosDeCajaDetalle(year: number, month: number, cajas: CajaP
 // Total de esos gastos de caja del mes.
 export function getGastosDeCajaMes(year: number, month: number, cajas: CajaParte[]): number {
   return getGastosDeCajaDetalle(year, month, cajas).reduce((s, g) => s + g.total, 0)
+}
+
+// ===== Detalle de egresos por rubro (para la pestaña "Egresos") =====
+// Mismo criterio que getMonthlyExpenses/costoLavaderoMes/salidasMarcadasPorMes,
+// pero ítem por ítem en vez de solo el total: quién cobró, qué liquidación, qué
+// factura. Las claves coinciden EXACTO con los labels de "egresosCats" en
+// Negocio.tsx para poder cruzar total (ya confiable) con detalle (nuevo).
+export interface EgresoDetalleItem {
+  label: string
+  monto: number
+  sub?: string   // fecha/proveedor/caja, lo que ayude a identificar la fila
+}
+
+export function getEgresosDetallePorRubro(
+  year: number, month: number,
+  orders: Order[], pedidos: PedidoSemanal[], tasks: MaintenanceTask[],
+  pagos: PagoMensual[], pagosSueldos: PagoSueldo[], servicios: ImpuestoServicio[],
+  liquidacionesLavadero: LavaderoLiquidacion[],
+  libroMeses: LibroCajaMes[], libroMarcas: Record<string, boolean>,
+): Record<string, EgresoDetalleItem[]> {
+  const mKey = monthKey(year, month)
+  const sortDesc = (items: EgresoDetalleItem[]) => items.sort((a, b) => b.monto - a.monto)
+
+  const categoriaDe = (impuestoId: string): CategoriaServicio =>
+    servicios.find(s => s.id === impuestoId)?.categoria ?? 'impuesto'
+  const nombreServicio = (impuestoId: string) =>
+    servicios.find(s => s.id === impuestoId)?.nombre ?? 'Servicio'
+
+  const pagosDelMes = pagos.filter(p => p.pagado && p.mes === mKey)
+  const porCategoria = (cat: CategoriaServicio) => sortDesc(pagosDelMes
+    .filter(p => categoriaDe(p.impuestoId) === cat)
+    .map(p => ({ label: nombreServicio(p.impuestoId), monto: p.monto, sub: p.fechaPago?.slice(0, 10) })))
+
+  const pagosSueldosDelMes = pagosSueldos.filter(p => p.mes === mKey)
+
+  const mantenimiento = sortDesc(tasks
+    .filter(t => t.status === 'completado' && isInMonth(t.createdAt, year, month))
+    .map(t => ({
+      label: t.description,
+      monto: (t.materials ?? []).filter(m => m.source === 'compra_externa').reduce((s, m) => s + (m.cost ?? 0), 0),
+      sub: t.completedAt?.slice(0, 10),
+    }))
+    .filter(i => i.monto > 0))
+
+  const libro = sortDesc(libroMeses
+    .flatMap(mes => mes.movimientos)
+    .filter(mov => mov.monto < 0 && mov.fecha.slice(0, 7) === mKey && libroMarcas[claveMovimiento(mov)] === true)
+    .map(mov => ({ label: mov.concepto + (mov.detalle ? ` · ${mov.detalle}` : ''), monto: -mov.monto, sub: mov.fecha })))
+
+  const lavadero = sortDesc(liquidacionesLavadero
+    .filter(l => isInMonth(l.hasta + 'T12:00:00', year, month))
+    .map(l => ({ label: `Liquidación${l.nro ? ` ${l.nro}` : ''}`, monto: l.total, sub: `${l.desde} → ${l.hasta}` })))
+
+  return {
+    'Sueldos': sortDesc(pagosSueldosDelMes
+      .filter(p => p.tipo !== 'cargas')
+      .map(p => ({ label: `${p.empleadoNombre} · ${TIPO_PAGO_SUELDO_LABELS[p.tipo]}`, monto: p.monto, sub: p.fecha }))),
+    'Cargas sociales': sortDesc(pagosSueldosDelMes
+      .filter(p => p.tipo === 'cargas')
+      .map(p => ({ label: `Cargas sociales${p.periodo ? ` · período ${p.periodo}` : ''}`, monto: p.monto, sub: p.fecha }))),
+    'Impuestos/cargas': porCategoria('impuesto'),
+    'Servicios (luz/gas/agua)': porCategoria('servicio'),
+    'Profesionales/abonos': porCategoria('profesional'),
+    'Pedido semanal': sortDesc(pedidos
+      .filter(p => p.status !== 'borrado' && p.monto != null && isInMonth(p.date, year, month))
+      .map(p => ({
+        label: 'Pedido semanal',
+        monto: p.monto as number,
+        sub: (p.facturas?.length ? `${p.facturas.map(f => f.supplierName).join(', ')} · ` : '') + p.date,
+      }))),
+    'Recepción diaria': sortDesc(orders
+      .filter(o => o.status !== 'borrado' && o.monto != null && isInMonth(o.createdAt, year, month))
+      .map(o => ({
+        label: o.factura?.supplierName || o.distributorName || 'Proveedor',
+        monto: o.monto as number,
+        sub: o.createdAt.slice(0, 10),
+      }))),
+    'Mantenimiento': mantenimiento,
+    'Lavadero (ropa)': lavadero,
+    'Caja Administración (libro)': libro,
+  }
 }
 
 // Todos los RETIROS DE EFECTIVO agrupados por mes (del más nuevo al más viejo).
