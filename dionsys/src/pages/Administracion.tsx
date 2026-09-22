@@ -1,13 +1,21 @@
 import { useNavigate } from 'react-router-dom'
 import { ClipboardList, Receipt, FileText, Wallet, Users, Landmark, Globe, KeyRound } from 'lucide-react'
+import AvisoLibroPendiente from '../components/AvisoLibroPendiente'
+import { usePendientesLibro } from '../lib/usePendientesLibro'
+import { formatMontoCurrency } from '../utils/validators'
 
 export default function Administracion() {
   const navigate = useNavigate()
+  // La plata del libro sin decidir de TODOS los meses: acá es donde se entra
+  // todos los días, así que un mes viejo sin resolver no se archiva solo.
+  const pendientes = usePendientesLibro()
 
   return (
     <div>
       <h2 className="text-xl font-bold text-navy-800 mb-2">Administracion</h2>
       <p className="text-sm text-navy-500 mb-6">Pedidos a proveedores, impuestos y servicios.</p>
+
+      <AvisoLibroPendiente />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
@@ -46,13 +54,21 @@ export default function Administracion() {
 
         <button
           onClick={() => navigate('/caja-admin')}
-          className="rounded-xl p-6 shadow-sm border transition-all text-left group bg-white border-navy-100 hover:border-gold-400 hover:shadow-md"
+          className={`rounded-xl p-6 shadow-sm border transition-all text-left group bg-white hover:border-gold-400 hover:shadow-md ${
+            pendientes.cantSinDecidir > 0 ? 'border-amber-300' : 'border-navy-100'
+          }`}
         >
           <div className="w-12 h-12 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center mb-3 group-hover:bg-gold-400 group-hover:text-navy-900 transition-colors">
             <Landmark size={24} />
           </div>
           <h3 className="font-bold text-navy-800 text-lg">Caja de Administración</h3>
           <p className="text-sm text-navy-500 mt-1">La plata que se mueve fuera de la caja del conserje: subí la planilla y mirá el saldo en efectivo, tarjetas y banco.</p>
+          {pendientes.cantSinDecidir > 0 && (
+            <p className="text-xs font-semibold text-amber-700 mt-2">
+              {formatMontoCurrency(pendientes.totalSinDecidir)} sin decidir
+              {' '}({pendientes.cantSinDecidir} pago{pendientes.cantSinDecidir === 1 ? '' : 's'})
+            </p>
+          )}
         </button>
 
         <button

@@ -15,6 +15,9 @@ import { parseLibroCajaExcel } from '../lib/parseLibroCaja'
 import { motivoNoContar } from '../lib/libroCajaConceptos'
 import { pagosDelSistema, cruzarLibro } from '../lib/libroCajaCruce'
 import { useMarcasLibroCaja, claveMovimiento } from '../lib/libroCajaMarcas'
+import SueldosDelLibro from '../components/SueldosDelLibro'
+import ImpuestosDelLibro from '../components/ImpuestosDelLibro'
+import { usePendientesLibro } from '../lib/usePendientesLibro'
 import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
@@ -44,6 +47,7 @@ export default function CajaAdmin() {
   const { tasks } = useMaintenance()
   const { pagos, servicios } = useImpuestos()
   const { pagos: pagosSueldos } = useSueldos()
+  const pendientes = usePendientesLibro()
 
   const [subiendo, setSubiendo] = useState(false)
   const [error, setError] = useState('')
@@ -110,6 +114,10 @@ export default function CajaAdmin() {
     () => Math.round(salidas.filter(s => s.marcado).reduce((s, x) => s - x.mov.monto, 0) * 100) / 100,
     [salidas],
   )
+  // El mismo número que ve el aviso de Negocio y de Administración: la pantalla
+  // y la alerta tienen que decir lo mismo o no se le cree a ninguna de las dos.
+  const resumen = pendientes.porMes.get(mes?.mes ?? '')
+
   const totalSalidas = useMemo(
     () => Math.round(salidas.reduce((s, x) => s - x.mov.monto, 0) * 100) / 100,
     [salidas],
@@ -245,6 +253,14 @@ export default function CajaAdmin() {
             </div>
           )}
 
+          {/* Los sueldos del libro se mandan a su propia pantalla en vez de
+              marcarse acá: allá suman al costo laboral y quedan con nombre. */}
+          <SueldosDelLibro movimientos={mes.movimientos} desmarcar={c => marcar(c, false)} />
+
+          {/* Lo mismo con los impuestos, servicios y honorarios: van a su pantalla,
+              donde marcan pagado el vencimiento que ya estaba cargado. */}
+          <ImpuestosDelLibro movimientos={mes.movimientos} desmarcar={c => marcar(c, false)} />
+
           {/* Uno por uno: cuál de estos pagos va al Dashboard. Nada suma solo. */}
           <section className="bg-white rounded-xl border border-navy-100 p-4 mb-4">
             <h3 className="text-sm font-bold uppercase tracking-wide text-navy-500 mb-1">
@@ -255,18 +271,44 @@ export default function CajaAdmin() {
               te digo si ya lo encontré cargado en otra pantalla, para que no lo cuentes dos veces.
             </p>
 
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            {/* Dónde está parada cada salida del mes. Los cuatro números suman
+                el total: así se ve de una qué falta y no queda plata muda. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
               <div className="rounded-lg bg-navy-800 p-3">
                 <p className="text-[10px] uppercase text-gold-300">Va al Dashboard</p>
                 <p className="text-lg font-bold text-cream leading-tight">{formatMontoCurrency(totalMarcado)}</p>
                 <p className="text-[10px] text-cream/60">
-                  {salidas.filter(s => s.marcado).length} de {salidas.length} pago(s)
+                  {salidas.filter(s => s.marcado).length} de {salidas.length} pago(s) marcados
+                </p>
+              </div>
+              <div className="rounded-lg bg-green-50 border border-green-200 p-3">
+                <p className="text-[10px] uppercase text-green-700">Mandado a su pantalla</p>
+                <p className="text-lg font-bold text-green-800 leading-tight">{formatMontoCurrency(resumen?.derivado ?? 0)}</p>
+                <p className="text-[10px] text-green-600/80">suma en Sueldos o Impuestos</p>
+              </div>
+              <div
+                className={`rounded-lg border p-3 ${
+                  (resumen?.cantSinDecidir ?? 0) > 0
+                    ? 'bg-amber-50 border-amber-300'
+                    : 'bg-navy-50 border-navy-100'
+                }`}
+              >
+                <p className={`text-[10px] uppercase ${(resumen?.cantSinDecidir ?? 0) > 0 ? 'text-amber-700' : 'text-navy-500'}`}>
+                  Sin decidir
+                </p>
+                <p className={`text-lg font-bold leading-tight ${(resumen?.cantSinDecidir ?? 0) > 0 ? 'text-amber-800' : 'text-navy-800'}`}>
+                  {formatMontoCurrency(resumen?.sinDecidir ?? 0)}
+                </p>
+                <p className={`text-[10px] ${(resumen?.cantSinDecidir ?? 0) > 0 ? 'text-amber-700' : 'text-navy-400'}`}>
+                  {resumen?.cantSinDecidir ?? 0} pago(s) que no están en ningún número
                 </p>
               </div>
               <div className="rounded-lg bg-navy-50 border border-navy-100 p-3">
                 <p className="text-[10px] uppercase text-navy-500">Todas las salidas del libro</p>
                 <p className="text-lg font-bold text-navy-800 leading-tight">{formatMontoCurrency(totalSalidas)}</p>
-                <p className="text-[10px] text-navy-400">lo que salió de verdad, esté o no marcado</p>
+                <p className="text-[10px] text-navy-400">
+                  incluye {formatMontoCurrency(resumen?.yaEnSistema ?? 0)} que ya está cargado en otra pantalla
+                </p>
               </div>
             </div>
 

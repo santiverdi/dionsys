@@ -343,6 +343,13 @@ export interface PagoMensual {
   createdAt?: string
   facturaUrl?: string // URL pública del archivo de factura adjunto (Supabase Storage)
   facturaNombre?: string // nombre original del archivo, para mostrar y descargar
+  // Fila del libro de caja de Charo que marcó este pago como pagado (clave de
+  // libroCajaMarcas), para no mandarla dos veces y poder deshacerlo.
+  origenLibro?: string
+  // true = el pago NO existía y lo creó el libro; deshacerlo lo borra. Si ya
+  // existía (el vencimiento estaba cargado y solo se marcó pagado), deshacerlo
+  // lo vuelve a dejar pendiente en vez de borrarlo.
+  creadoDesdeLibro?: boolean
 }
 
 export interface MaintenanceTask {
@@ -418,6 +425,10 @@ export interface PagoSueldo {
   // JULIO (mes en que sale la plata), pero el período dice a qué mes corresponden.
   periodo?: string
   vepNro?: string          // número de VEP del comprobante
+  // Fila del libro de caja de Charo que originó este pago (clave de
+  // libroCajaMarcas). Marca de dónde salió: evita mandar dos veces la misma
+  // fila y permite deshacerlo desde la Caja de Administración.
+  origenLibro?: string
   createdBy?: string
   createdAt?: string
 }
