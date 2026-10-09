@@ -24,6 +24,13 @@ export interface TarifaEspecial {
   single: number       // 1 persona: precio por HABITACIÓN por noche
   porPersona: number   // 2 a 5 personas: precio POR PERSONA por noche
   /**
+   * Precio por persona distinto según el día de la semana (getDay(): 0=domingo
+   * … 6=sábado). Los días que no están usan porPersona.
+   */
+  porPersonaPorDia?: Partial<Record<number, number>>
+  /** La single paga la habitación doble entera (2 × el por persona de esa noche). */
+  singleComoDoble?: boolean
+  /**
    * Descuento que vale con CUALQUIER medio de pago, para los días de la semana
    * de la lista (getDay(): 0=domingo … 6=sábado). Los días que no están en la
    * lista no tienen descuento.
@@ -33,11 +40,10 @@ export interface TarifaEspecial {
   descuentoEfectivo?: number
 }
 
-const DOMINGO_A_JUEVES = [0, 1, 2, 3, 4]
-
 // Pactadas por el dueño para la temporada 2026/2027. Los feriados van a precio
-// plano y sin descuento; el tramo largo de enero/febrero lleva 10% de domingo a
-// jueves con cualquier medio de pago, y viernes y sábado sin descuento.
+// plano y sin descuento. Del 1/1 al 15/2: $60.000 por persona de domingo a
+// jueves, $65.000 el viernes y $70.000 el sábado; la single paga lo mismo que
+// la doble, y en efectivo tiene 10% de descuento todos los días.
 export const TARIFAS_ESPECIALES: TarifaEspecial[] = [
   {
     nombre: 'Inmaculada', etiqueta: 'Inmaculada',
@@ -51,16 +57,77 @@ export const TARIFAS_ESPECIALES: TarifaEspecial[] = [
   },
   {
     nombre: 'Año Nuevo', etiqueta: 'Año Nuevo',
-    desde: '2026-12-31', hasta: '2027-01-02',
+    desde: '2026-12-31', hasta: '2026-12-31',
     single: 130_000, porPersona: 80_000,
   },
   {
     nombre: 'Alta 2027',
-    desde: '2027-01-03', hasta: '2027-02-13',
-    single: 130_000, porPersona: 80_000,
-    descuentoGeneral: { dias: DOMINGO_A_JUEVES, pct: 0.10 },
+    desde: '2027-01-01', hasta: '2027-02-15',
+    single: 120_000, porPersona: 60_000,
+    porPersonaPorDia: { 5: 65_000, 6: 70_000 },
+    singleComoDoble: true,
+    descuentoEfectivo: 0.10,
   },
 ]
+
+/** Precio de la noche: por persona (2 a 5) o por habitación (single). */
+export function precioEspecialDe(esp: TarifaEspecial, diaDeLaSemana: number, pax: number): number {
+  const pp = esp.porPersonaPorDia?.[diaDeLaSemana] ?? esp.porPersona
+  if (pax !== 1) return pp
+  return esp.singleComoDoble ? 2 * pp : esp.single
+}
+
+// ── Ajustes por día cargados por el admin desde Recepción → Tarifas ─────────
+// Precio fijo para una fecha suelta. Manda sobre todo lo de arriba y sobre el
+// tarifario publicado. Viven en la nube (almacén 'dionsys_tarifas_dia') para
+// que todos los equipos coticen igual.
+
+export const KEY_AJUSTES_TARIFA = 'dionsys_tarifas_dia'
+
+export interface AjusteDia {
+  porPersona: number    // 2 a 5 personas, por persona por noche
+  single: number        // 1 persona, por habitación por noche
+  descEfectivo: number  // fracción (0.1 = 10%) pagando en efectivo
+}
+
+/** fecha (YYYY-MM-DD) → precio de esa noche. */
+export type AjustesTarifa = Record<string, AjusteDia>
+
+export function ajustesComoEspeciales(ajustes: AjustesTarifa): TarifaEspecial[] {
+  return Object.entries(ajustes).map(([fecha, a]) => ({
+    nombre: 'Ajuste', desde: fecha, hasta: fecha,
+    single: a.single, porPersona: a.porPersona,
+    ...(a.descEfectivo > 0 ? { descuentoEfectivo: a.descEfectivo } : {}),
+  }))
+}
+
+/** Los ajustes van primero: tarifaEspecialDe se queda con el primero que coincide. */
+export function especialesConAjustes(ajustes: AjustesTarifa): TarifaEspecial[] {
+  return [...ajustesComoEspeciales(ajustes), ...TARIFAS_ESPECIALES]
+}
+
+export function leerAjustes(): AjustesTarifa {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(KEY_AJUSTES_TARIFA) ?? '{}')
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+  } catch {
+    return {}
+  }
+}
+
+// Cacheado por el texto guardado: el cuadre de caja llama esto miles de veces.
+let cacheRaw: string | null | undefined
+let cacheLista: TarifaEspecial[] = TARIFAS_ESPECIALES
+/** Las tarifas fijas vigentes en este equipo (pactadas + ajustes del admin). */
+export function especialesVigentes(): TarifaEspecial[] {
+  let raw: string | null = null
+  try { raw = globalThis.localStorage?.getItem(KEY_AJUSTES_TARIFA) ?? null } catch { /* sin storage */ }
+  if (raw !== cacheRaw) {
+    cacheRaw = raw
+    cacheLista = raw ? especialesConAjustes(leerAjustes()) : TARIFAS_ESPECIALES
+  }
+  return cacheLista
+}
 
 /** La tarifa fija de esa noche, si administración pactó una. */
 export function tarifaEspecialDe(

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { cotizarEstadia, cuadraConTarifarioPublico, diaSemana, infoDia } from '../../src/lib/tarifaDiaria'
 import type { TarifarioPublico } from '../../src/lib/landing'
-import type { TarifaEspecial } from '../../src/lib/tarifasEspeciales'
+import { especialesConAjustes, type TarifaEspecial } from '../../src/lib/tarifasEspeciales'
 
 // Las tarifas especiales pactadas pisan varias de las fechas de abajo. Los
 // bloques que prueban la FÓRMULA del tarifario publicado la piden sin ellas;
@@ -168,8 +168,8 @@ describe('cuadraConTarifarioPublico — fórmula del tarifario publicado', () =>
 })
 
 // Precios FIJOS pactados por administración (src/lib/tarifasEspeciales.ts): no
-// llevan recargo de finde largo ni tope, y en enero/febrero el descuento vale
-// con cualquier medio de pago.
+// llevan recargo de finde largo ni tope, y en enero/febrero el precio depende
+// del día de la semana.
 describe('tarifas especiales pactadas', () => {
   const t = tarifario()
 
@@ -191,36 +191,42 @@ describe('tarifas especiales pactadas', () => {
     expect(c.findes).toEqual([])
   })
 
-  it('Año Nuevo: 3 noches × 2 personas × $80.000 = $480.000', () => {
-    const c = cotizarEstadia('2026-12-31', '2027-01-03', 2, t)
-    expect(c).toMatchObject({ noches: 3, total: 480_000, conDescuento: 480_000 })
+  it('Año Nuevo es solo la noche del 31; el 1 y 2 de enero ya van a la tarifa de enero', () => {
+    const c = cotizarEstadia('2026-12-31', '2027-01-03', 2, t)   // 31, vie 1, sáb 2
+    expect(c).toMatchObject({ noches: 3, total: 2 * (80_000 + 65_000 + 70_000) })
     expect(c.especiales).toEqual(['Año Nuevo'])
   })
 
-  it('enero de domingo a jueves: 10% con cualquier medio de pago', () => {
-    const mie = infoDia('2027-01-06', 2, t)
-    expect(mie).toMatchObject({ precio: 80_000, descGeneral: 0.1, descEfectivo: 0.1, especial: null })
+  it('enero de domingo a jueves: $60.000 por persona, 10% solo en efectivo', () => {
+    expect(infoDia('2027-01-06', 2, t)).toMatchObject({ precio: 60_000, descGeneral: 0, descEfectivo: 0.1, especial: null })
     const c = cotizarEstadia('2027-01-03', '2027-01-07', 2, t)   // dom, lun, mar, mié
-    expect(c).toMatchObject({ noches: 4, total: 640_000, conDescuento: 576_000, efectivo: 576_000, descGeneral: 0.1 })
+    expect(c).toMatchObject({ noches: 4, total: 480_000, conDescuento: 480_000, efectivo: 432_000 })
   })
 
-  it('las noches de viernes y sábado no tienen descuento', () => {
-    expect(infoDia('2027-01-08', 2, t)).toMatchObject({ precio: 80_000, descGeneral: 0, descEfectivo: 0 })
+  it('viernes $65.000 y sábado $70.000 por persona', () => {
+    expect(infoDia('2027-01-08', 2, t).precio).toBe(65_000)
+    expect(infoDia('2027-01-09', 2, t).precio).toBe(70_000)
     const c = cotizarEstadia('2027-01-08', '2027-01-10', 2, t)   // vie y sáb
-    expect(c).toMatchObject({ total: 320_000, conDescuento: 320_000, efectivo: 320_000 })
+    expect(c).toMatchObject({ total: 270_000, conDescuento: 270_000, efectivo: 243_000 })
   })
 
-  it('Carnaval cae dentro del tramo pactado: $80.000 planos, sin el recargo del 50%', () => {
-    expect(infoDia('2027-02-06', 2, t)).toMatchObject({ precio: 80_000, findeLargo: null, descGeneral: 0 })
+  it('el control de caja reconoce un cobro de enero en efectivo con el 10%', () => {
+    expect(cuadraConTarifarioPublico(432_000, 2, '2027-01-07', t)?.tipo).toBe('efectivo')
   })
 
-  it('la single del tramo de enero y febrero es $130.000', () => {
-    expect(infoDia('2027-01-04', 1, t).precio).toBe(130_000)
+  it('Carnaval cae dentro del tramo pactado: sin el recargo del 50%', () => {
+    expect(infoDia('2027-02-06', 2, t)).toMatchObject({ precio: 70_000, findeLargo: null, descGeneral: 0 })
   })
 
-  it('el tramo pactado termina la noche del 13 de febrero', () => {
-    expect(infoDia('2027-02-13', 2, t).precio).toBe(80_000)
-    expect(infoDia('2027-02-14', 2, t).precio).not.toBe(80_000)
+  it('la single paga lo mismo que la doble', () => {
+    expect(infoDia('2027-01-04', 1, t).precio).toBe(120_000)
+    expect(infoDia('2027-01-08', 1, t).precio).toBe(130_000)
+    expect(infoDia('2027-01-09', 1, t).precio).toBe(140_000)
+  })
+
+  it('el tramo pactado termina la noche del 15 de febrero', () => {
+    expect(infoDia('2027-02-15', 2, t).precio).toBe(60_000)
+    expect(infoDia('2027-02-16', 2, t).precio).toBe(40_000)
   })
 
   it('el control de caja reconoce el cobro a la tarifa pactada', () => {
@@ -228,8 +234,20 @@ describe('tarifas especiales pactadas', () => {
     expect(r).toMatchObject({ tipo: 'lista', noches: 3, llegada: '2026-12-24' })
   })
 
-  it('el 10% de cualquier medio no exige que se haya pagado en efectivo', () => {
-    expect(cuadraConTarifarioPublico(576_000, 2, '2027-01-07', t)?.tipo).toBe('lista')
+  it('el control de caja reconoce un cobro de enero a la tarifa nueva', () => {
+    expect(cuadraConTarifarioPublico(480_000, 2, '2027-01-07', t)?.tipo).toBe('lista')
+  })
+
+  it('un precio cargado a mano por el admin manda sobre la tarifa pactada', () => {
+    const esp = especialesConAjustes({ '2027-01-09': { porPersona: 75_000, single: 150_000, descEfectivo: 0 } })
+    expect(infoDia('2027-01-09', 2, t, esp)).toMatchObject({ precio: 75_000, descEfectivo: 0 })
+    expect(infoDia('2027-01-09', 1, t, esp).precio).toBe(150_000)
+    expect(infoDia('2027-01-08', 2, t, esp).precio).toBe(65_000)   // el resto sigue igual
+  })
+
+  it('un precio cargado a mano manda sobre el finde largo publicado', () => {
+    const esp = especialesConAjustes({ '2026-11-21': { porPersona: 45_000, single: 90_000, descEfectivo: 0.1 } })
+    expect(infoDia('2026-11-21', 2, t, esp)).toMatchObject({ precio: 45_000, findeLargo: null, descEfectivo: 0.1 })
   })
 
   it('sigue cuadrando lo que cotiza la página mientras no se publiquen las nuevas', () => {

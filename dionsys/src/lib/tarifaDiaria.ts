@@ -19,7 +19,7 @@
 // descuento vale con cualquier medio de pago, no solo en efectivo.
 
 import type { TarifarioPublico, TemporadaPublica } from './landing'
-import { TARIFAS_ESPECIALES, descuentoGeneralDe, tarifaEspecialDe, type TarifaEspecial } from './tarifasEspeciales'
+import { descuentoGeneralDe, especialesVigentes, precioEspecialDe, tarifaEspecialDe, type TarifaEspecial } from './tarifasEspeciales'
 
 function aDia(s: string): number {
   return Date.parse(s + 'T00:00:00Z')
@@ -52,7 +52,7 @@ export function infoDia(
   fecha: string,
   pax: number,
   t: TarifarioPublico,
-  especiales: TarifaEspecial[] = TARIFAS_ESPECIALES,
+  especiales: TarifaEspecial[] = especialesVigentes(),
 ): InfoDia {
   const v = t.config.vigencia
   const enVigencia = v.desde <= fecha && fecha <= v.hasta
@@ -75,7 +75,7 @@ export function infoDia(
     return {
       fecha, enVigencia, bloqueada, temporada: temp.nombre, caro,
       findeLargo: null, especial: esp.etiqueta ?? null,
-      precio: pax === 1 ? esp.single : esp.porPersona,
+      precio: precioEspecialDe(esp, dia, pax),
       descGeneral,
       descEfectivo: descGeneral + (esp.descuentoEfectivo ?? 0),
     }
@@ -114,7 +114,7 @@ export function cotizarEstadia(
   salida: string,
   pax: number,
   t: TarifarioPublico,
-  especiales: TarifaEspecial[] = TARIFAS_ESPECIALES,
+  especiales: TarifaEspecial[] = especialesVigentes(),
 ): Cotizacion {
   let total = 0, conDescuento = 0, efectivo = 0, n20 = 0, n10 = 0, minNoches = 1, sena = 0
   let noches = 0, incompleta = false, descGeneral = 0
@@ -190,7 +190,7 @@ export function cuadraConTarifarioPublico(
   plazas: number,
   fechaCobro: string,
   t: TarifarioPublico,
-  especiales: TarifaEspecial[] = TARIFAS_ESPECIALES,
+  especiales: TarifaEspecial[] = especialesVigentes(),
 ): CuadreWeb | undefined {
   if (!Number.isInteger(plazas) || plazas < 1 || plazas > 5) return undefined
   const f = (fechaCobro || '').slice(0, 10)

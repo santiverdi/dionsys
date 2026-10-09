@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Eraser } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, ChevronLeft, ChevronRight, Eraser, Pencil } from 'lucide-react'
 import { expandirRango, fetchTarifarioPublicado, type TarifarioPublico } from '../lib/landing'
 import { cotizarEstadia, diaSemana, infoDia } from '../lib/tarifaDiaria'
+import {
+  KEY_AJUSTES_TARIFA, especialesConAjustes, leerAjustes, type AjustesTarifa,
+} from '../lib/tarifasEspeciales'
+import { persist, useCloudSync } from '../lib/cloudStore'
+import { useAuth } from '../context/AuthContext'
+import TarifasEditorDias from './TarifasEditorDias'
 
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
@@ -12,6 +18,9 @@ const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 // mostrador cotiza exactamente lo mismo que ve un huésped en la página, salvo
 // las fechas con tarifa pactada aparte (src/lib/tarifasEspeciales.ts), que
 // mandan sobre lo publicado.
+//
+// El admin, con "Modificar precios", marca noches (tocando o arrastrando) y les
+// pone precio a mano. Esos ajustes se guardan en la nube y mandan sobre todo.
 
 const money = (n: number) => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
 
@@ -60,6 +69,17 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   const [arrastrando, setArrastrando] = useState(false)
   const [hoverDia, setHoverDia] = useState<string | null>(null)
 
+  const { employee } = useAuth()
+  const esAdmin = employee?.role === 'admin'
+  const [ajustes, setAjustes] = useState<AjustesTarifa>(leerAjustes)
+  useCloudSync<AjustesTarifa>(KEY_AJUSTES_TARIFA, useCallback(v => setAjustes(v && typeof v === 'object' ? v : {}), []))
+  const especiales = useMemo(() => especialesConAjustes(ajustes), [ajustes])
+
+  // Modo edición (solo admin): noches marcadas para cambiarles el precio.
+  const [editando, setEditando] = useState(false)
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set())
+  const arrastreEdicion = useRef<{ desde: string; base: Set<string>; quitar: boolean } | null>(null)
+
   useEffect(() => {
     let activo = true
     void fetchTarifarioPublicado().then(({ tarifario: t, error: e }) => {
@@ -99,16 +119,36 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
 
   // Mientras arrastra, el día bajo el dedo hace de salida tentativa.
   const fin = salida ?? (arrastrando && llegada && hoverDia && hoverDia > llegada ? hoverDia : null)
-  const cotizacion = tarifario && llegada && fin ? cotizarEstadia(llegada, fin, pax, tarifario) : null
+  const cotizacion = tarifario && llegada && fin ? cotizarEstadia(llegada, fin, pax, tarifario, especiales) : null
 
   function diaDeEvento(e: React.PointerEvent): string | null {
     const el = (e.target as Element).closest?.('[data-fecha]')
     return el?.getAttribute('data-fecha') ?? null
   }
 
+  // En edición, tocar marca/desmarca y arrastrar marca (o desmarca) el tramo.
+  function marcarTramo(hasta: string) {
+    const a = arrastreEdicion.current
+    if (!a) return
+    const [d, h] = a.desde <= hasta ? [a.desde, hasta] : [hasta, a.desde]
+    const nuevo = new Set(a.base)
+    for (const f of expandirRango(d, h)) {
+      if (a.quitar) nuevo.delete(f)
+      else nuevo.add(f)
+    }
+    setMarcadas(nuevo)
+  }
+
   function alPresionar(e: React.PointerEvent) {
     const f = diaDeEvento(e)
-    if (!f || !tarifario || infoDia(f, pax, tarifario).precio === null) return
+    if (!f || !tarifario) return
+    if (editando) {
+      arrastreEdicion.current = { desde: f, base: new Set(marcadas), quitar: marcadas.has(f) }
+      marcarTramo(f)
+      setArrastrando(true)
+      return
+    }
+    if (infoDia(f, pax, tarifario, especiales).precio === null) return
     if (llegada && !salida && f > llegada) {
       setSalida(f)   // segundo toque: la salida
     } else {
@@ -123,7 +163,28 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
     if (!arrastrando) return
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-fecha]')
     const f = el?.getAttribute('data-fecha')
-    if (f && tarifario && infoDia(f, pax, tarifario).precio !== null) setHoverDia(f)
+    if (editando) {
+      if (f) marcarTramo(f)
+      return
+    }
+    if (f && tarifario && infoDia(f, pax, tarifario, especiales).precio !== null) setHoverDia(f)
+  }
+
+  function guardarAjustes(nuevos: AjustesTarifa) {
+    setAjustes(nuevos)
+    persist(KEY_AJUSTES_TARIFA, nuevos)
+    setMarcadas(new Set())
+  }
+
+  function alternarEdicion() {
+    setEditando(v => !v)
+    setMarcadas(new Set())
+    limpiar()
+  }
+
+  function marcarDelMes(soloFinde: boolean) {
+    const dias = celdas.filter((f): f is string => !!f && (!soloFinde || diaSemana(f) >= 5))
+    setMarcadas(new Set(dias))
   }
 
   function limpiar() {
@@ -137,9 +198,23 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
       <button onClick={onBack} className="flex items-center gap-2 text-navy-600 hover:text-navy-800 mb-4 text-sm font-medium">
         <ChevronLeft size={18} /> Pedidos Recepcion
       </button>
-      <h2 className="text-xl font-bold text-navy-800 mb-1">Tarifas</h2>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <h2 className="text-xl font-bold text-navy-800">Tarifas</h2>
+        {esAdmin && tarifario && (
+          <button
+            onClick={alternarEdicion}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              editando ? 'bg-navy-800 text-cream' : 'bg-white border border-navy-200 text-navy-600 hover:bg-navy-50'
+            }`}
+          >
+            {editando ? <><Check size={15} /> Listo</> : <><Pencil size={15} /> Modificar precios</>}
+          </button>
+        )}
+      </div>
       <p className="text-sm text-navy-500 mb-4">
-        El precio de cada noche, igual que en la página de reservas. Tocá la llegada y la salida (o arrastrá) para cotizar.
+        {editando
+          ? 'Tocá las noches que querés cambiar (o arrastrá para marcar varias seguidas) y cargá el precio arriba del calendario.'
+          : 'El precio de cada noche, igual que en la página de reservas. Tocá la llegada y la salida (o arrastrá) para cotizar.'}
       </p>
 
       {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 mb-4">{error}</div>}
@@ -168,8 +243,34 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
             </span>
           </div>
 
+          {editando && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button onClick={() => marcarDelMes(false)} className="px-3 py-1.5 rounded-lg bg-white border border-navy-200 text-xs font-medium text-navy-600 hover:bg-navy-50">
+                Marcar todo el mes
+              </button>
+              <button onClick={() => marcarDelMes(true)} className="px-3 py-1.5 rounded-lg bg-white border border-navy-200 text-xs font-medium text-navy-600 hover:bg-navy-50">
+                Marcar vie y sáb del mes
+              </button>
+              {marcadas.size > 0 && (
+                <button onClick={() => setMarcadas(new Set())} className="flex items-center gap-1 px-3 py-1.5 text-xs text-navy-400 hover:text-navy-600">
+                  <Eraser size={13} /> Desmarcar
+                </button>
+              )}
+            </div>
+          )}
+          {editando && (
+            <TarifasEditorDias
+              fechas={[...marcadas].sort()}
+              tarifario={tarifario}
+              especiales={especiales}
+              ajustes={ajustes}
+              onGuardar={guardarAjustes}
+              onCerrar={() => setMarcadas(new Set())}
+            />
+          )}
+
           {/* Cotización */}
-          {llegada && (
+          {!editando && llegada && (
             <div className="mb-4 p-4 bg-white rounded-xl border border-navy-100">
               {!cotizacion ? (
                 <p className="text-sm text-navy-500">
@@ -237,7 +338,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                     <p className="text-xs font-medium text-navy-500 mb-1.5">Detalle por noche</p>
                     <div className="max-h-64 overflow-y-auto pr-1 space-y-1">
                       {(() => {
-                        const noches = expandirRango(llegada, fin!).slice(0, -1).map(f => ({ f, info: infoDia(f, pax, tarifario) }))
+                        const noches = expandirRango(llegada, fin!).slice(0, -1).map(f => ({ f, info: infoDia(f, pax, tarifario, especiales) }))
                         const precios = noches.map(n => n.info.precio).filter((p): p is number => p !== null)
                         const masBarata = precios.length ? Math.min(...precios) : 0
                         return noches.map(({ f, info }) => {
@@ -324,12 +425,14 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
             <div className="grid grid-cols-7 gap-1">
               {celdas.map((fecha, i) => {
                 if (!fecha) return <div key={i} />
-                const info = infoDia(fecha, pax, tarifario)
+                const info = infoDia(fecha, pax, tarifario, especiales)
                 const sinPrecio = info.precio === null
                 const enNoches = llegada && fecha >= llegada && (fin ? fecha < fin : fecha === llegada)
                 const esSalida = fin === fecha
+                const marcada = editando && marcadas.has(fecha)
                 let cls = 'bg-white border-navy-100 text-navy-700'
-                if (sinPrecio) cls = 'bg-navy-50/50 border-transparent text-navy-300'
+                if (marcada) cls = 'bg-gold-400 border-gold-500 text-navy-900'
+                else if (sinPrecio) cls = 'bg-navy-50/50 border-transparent text-navy-300'
                 else if (enNoches) cls = 'bg-navy-800 border-navy-800 text-cream'
                 else if (esSalida) cls = 'bg-navy-100 border-navy-300 text-navy-700'
                 else if (info.bloqueada) cls = 'bg-red-50 border-red-200 text-red-400'
@@ -339,8 +442,12 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                   <div
                     key={fecha}
                     data-fecha={fecha}
-                    className={`rounded-lg border px-0.5 py-2 sm:py-3.5 text-center transition-colors ${cls} ${sinPrecio ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
+                    className={`relative rounded-lg border px-0.5 py-2 sm:py-3.5 text-center transition-colors ${cls} ${sinPrecio && !editando ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
                   >
+                    {/* Precio cargado a mano por el admin: solo se marca en edición. */}
+                    {editando && ajustes[fecha] && (
+                      <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-navy-700" />
+                    )}
                     <p className={`text-sm sm:text-base font-bold leading-none ${info.bloqueada && !enNoches ? 'line-through' : ''}`}>
                       {Number(fecha.slice(8, 10))}
                     </p>
@@ -363,6 +470,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gold-50 border border-gold-300 inline-block" /> Tarifa especial / finde largo (ya aplicada)</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-50 border border-red-200 inline-block" /> Sin disponibilidad</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded ring-2 ring-gold-400 inline-block" /> Hoy</span>
+            {editando && (
+              <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-navy-700 inline-block" /> Precio cambiado a mano</span>
+            )}
           </div>
           <p className="text-[11px] text-navy-400 mt-1">
             Precios de lista por noche{pax === 1 ? ' (habitación single completa)' : ' por persona'}. Los descuentos aparecen al cotizar.
