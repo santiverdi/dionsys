@@ -250,6 +250,18 @@ describe('tarifas especiales pactadas', () => {
     expect(infoDia('2026-11-21', 2, t, esp)).toMatchObject({ precio: 45_000, findeLargo: null, descEfectivo: 0.1 })
   })
 
+  it('mínimo de noches cargado a mano: lo exige si la estadía toca esa noche, sin tocar el precio', () => {
+    const esp = especialesConAjustes({ '2027-01-09': { minNoches: 4 } })
+    expect(infoDia('2027-01-09', 2, t, esp).precio).toBe(70_000)
+    expect(cotizarEstadia('2027-01-08', '2027-01-10', 2, t, esp).minNoches).toBe(4)
+    expect(cotizarEstadia('2027-01-10', '2027-01-13', 2, t, esp).minNoches).toBe(3)   // no la toca: el de la temporada
+  })
+
+  it('el mínimo cargado a mano también puede bajar el de la temporada', () => {
+    const esp = especialesConAjustes({ '2027-01-11': { minNoches: 1 } })
+    expect(cotizarEstadia('2027-01-11', '2027-01-12', 2, t, esp).minNoches).toBe(1)
+  })
+
   it('sigue cuadrando lo que cotiza la página mientras no se publiquen las nuevas', () => {
     expect(cuadraConTarifarioPublico(360_000, 2, '2026-12-27', t)?.tipo).toBe('lista')
   })

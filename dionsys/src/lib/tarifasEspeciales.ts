@@ -38,6 +38,10 @@ export interface TarifaEspecial {
   descuentoGeneral?: { dias: number[]; pct: number }
   /** Descuento ADICIONAL por pagar en efectivo. Sin esto, el efectivo no suma. */
   descuentoEfectivo?: number
+  /** Estadía mínima para las noches del período (pisa la de la temporada). */
+  minNoches?: number
+  /** Solo trae el mínimo de noches: el precio sigue saliendo de lo demás. */
+  soloMinNoches?: boolean
 }
 
 // Pactadas por el dueño para la temporada 2026/2027. Los feriados van a precio
@@ -84,20 +88,28 @@ export function precioEspecialDe(esp: TarifaEspecial, diaDeLaSemana: number, pax
 
 export const KEY_AJUSTES_TARIFA = 'dionsys_tarifas_dia'
 
+// El precio y el mínimo de noches se cargan por separado: una noche puede
+// tener solo uno de los dos y lo otro sigue saliendo de lo publicado/pactado.
 export interface AjusteDia {
-  porPersona: number    // 2 a 5 personas, por persona por noche
-  single: number        // 1 persona, por habitación por noche
-  descEfectivo: number  // fracción (0.1 = 10%) pagando en efectivo
+  porPersona?: number    // 2 a 5 personas, por persona por noche
+  single?: number        // 1 persona, por habitación por noche
+  descEfectivo?: number  // fracción (0.1 = 10%) pagando en efectivo
+  minNoches?: number     // estadía mínima si la estadía toca esta noche
 }
 
-/** fecha (YYYY-MM-DD) → precio de esa noche. */
+/** fecha (YYYY-MM-DD) → precio y/o mínimo de esa noche. */
 export type AjustesTarifa = Record<string, AjusteDia>
+
+export const tienePrecio = (a: AjusteDia | undefined): boolean =>
+  !!a && (a.porPersona ?? 0) > 0 && (a.single ?? 0) > 0
 
 export function ajustesComoEspeciales(ajustes: AjustesTarifa): TarifaEspecial[] {
   return Object.entries(ajustes).map(([fecha, a]) => ({
     nombre: 'Ajuste', desde: fecha, hasta: fecha,
-    single: a.single, porPersona: a.porPersona,
-    ...(a.descEfectivo > 0 ? { descuentoEfectivo: a.descEfectivo } : {}),
+    single: a.single ?? 0, porPersona: a.porPersona ?? 0,
+    ...((a.descEfectivo ?? 0) > 0 ? { descuentoEfectivo: a.descEfectivo } : {}),
+    ...(a.minNoches ? { minNoches: a.minNoches } : {}),
+    ...(tienePrecio(a) ? {} : { soloMinNoches: true }),
   }))
 }
 
@@ -134,7 +146,12 @@ export function tarifaEspecialDe(
   fecha: string,
   especiales: TarifaEspecial[] = TARIFAS_ESPECIALES,
 ): TarifaEspecial | undefined {
-  return especiales.find(e => e.desde <= fecha && fecha <= e.hasta)
+  return especiales.find(e => !e.soloMinNoches && e.desde <= fecha && fecha <= e.hasta)
+}
+
+/** Mínimo de noches fijado para esa noche, si alguno lo fija. */
+export function minNochesEspecialDe(fecha: string, especiales: TarifaEspecial[]): number | undefined {
+  return especiales.find(e => e.minNoches && e.desde <= fecha && fecha <= e.hasta)?.minNoches
 }
 
 /** Descuento con cualquier medio de pago de esa noche (0 si no hay). */

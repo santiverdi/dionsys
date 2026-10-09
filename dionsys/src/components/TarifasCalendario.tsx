@@ -213,7 +213,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
       </div>
       <p className="text-sm text-navy-500 mb-4">
         {editando
-          ? 'Tocá las noches que querés cambiar (o arrastrá para marcar varias seguidas) y cargá el precio arriba del calendario.'
+          ? 'Tocá las noches que querés cambiar (o arrastrá para marcar varias seguidas) y cargá el precio o el mínimo de noches arriba del calendario.'
           : 'El precio de cada noche, igual que en la página de reservas. Tocá la llegada y la salida (o arrastrá) para cotizar.'}
       </p>
 
@@ -444,7 +444,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                     data-fecha={fecha}
                     className={`relative rounded-lg border px-0.5 py-2 sm:py-3.5 text-center transition-colors ${cls} ${sinPrecio && !editando ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
                   >
-                    {/* Precio cargado a mano por el admin: solo se marca en edición. */}
+                    {/* Precio o mínimo cargado a mano por el admin: solo se marca en edición. */}
                     {editando && ajustes[fecha] && (
                       <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-navy-700" />
                     )}
@@ -471,7 +471,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-50 border border-red-200 inline-block" /> Sin disponibilidad</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded ring-2 ring-gold-400 inline-block" /> Hoy</span>
             {editando && (
-              <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-navy-700 inline-block" /> Precio cambiado a mano</span>
+              <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-navy-700 inline-block" /> Cambiado a mano (precio o mínimo)</span>
             )}
           </div>
           <p className="text-[11px] text-navy-400 mt-1">

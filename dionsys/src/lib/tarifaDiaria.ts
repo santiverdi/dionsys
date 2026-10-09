@@ -19,7 +19,10 @@
 // descuento vale con cualquier medio de pago, no solo en efectivo.
 
 import type { TarifarioPublico, TemporadaPublica } from './landing'
-import { descuentoGeneralDe, especialesVigentes, precioEspecialDe, tarifaEspecialDe, type TarifaEspecial } from './tarifasEspeciales'
+import {
+  descuentoGeneralDe, especialesVigentes, minNochesEspecialDe, precioEspecialDe, tarifaEspecialDe,
+  type TarifaEspecial,
+} from './tarifasEspeciales'
 
 function aDia(s: string): number {
   return Date.parse(s + 'T00:00:00Z')
@@ -45,6 +48,15 @@ export interface InfoDia {
 
 function temporadaDe(fecha: string, t: TarifarioPublico): TemporadaPublica | undefined {
   return t.temporadas.find(x => x.desde <= fecha && fecha <= x.hasta)
+}
+
+/** Estadía mínima que exige esa noche: la fijada a mano o, si no, la de la temporada. */
+export function minNochesDia(
+  fecha: string,
+  t: TarifarioPublico,
+  especiales: TarifaEspecial[] = especialesVigentes(),
+): number {
+  return minNochesEspecialDe(fecha, especiales) ?? temporadaDe(fecha, t)?.minNoches ?? 1
 }
 
 /** Precio y condiciones de UNA noche para esa cantidad de personas. */
@@ -134,10 +146,8 @@ export function cotizarEstadia(
     if (info.findeLargo) findes.add(info.findeLargo)
     if (info.especial) etiquetas.add(info.especial)
     const temp = temporadaDe(fecha, t)
-    if (temp) {
-      minNoches = Math.max(minNoches, temp.minNoches)
-      sena = Math.max(sena, temp.sena)
-    }
+    minNoches = Math.max(minNoches, minNochesDia(fecha, t, especiales))
+    if (temp) sena = Math.max(sena, temp.sena)
     const sub = info.precio * (pax === 1 ? 1 : pax)
     if (info.descEfectivo >= 0.2) n20++
     else n10++
