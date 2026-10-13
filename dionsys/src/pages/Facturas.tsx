@@ -11,10 +11,13 @@ import { downloadUrl, uploadFactura } from '../lib/facturaStorage'
 import { scanImageFile } from '../lib/scanDocument'
 import { fileToPdf } from '../lib/imageToPdf'
 import FacturaProveedorModal from '../components/FacturaProveedorModal'
+import Tabs from '../components/Tabs'
+import { useTabParam } from '../lib/useTabParam'
 import { generateId } from '../utils/imageCompressor'
 import type { PedidoSemanal, FacturaProveedor, FacturaManual, CajaGastoRef, DepositoSupplier, Order } from '../types'
 
-type Tab = 'recibidas' | 'gasto' | 'cuentacorriente' | 'contadora' | 'recepcion'
+const TAB_IDS = ['recibidas', 'recepcion', 'gasto', 'cuentacorriente', 'contadora'] as const
+type Tab = typeof TAB_IDS[number]
 
 // Una factura junto con su "contenedor": el pedido semanal del que salió, o la
 // boleta suelta (manual) si se cargó a mano sin pedido asociado.
@@ -65,7 +68,8 @@ export default function Facturas() {
   const { orders, setOrderFactura } = useOrders()
   const { cajas } = useCajas()
   const { employee } = useAuth()
-  const [tab, setTab] = useState<Tab>('recibidas')
+  // "vista" y no "tab": Facturas vive adentro de la pestaña de Proveedores.
+  const [tab, setTab] = useTabParam<Tab>(TAB_IDS, 'recibidas', 'vista')
   const [target, setTarget] = useState<{ pedido: PedidoSemanal; supplier: DepositoSupplier; initial?: FacturaProveedor } | null>(null)
   // Pedido de recepción diaria al que se le está cargando la boleta.
   const [recepcionTarget, setRecepcionTarget] = useState<Order | null>(null)
@@ -425,26 +429,19 @@ export default function Facturas() {
       </div>
       <p className="text-sm text-navy-500 mb-4">Cargá la factura de cada distribuidora cuando llega la mercadería y mirá el gasto por mes. Con "Cargar boleta" podés cargar una boleta suelta, sin pedido asociado.</p>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 bg-navy-100 rounded-xl p-1">
-        {([
-          { key: 'recibidas' as const, label: 'Recibidas', icon: FileText },
-          { key: 'recepcion' as const, label: 'Recepción', icon: ConciergeBell },
-          { key: 'gasto' as const, label: 'Gasto', icon: CalendarDays },
-          { key: 'cuentacorriente' as const, label: 'Cta cte', icon: CreditCard },
-          { key: 'contadora' as const, label: 'Contadora', icon: Calculator },
-        ]).map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              tab === t.key ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
-            }`}
-          >
-            <t.icon size={16} /> {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        full
+        className="mb-5"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'recibidas', label: 'Recibidas', icon: FileText },
+          { id: 'recepcion', label: 'Pedidos de recepción', icon: ConciergeBell },
+          { id: 'gasto', label: 'Gasto por mes', icon: CalendarDays },
+          { id: 'cuentacorriente', label: 'Cuenta corriente', icon: CreditCard },
+          { id: 'contadora', label: 'Contadora', icon: Calculator },
+        ]}
+      />
 
       {/* ============ RECIBIDAS ============ */}
       {tab === 'recibidas' && (

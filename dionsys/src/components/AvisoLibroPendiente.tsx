@@ -2,8 +2,8 @@
 //
 // Vive fuera de la Caja de Administración a propósito: si el aviso estuviera
 // solo adentro de esa pantalla habría que acordarse de entrar, y con los días
-// esa plata se pierde. Va donde se miran los números (Negocio) y en la portada
-// de Administración, que es la pantalla de todos los días.
+// esa plata se pierde. Va donde se miran los números (Negocio) y en Inicio,
+// que es la pantalla de todos los días.
 
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -64,7 +64,7 @@ export default function AvisoLibroPendiente({ mes, chico = false }: Props) {
         </p>
       </div>
       <button
-        onClick={() => navigate('/caja-admin')}
+        onClick={() => navigate('/cajas?tab=administracion')}
         className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-200 text-amber-900 text-xs font-semibold hover:bg-amber-300"
       >
         Resolver

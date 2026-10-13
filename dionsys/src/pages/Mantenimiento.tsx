@@ -7,9 +7,11 @@ import TaskCreateForm from '../components/maintenance/TaskCreateForm'
 import TaskCompleteForm from '../components/maintenance/TaskCompleteForm'
 import TaskDetail from '../components/maintenance/TaskDetail'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Tabs from '../components/Tabs'
+import { useTabParam } from '../lib/useTabParam'
 
 type View = 'list' | 'create' | 'detail' | 'complete'
-type Tab = 'pendientes' | 'historial'
+const TAB_IDS = ['pendientes', 'historial'] as const
 type HistoryFilter = 'todos' | 'pendiente' | 'completado'
 
 function StatusBadge({ status }: { status: MaintenanceTask['status'] }) {
@@ -67,7 +69,7 @@ export default function Mantenimiento() {
   const { employee } = useAuth()
 
   const [view, setView] = useState<View>('list')
-  const [tab, setTab] = useState<Tab>('pendientes')
+  const [tab, setTab] = useTabParam(TAB_IDS, 'pendientes')
   const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null)
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('todos')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -189,32 +191,15 @@ export default function Mantenimiento() {
       </div>
       <p className="text-sm text-navy-500 mb-4">Control de tareas y arreglos del hotel.</p>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 bg-navy-100 rounded-xl p-1">
-        <button
-          onClick={() => setTab('pendientes')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-            tab === 'pendientes' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
-          }`}
-        >
-          <ClipboardList size={16} />
-          Pendientes
-          {pendientes.length > 0 && (
-            <span className="bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full font-bold">
-              {pendientes.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('historial')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-            tab === 'historial' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
-          }`}
-        >
-          <History size={16} />
-          Historial
-        </button>
-      </div>
+      <Tabs
+        full
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'pendientes', label: 'Pendientes', icon: ClipboardList, badge: pendientes.length },
+          { id: 'historial', label: 'Historial', icon: History },
+        ]}
+      />
 
       {/* Pendientes tab */}
       {tab === 'pendientes' && (

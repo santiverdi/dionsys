@@ -14,6 +14,7 @@ import RecibirPedidoModal from '../components/RecibirPedidoModal'
 import { canDelete } from '../utils/permissions'
 import { getOrderUnit, getPackSize, packsToReachIdeal, packLabel, resolveSupplierId } from '../utils/deposito'
 import { formatMontoCurrency } from '../utils/validators'
+import Tabs from '../components/Tabs'
 
 type MainTab = 'deposito' | 'pedido' | 'historial'
 type CategoryFilter = 'todos' | 'desayunador' | 'limpieza'
@@ -320,29 +321,16 @@ export default function Stock() {
   return (
     <div>
       {/* ===== Tab navigation ===== */}
-      <div className="flex gap-1 mb-4 bg-navy-100 rounded-xl p-1">
-        {([
-          { key: 'deposito' as const, label: 'Deposito', icon: Package },
-          { key: 'pedido' as const, label: 'Pedido', icon: ClipboardList },
-          { key: 'historial' as const, label: 'Historial', icon: Clock },
-        ]).map(t => (
-          <button
-            key={t.key}
-            onClick={() => t.key === 'pedido' ? initPedido() : setTab(t.key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              tab === t.key ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
-            }`}
-          >
-            <t.icon size={16} />
-            {t.label}
-            {t.key === 'deposito' && lowStockCount > 0 && (
-              <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
-                {lowStockCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        full
+        value={tab}
+        onChange={t => t === 'pedido' ? initPedido() : setTab(t)}
+        tabs={[
+          { id: 'deposito', label: 'Depósito', icon: Package, badge: lowStockCount, badgeTone: 'red' },
+          { id: 'pedido', label: 'Pedido semanal', icon: ClipboardList },
+          { id: 'historial', label: 'Historial', icon: Clock },
+        ]}
+      />
 
       {/* =================== DEPOSITO TAB =================== */}
       {tab === 'deposito' && (
@@ -735,7 +723,7 @@ export default function Stock() {
               )}
 
               {/* Bottom action */}
-              <div className="sticky bottom-0 bg-cream pt-3 pb-2 border-t border-navy-100 -mx-4 px-4 md:-mx-6 md:px-6">
+              <div className="sticky bottom-[var(--barra-abajo,0px)] md:bottom-0 bg-cream pt-3 pb-2 border-t border-navy-100 -mx-4 px-4 md:-mx-6 md:px-6">
                 <button
                   onClick={() => setPedidoView('preview')}
                   disabled={pedidoCount === 0}

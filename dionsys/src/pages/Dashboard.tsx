@@ -1,53 +1,45 @@
 import { useMemo, useState } from 'react'
-import { Wallet, Scale, Sparkles, Tag, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
-import Panorama from './Panorama'
-import Negocio from './Negocio'
+import {
+  Sparkles, ChevronLeft, ChevronRight, CalendarDays, LayoutGrid, Banknote,
+  ArrowUpCircle, Receipt, BedDouble, Croissant, Users, Truck,
+} from 'lucide-react'
+import Negocio, { type NegocioTab } from './Negocio'
 import AnalisisMes from './AnalisisMes'
-import AnalisisTarifa from './AnalisisTarifa'
+import Tabs, { type TabDef } from '../components/Tabs'
+import { useTabParam } from '../lib/useTabParam'
 import { getCurrentMonth, getPreviousMonth, getNextMonth, monthLabel } from '../utils/dateRange'
 
-type Tab = 'negocio' | 'analisis' | 'tarifa' | 'control'
+// Un solo nivel de pestañas: los temas del mes + el análisis con IA. La caja y
+// los partes se mudaron a Plata › Cajas, y el análisis de tarifa a Ventas.
+type Tab = NegocioTab | 'analisis'
 
-const TABS: { id: Tab; label: string; icon: typeof Wallet }[] = [
-  { id: 'negocio', label: 'Negocio', icon: Scale },
-  { id: 'analisis', label: 'Análisis', icon: Sparkles },
-  { id: 'tarifa', label: 'Tarifa', icon: Tag },
-  { id: 'control', label: 'Caja & partes', icon: Wallet },
+const TABS: TabDef<Tab>[] = [
+  { id: 'resumen', label: 'Resumen', icon: LayoutGrid },
+  { id: 'ingresos', label: 'Ingresos', icon: Banknote },
+  { id: 'egresos', label: 'Egresos', icon: ArrowUpCircle },
+  { id: 'caja', label: 'Gastos de caja', icon: Receipt },
+  { id: 'habitaciones', label: 'Habitaciones', icon: BedDouble },
+  { id: 'desayuno', label: 'Desayuno', icon: Croissant },
+  { id: 'grupos', label: 'Grupos', icon: Users },
+  { id: 'proveedores', label: 'Deuda con proveedores', icon: Truck },
+  { id: 'analisis', label: 'Análisis IA', icon: Sparkles },
 ]
+const IDS = TABS.map(t => t.id)
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<Tab>('negocio')
+  const [tab, setTab] = useTabParam<Tab>(IDS, 'resumen')
 
   // El mes que se está mirando. Vive acá para que al cambiar de pestaña
-  // (Negocio ↔ Análisis) se siga viendo el mismo mes.
+  // se siga viendo el mismo mes.
   const actual = useMemo(() => getCurrentMonth(), [])
   const [{ year, month }, setMes] = useState(actual)
   const esMesActual = year === actual.year && month === actual.month
-  // Panorama y Tarifa no están partidos por mes (Tarifa compara por período de
-  // tarifa, no por mes calendario).
-  const mostrarSelector = tab !== 'control' && tab !== 'tarifa'
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 gap-3">
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
         <h2 className="text-xl font-bold text-navy-800">Dashboard</h2>
-        <div className="flex gap-1 bg-navy-100 rounded-xl p-1">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                tab === t.id ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
-              }`}
-            >
-              <t.icon size={14} /> {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {mostrarSelector && (
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-white border border-navy-100 rounded-xl px-1 py-1">
             <button
               onClick={() => setMes(getPreviousMonth(year, month))}
@@ -77,15 +69,13 @@ export default function Dashboard() {
             </button>
           )}
         </div>
-      )}
+      </div>
 
-      {tab === 'negocio'
-        ? <Negocio year={year} month={month} />
-        : tab === 'analisis'
-          ? <AnalisisMes year={year} month={month} />
-          : tab === 'tarifa'
-            ? <AnalisisTarifa />
-            : <Panorama />}
+      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+
+      {tab === 'analisis'
+        ? <AnalisisMes year={year} month={month} />
+        : <Negocio year={year} month={month} tab={tab} setTab={setTab} />}
     </div>
   )
 }

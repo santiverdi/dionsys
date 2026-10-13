@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Scale, Banknote, ArrowDownCircle, ArrowUpCircle,
   Truck, AlertTriangle, BedDouble, Receipt, FileSpreadsheet,
-  ChevronRight, ChevronDown, Users, Building2, Croissant, LayoutGrid,
+  ChevronRight, ChevronDown, Users, Building2, Croissant,
 } from 'lucide-react'
 import GruposPanel from '../components/GruposPanel'
 import RendimientoHabitaciones from '../components/RendimientoHabitaciones'
@@ -32,20 +32,10 @@ import { getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
 import { employees } from '../data/mock'
 
-// El dashboard es largo: en vez de un scroll infinito, cada tema es una pestaña.
+// El dashboard es largo: en vez de un scroll infinito, cada tema es una pestaña
+// (las pestañas las dibuja Dashboard, así queda un solo nivel).
 // "Resumen" es la portada, con una caja por tema para entrar de un toque.
-type TabId = 'resumen' | 'ingresos' | 'egresos' | 'caja' | 'habitaciones' | 'desayuno' | 'grupos' | 'proveedores'
-
-const TABS: { id: TabId; label: string; icon: typeof Scale }[] = [
-  { id: 'resumen', label: 'Resumen', icon: LayoutGrid },
-  { id: 'ingresos', label: 'Ingresos', icon: Banknote },
-  { id: 'egresos', label: 'Egresos', icon: ArrowUpCircle },
-  { id: 'caja', label: 'Caja', icon: Receipt },
-  { id: 'habitaciones', label: 'Habitaciones', icon: BedDouble },
-  { id: 'desayuno', label: 'Desayuno', icon: Croissant },
-  { id: 'grupos', label: 'Grupos', icon: Users },
-  { id: 'proveedores', label: 'Proveedores', icon: Truck },
-]
+export type NegocioTab = 'resumen' | 'ingresos' | 'egresos' | 'caja' | 'habitaciones' | 'desayuno' | 'grupos' | 'proveedores'
 
 function Section({ icon: Icon, title, children }: { icon: typeof Scale; title: string; children: React.ReactNode }) {
   return (
@@ -84,7 +74,9 @@ function Box({ icon: Icon, title, valor, hint, alerta, onClick }: {
   )
 }
 
-export default function Negocio({ year, month }: { year: number; month: number }) {
+export default function Negocio({ year, month, tab, setTab }: {
+  year: number; month: number; tab: NegocioTab; setTab: (t: NegocioTab) => void
+}) {
   const { cajas } = useCajas()
   const { partes } = usePartes()
   const { orders } = useOrders()
@@ -104,8 +96,6 @@ export default function Negocio({ year, month }: { year: number; month: number }
     () => salidasMarcadasPorMes(libroMeses, libroMarcas),
     [libroMeses, libroMarcas],
   )
-
-  const [tab, setTab] = useState<TabId>('resumen')
 
   const cur = useMemo(() => ({ year, month }), [year, month])
   const prev = useMemo(() => getPreviousMonth(cur.year, cur.month), [cur])
@@ -212,23 +202,6 @@ export default function Negocio({ year, month }: { year: number; month: number }
         {resDelta >= 0 ? <TrendingUp size={13} className="text-green-600" /> : <TrendingDown size={13} className="text-red-600" />}
         Resultado {resDelta >= 0 ? 'mejor' : 'peor'} que {monthLabel(prev.year, prev.month)} en {formatMontoCurrency(Math.abs(resDelta))}.
       </p>
-
-      {/* Pestañas: una por tema. En celular se desplazan de costado. */}
-      <div className="overflow-x-auto -mx-1 px-1 mb-4">
-        <div className="flex gap-1 bg-navy-100 rounded-xl p-1 w-max min-w-full">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                tab === t.id ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
-              }`}
-            >
-              <t.icon size={14} /> {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {tab === 'resumen' && (
         <>

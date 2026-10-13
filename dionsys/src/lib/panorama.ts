@@ -240,10 +240,19 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
   a.total += b.total
 }
 
-export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null): ImperfeccionesCount {
+// `desde`: cuenta solo las cajas/partes abiertos desde esa fecha (las listas
+// completas igual se usan de contexto, para comparar con la caja anterior).
+export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null, desde?: Date): ImperfeccionesCount {
   const acc = cero()
-  for (const c of cajas) acumular(acc, imperfeccionesDeCaja(c, cajas, partes, tarifas, tarifarioPublico))
-  for (const p of partes) acumular(acc, imperfeccionesDeParte(p, partes, cajas))
+  const desdeMs = desde?.getTime() ?? -Infinity
+  for (const c of cajas) {
+    if (new Date(c.aperturaAt).getTime() < desdeMs) continue
+    acumular(acc, imperfeccionesDeCaja(c, cajas, partes, tarifas, tarifarioPublico))
+  }
+  for (const p of partes) {
+    if (new Date(p.fechaCaja).getTime() < desdeMs) continue
+    acumular(acc, imperfeccionesDeParte(p, partes, cajas))
+  }
   return acc
 }
 

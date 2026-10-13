@@ -26,17 +26,15 @@ import Pedidos from './pages/Pedidos'
 import PedidosRecepcion from './pages/PedidosRecepcion'
 import Stock from './pages/Stock'
 import Mantenimiento from './pages/Mantenimiento'
-import PedidosAdmin from './pages/PedidosAdmin'
 import Impuestos from './pages/Impuestos'
 import Sueldos from './pages/Sueldos'
-import Administracion from './pages/Administracion'
-import Facturas from './pages/Facturas'
-import ControlCaja from './pages/ControlCaja'
+import Inicio from './pages/Inicio'
+import Cajas from './pages/Cajas'
+import Proveedores from './pages/Proveedores'
 import CerrarTurno from './pages/CerrarTurno'
 import Lavadero from './pages/Lavadero'
 import Hotel from './pages/Hotel'
 import SyncPanel from './pages/SyncPanel'
-import CajaAdmin from './pages/CajaAdmin'
 import Landing from './pages/Landing'
 import Usuarios from './pages/Usuarios'
 
@@ -74,23 +72,28 @@ function AppRoutes() {
         }
       >
         <Route index element={<DefaultRedirect />} />
-        <Route path="administracion" element={<RoleRoute path="/administracion"><Administracion /></RoleRoute>} />
+        <Route path="inicio" element={<RoleRoute path="/inicio"><Inicio /></RoleRoute>} />
         <Route path="dashboard" element={<RoleRoute path="/dashboard"><Dashboard /></RoleRoute>} />
         <Route path="pedidos" element={<RoleRoute path="/pedidos"><Pedidos /></RoleRoute>} />
         <Route path="recepcion" element={<RoleRoute path="/recepcion"><PedidosRecepcion /></RoleRoute>} />
         <Route path="deposito" element={<RoleRoute path="/deposito"><Stock /></RoleRoute>} />
         <Route path="mantenimiento" element={<RoleRoute path="/mantenimiento"><Mantenimiento /></RoleRoute>} />
-        <Route path="pedidos-admin" element={<RoleRoute path="/pedidos-admin"><PedidosAdmin /></RoleRoute>} />
-        <Route path="facturas-proveedores" element={<RoleRoute path="/facturas-proveedores"><Facturas /></RoleRoute>} />
-        <Route path="control-caja" element={<RoleRoute path="/control-caja"><ControlCaja /></RoleRoute>} />
+        <Route path="cajas" element={<RoleRoute path="/cajas"><Cajas /></RoleRoute>} />
+        <Route path="proveedores" element={<RoleRoute path="/proveedores"><Proveedores /></RoleRoute>} />
         <Route path="cerrar-turno" element={<RoleRoute path="/cerrar-turno"><CerrarTurno /></RoleRoute>} />
         <Route path="lavadero" element={<RoleRoute path="/lavadero"><Lavadero /></RoleRoute>} />
         <Route path="hotel" element={<RoleRoute path="/hotel"><Hotel /></RoleRoute>} />
         <Route path="impuestos" element={<RoleRoute path="/impuestos"><Impuestos /></RoleRoute>} />
-        <Route path="caja-admin" element={<RoleRoute path="/caja-admin"><CajaAdmin /></RoleRoute>} />
-        <Route path="landing" element={<RoleRoute path="/landing"><Landing /></RoleRoute>} />
+        <Route path="web" element={<RoleRoute path="/web"><Landing /></RoleRoute>} />
         <Route path="usuarios" element={<RoleRoute path="/usuarios"><Usuarios /></RoleRoute>} />
         <Route path="sueldos" element={<RoleRoute path="/sueldos"><Sueldos /></RoleRoute>} />
+        {/* Direcciones viejas (links guardados): llevan a donde quedó cada cosa. */}
+        <Route path="administracion" element={<Navigate to="/inicio" replace />} />
+        <Route path="control-caja" element={<Navigate to="/cajas" replace />} />
+        <Route path="caja-admin" element={<Navigate to="/cajas?tab=administracion" replace />} />
+        <Route path="pedidos-admin" element={<Navigate to="/proveedores" replace />} />
+        <Route path="facturas-proveedores" element={<Navigate to="/proveedores?tab=facturas" replace />} />
+        <Route path="landing" element={<Navigate to="/web" replace />} />
         {/* Herramienta de unificación de datos (oculta del menú). Solo admin. */}
         <Route path="sync" element={<RoleRoute path="/sync"><SyncPanel /></RoleRoute>} />
       </Route>
