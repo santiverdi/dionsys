@@ -88,6 +88,15 @@ describe('getGastosCaja', () => {
     expect(g.map(x => x.observacion)).toEqual(['verduleria']) // solo el gasto real
   })
 
+  it('el ajuste de caja manual no es gasto (caso real caja 49 de Leandro, $11.925.000)', () => {
+    const cajas = [mkCaja({ nroCaja: 49, egresos: [
+      mov({ observacion: 'ajuste de caja manual, se hizo', total: 11925000 }),
+      mov({ observacion: 'AJUSTE MANUAL DE CAJA', total: 10000 }),
+      mov({ observacion: 'leche', total: 800 }),
+    ] })]
+    expect(getGastosCaja(cajas).map(x => x.observacion)).toEqual(['leche'])
+  })
+
   it('el retiro estilo conserje (monto + Nº de caja) no es gasto (caso real caja 5 de Gaston)', () => {
     const cajas = [mkCaja({ nroCaja: 5, conserje: 'Gaston', egresos: [
       mov({ observacion: '$2.500.000. CAJA 5. GASTON', efectivo: 2500000, total: 2500000 }), // "CAJA 5" sin guion

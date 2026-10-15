@@ -74,6 +74,7 @@ const esRetiroEfectivo = (m: CajaMovimiento) =>
 const OTRO_MOV_INTERNO = [
   /cierre\s+de\s+lote/i,        // liquidación de tarjeta al cerrar
   /egreso\s+(de|a|al)\s+caja/i, // transferencia / cierre de caja
+  /\bajuste/i,                  // "ajuste de caja manual": corrige el saldo, no sale plata (caja 49: $11.925.000)
 ]
 const esMovimientoInterno = (m: CajaMovimiento) =>
   esAnulacionPago(m) || esRetiroEfectivo(m) || OTRO_MOV_INTERNO.some(re => re.test(m.observacion))
