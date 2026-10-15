@@ -8,6 +8,7 @@ import {
 import { persist, useCloudSync } from '../lib/cloudStore'
 import { useAuth } from '../context/AuthContext'
 import TarifasEditorDias from './TarifasEditorDias'
+import CotizacionMensaje from './CotizacionMensaje'
 
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
@@ -388,6 +389,10 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                       })()}
                     </div>
                   </div>
+
+                  {salida && !cotizacion.incompleta && cotizacion.bloqueadas.length === 0 && (
+                    <CotizacionMensaje llegada={llegada} salida={salida} pax={pax} cotizacion={cotizacion} cuotas={tarifario.config.cuotas ?? []} />
+                  )}
                 </div>
               )}
             </div>
