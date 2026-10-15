@@ -27,7 +27,7 @@ export function armarMensaje(llegada: string, salida: string, pax: number, c: Co
     const op = cuotas.map(n => `${n} cuotas de ${money(Math.round(c.total / n))}`).join(' o ')
     l.push(`💳 Sin interés con Banco Provincia: ${op}`)
   }
-  if (c.minNoches > 1) l.push('', `⚠️ Para esas fechas la estadía mínima es de ${c.minNoches} noches.`)
+  if (c.minNoches > 1) l.push('', `ℹ️ Para esas fechas la estadía mínima es de ${c.minNoches} noches.`)
   if (c.sena > 0) {
     l.push('', `Para reservar se abona una seña del ${Math.round(c.sena * 100)}% (${money(Math.round(c.total * c.sena))}).`)
   }

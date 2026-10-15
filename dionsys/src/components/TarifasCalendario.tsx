@@ -390,7 +390,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                     </div>
                   </div>
 
-                  {salida && !cotizacion.incompleta && cotizacion.bloqueadas.length === 0 && (
+                  {/* Sin mensaje si la estadía no se puede vender: falta precio,
+                      sin disponibilidad o no llega al mínimo de noches. */}
+                  {salida && !cotizacion.incompleta && cotizacion.bloqueadas.length === 0 && cotizacion.noches >= cotizacion.minNoches && (
                     <CotizacionMensaje llegada={llegada} salida={salida} pax={pax} cotizacion={cotizacion} cuotas={tarifario.config.cuotas ?? []} />
                   )}
                 </div>
