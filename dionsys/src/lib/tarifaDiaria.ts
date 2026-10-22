@@ -20,8 +20,8 @@
 
 import type { TarifarioPublico, TemporadaPublica } from './landing'
 import {
-  descuentoGeneralDe, especialesVigentes, minNochesEspecialDe, precioEspecialDe, tarifaEspecialDe,
-  type TarifaEspecial,
+  descuentoGeneralDe, especialesVigentes, leerEstadiasMinimas, minNochesEspecialDe, precioEspecialDe,
+  tarifaEspecialDe, type EstadiaMinima, type TarifaEspecial,
 } from './tarifasEspeciales'
 
 function aDia(s: string): number {
@@ -57,6 +57,62 @@ export function minNochesDia(
   especiales: TarifaEspecial[] = especialesVigentes(),
 ): number {
   return minNochesEspecialDe(fecha, especiales) ?? temporadaDe(fecha, t)?.minNoches ?? 1
+}
+
+/** La estadía mínima por fechas (activa) más exigente que toca esa noche. */
+export function estadiaMinimaDe(
+  fecha: string,
+  estadias: EstadiaMinima[] = leerEstadiasMinimas(),
+): EstadiaMinima | null {
+  let mejor: EstadiaMinima | null = null
+  for (const e of estadias) {
+    if (!e.activo || fecha < e.desde || fecha > e.hasta) continue
+    if (!mejor || e.minNoches > mejor.minNoches) mejor = e
+  }
+  return mejor
+}
+
+export interface MinimoEstadia {
+  minNoches: number
+  /** La estadía mínima por fechas que fija el mínimo; null si lo fija la temporada (o un ajuste). */
+  regla: EstadiaMinima | null
+}
+
+/**
+ * LA regla del mínimo de noches de Recepción. Para las noches [llegada, salida)
+ * se exige el MAYOR entre:
+ *   a) el de cada noche según la temporada —o el fijado a mano por el admin en
+ *      Recepción → Tarifas, que pisa al de la temporada y puede bajarlo—, y
+ *   b) el de cualquier estadía mínima activa cuyo rango toque alguna noche.
+ */
+export function minimoEstadia(
+  llegada: string,
+  salida: string,
+  t: TarifarioPublico,
+  especiales: TarifaEspecial[] = especialesVigentes(),
+  estadias: EstadiaMinima[] = leerEstadiasMinimas(),
+): MinimoEstadia {
+  let base = 1
+  let regla: EstadiaMinima | null = null
+  for (let d = aDia(llegada); d < aDia(salida); d += 86_400_000) {
+    const fecha = new Date(d).toISOString().slice(0, 10)
+    base = Math.max(base, minNochesDia(fecha, t, especiales))
+    const e = estadiaMinimaDe(fecha, estadias)
+    if (e && (!regla || e.minNoches > regla.minNoches)) regla = e
+  }
+  // Si la temporada pide lo mismo o más, el aviso es el de la temporada.
+  if (regla && regla.minNoches > base) return { minNoches: regla.minNoches, regla }
+  return { minNoches: base, regla: null }
+}
+
+const diaMes = (s: string) => `${Number(s.slice(8, 10))}/${Number(s.slice(5, 7))}`
+
+/** "Mínimo 3 noches por Año Nuevo, 30/12 al 2/1" (o el genérico si manda la temporada). */
+export function textoMinimo(m: MinimoEstadia): string {
+  if (!m.regla) return `Para esas fechas la estadía mínima es de ${m.minNoches} noches.`
+  const { nombre, desde, hasta } = m.regla
+  const fechas = desde === hasta ? diaMes(desde) : `${diaMes(desde)} al ${diaMes(hasta)}`
+  return `Mínimo ${m.minNoches} noches por ${nombre}, ${fechas}.`
 }
 
 /** Precio y condiciones de UNA noche para esa cantidad de personas. */
@@ -111,7 +167,8 @@ export interface Cotizacion {
   efectivo: number
   n20: number            // noches con 20%+ de descuento en efectivo
   n10: number            // noches con menos de 20%
-  minNoches: number      // la exigencia más alta entre las temporadas tocadas
+  minNoches: number      // la exigencia más alta de la estadía (ver minimoEstadia)
+  reglaMin: EstadiaMinima | null   // la estadía mínima por fechas que la fija, si es una
   sena: number           // fracción (0.3 = 30%); la más alta entre las temporadas
   findes: string[]       // findes largos que caen en la estadía
   especiales: string[]   // tarifas especiales etiquetadas que caen en la estadía
@@ -127,8 +184,9 @@ export function cotizarEstadia(
   pax: number,
   t: TarifarioPublico,
   especiales: TarifaEspecial[] = especialesVigentes(),
+  estadias: EstadiaMinima[] = leerEstadiasMinimas(),
 ): Cotizacion {
-  let total = 0, conDescuento = 0, efectivo = 0, n20 = 0, n10 = 0, minNoches = 1, sena = 0
+  let total = 0, conDescuento = 0, efectivo = 0, n20 = 0, n10 = 0, sena = 0
   let noches = 0, incompleta = false, descGeneral = 0
   const findes = new Set<string>()
   const etiquetas = new Set<string>()
@@ -146,7 +204,6 @@ export function cotizarEstadia(
     if (info.findeLargo) findes.add(info.findeLargo)
     if (info.especial) etiquetas.add(info.especial)
     const temp = temporadaDe(fecha, t)
-    minNoches = Math.max(minNoches, minNochesDia(fecha, t, especiales))
     if (temp) sena = Math.max(sena, temp.sena)
     const sub = info.precio * (pax === 1 ? 1 : pax)
     if (info.descEfectivo >= 0.2) n20++
@@ -157,11 +214,12 @@ export function cotizarEstadia(
     efectivo += sub * (1 - info.descEfectivo)
   }
 
+  const { minNoches, regla } = minimoEstadia(llegada, salida, t, especiales, estadias)
   return {
     noches, total,
     conDescuento: Math.round(conDescuento),
     efectivo: Math.round(efectivo),
-    n20, n10, minNoches, sena,
+    n20, n10, minNoches, reglaMin: regla, sena,
     findes: [...findes], especiales: [...etiquetas], descGeneral,
     bloqueadas, incompleta,
   }

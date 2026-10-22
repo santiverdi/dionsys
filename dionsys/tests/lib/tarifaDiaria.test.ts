@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { cotizarEstadia, cuadraConTarifarioPublico, diaSemana, infoDia } from '../../src/lib/tarifaDiaria'
+import {
+  cotizarEstadia, cuadraConTarifarioPublico, diaSemana, infoDia, minimoEstadia, textoMinimo,
+} from '../../src/lib/tarifaDiaria'
 import type { TarifarioPublico } from '../../src/lib/landing'
-import { especialesConAjustes, type TarifaEspecial } from '../../src/lib/tarifasEspeciales'
+import { especialesConAjustes, type EstadiaMinima, type TarifaEspecial } from '../../src/lib/tarifasEspeciales'
 
 // Las tarifas especiales pactadas pisan varias de las fechas de abajo. Los
 // bloques que prueban la FÓRMULA del tarifario publicado la piden sin ellas;
@@ -264,5 +266,57 @@ describe('tarifas especiales pactadas', () => {
 
   it('sigue cuadrando lo que cotiza la página mientras no se publiquen las nuevas', () => {
     expect(cuadraConTarifarioPublico(360_000, 2, '2026-12-27', t)?.tipo).toBe('lista')
+  })
+})
+
+describe('minimoEstadia — estadías mínimas por fechas', () => {
+  // Diciembre y Enero temprano con mínimo 1, para que el 3 lo ponga la regla.
+  const base = tarifario()
+  const t: TarifarioPublico = {
+    ...base,
+    temporadas: base.temporadas.map(x => (x.nombre === 'Diciembre' || x.nombre === 'Enero temprano' ? { ...x, minNoches: 1 } : x)),
+  }
+  const anioNuevo: EstadiaMinima = { id: 'an', nombre: 'Año Nuevo', desde: '2026-12-31', hasta: '2027-01-01', minNoches: 3, activo: true }
+  const reglas = [anioNuevo]
+
+  it('regla 31/12–1/1 mínimo 3: 30/12 al 1/1 (2 noches) se rechaza', () => {
+    const m = minimoEstadia('2026-12-30', '2027-01-01', t, SIN, reglas)
+    expect(m).toEqual({ minNoches: 3, regla: anioNuevo })
+    const c = cotizarEstadia('2026-12-30', '2027-01-01', 2, t, SIN, reglas)
+    expect(c.noches).toBe(2)
+    expect(c.noches < c.minNoches).toBe(true)
+    expect(textoMinimo(m)).toBe('Mínimo 3 noches por Año Nuevo, 31/12 al 1/1.')
+  })
+
+  it('misma regla: 29/12 al 1/1 (3 noches) se acepta', () => {
+    const c = cotizarEstadia('2026-12-29', '2027-01-01', 2, t, SIN, reglas)
+    expect(c.noches).toBe(3)
+    expect(c.minNoches).toBe(3)
+    expect(c.noches >= c.minNoches).toBe(true)
+  })
+
+  it('sin regla especial en esas noches: usa el mínimo de la temporada', () => {
+    expect(minimoEstadia('2026-09-08', '2026-09-09', t, SIN, reglas)).toEqual({ minNoches: 1, regla: null })   // Baja
+    expect(minimoEstadia('2027-01-20', '2027-01-22', t, SIN, reglas)).toEqual({ minNoches: 3, regla: null })   // Alta
+    expect(minimoEstadia('2026-12-28', '2026-12-30', t, SIN, reglas)).toEqual({ minNoches: 1, regla: null })   // termina antes de la regla
+  })
+
+  it('la salida no cuenta como noche: llegar el 2/1 no toca la regla', () => {
+    expect(minimoEstadia('2026-12-29', '2026-12-31', t, SIN, reglas).regla).toBeNull()
+    expect(minimoEstadia('2027-01-02', '2027-01-03', t, SIN, reglas).regla).toBeNull()
+  })
+
+  it('si la temporada pide más que la regla, manda la temporada', () => {
+    const corta = [{ ...anioNuevo, desde: '2027-01-10', hasta: '2027-01-10', minNoches: 2 }]
+    expect(minimoEstadia('2027-01-09', '2027-01-11', t, SIN, corta)).toEqual({ minNoches: 3, regla: null })
+  })
+
+  it('las inactivas no cuentan', () => {
+    expect(minimoEstadia('2026-12-30', '2027-01-01', t, SIN, [{ ...anioNuevo, activo: false }]).minNoches).toBe(1)
+  })
+
+  it('un mínimo cargado a mano que baja la temporada no le gana a la regla', () => {
+    const esp = especialesConAjustes({ '2026-12-31': { minNoches: 1 } })
+    expect(minimoEstadia('2026-12-31', '2027-01-01', t, esp, reglas).minNoches).toBe(3)
   })
 })

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, Eraser, Pencil } from 'lucide-react'
 import { expandirRango, fetchTarifarioPublicado, type TarifarioPublico } from '../lib/landing'
-import { cotizarEstadia, diaSemana, infoDia } from '../lib/tarifaDiaria'
+import { cotizarEstadia, diaSemana, estadiaMinimaDe, infoDia, textoMinimo } from '../lib/tarifaDiaria'
 import {
-  KEY_AJUSTES_TARIFA, especialesConAjustes, leerAjustes, type AjustesTarifa,
+  KEY_AJUSTES_TARIFA, KEY_ESTADIAS_MINIMAS, especialesConAjustes, leerAjustes, leerEstadiasMinimas,
+  type AjustesTarifa, type EstadiaMinima,
 } from '../lib/tarifasEspeciales'
 import { persist, useCloudSync } from '../lib/cloudStore'
 import { useAuth } from '../context/AuthContext'
 import TarifasEditorDias from './TarifasEditorDias'
 import CotizacionMensaje from './CotizacionMensaje'
+import EstadiasMinimasEditor from './EstadiasMinimasEditor'
 
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
@@ -75,6 +77,8 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   const [ajustes, setAjustes] = useState<AjustesTarifa>(leerAjustes)
   useCloudSync<AjustesTarifa>(KEY_AJUSTES_TARIFA, useCallback(v => setAjustes(v && typeof v === 'object' ? v : {}), []))
   const especiales = useMemo(() => especialesConAjustes(ajustes), [ajustes])
+  const [estadias, setEstadias] = useState<EstadiaMinima[]>(leerEstadiasMinimas)
+  useCloudSync<EstadiaMinima[]>(KEY_ESTADIAS_MINIMAS, useCallback(v => setEstadias(Array.isArray(v) ? v : []), []))
 
   // Modo edición (solo admin): noches marcadas para cambiarles el precio.
   const [editando, setEditando] = useState(false)
@@ -120,7 +124,8 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
 
   // Mientras arrastra, el día bajo el dedo hace de salida tentativa.
   const fin = salida ?? (arrastrando && llegada && hoverDia && hoverDia > llegada ? hoverDia : null)
-  const cotizacion = tarifario && llegada && fin ? cotizarEstadia(llegada, fin, pax, tarifario, especiales) : null
+  const cotizacion = tarifario && llegada && fin ? cotizarEstadia(llegada, fin, pax, tarifario, especiales, estadias) : null
+  const cortaParaMinimo = !!cotizacion && cotizacion.noches < cotizacion.minNoches
 
   function diaDeEvento(e: React.PointerEvent): string | null {
     const el = (e.target as Element).closest?.('[data-fecha]')
@@ -175,6 +180,11 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
     setAjustes(nuevos)
     persist(KEY_AJUSTES_TARIFA, nuevos)
     setMarcadas(new Set())
+  }
+
+  function guardarEstadias(nuevas: EstadiaMinima[]) {
+    setEstadias(nuevas)
+    persist(KEY_ESTADIAS_MINIMAS, nuevas)
   }
 
   function alternarEdicion() {
@@ -287,7 +297,12 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                       <Eraser size={13} /> Limpiar
                     </button>
                   </div>
-                  <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 mt-2">
+                  {cortaParaMinimo && (
+                    <p className="mt-2 text-sm font-medium text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+                      {textoMinimo({ minNoches: cotizacion.minNoches, regla: cotizacion.reglaMin })} No se puede tomar con {cotizacion.noches} {cotizacion.noches === 1 ? 'noche' : 'noches'}.
+                    </p>
+                  )}
+                  <div className={`flex flex-wrap items-baseline gap-x-6 gap-y-1 mt-2 ${cortaParaMinimo ? 'opacity-40 line-through' : ''}`}>
                     <p className="text-2xl font-bold text-navy-800">{money(cotizacion.total)}</p>
                     {/* Descuento que vale con cualquier medio de pago: va antes
                         que el de efectivo para no hacerle creer al huésped que
@@ -311,11 +326,6 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                     )}
                   </div>
                   <div className="mt-2 space-y-1">
-                    {cotizacion.noches < cotizacion.minNoches && (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 inline-block">
-                        Para esas fechas la estadía mínima es de {cotizacion.minNoches} noches.
-                      </p>
-                    )}
                     {cotizacion.bloqueadas.length > 0 && (
                       <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 inline-block">
                         Sin disponibilidad el {cotizacion.bloqueadas.map(fmtDia).join(', ')}.
@@ -437,6 +447,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                 const enNoches = llegada && fecha >= llegada && (fin ? fecha < fin : fecha === llegada)
                 const esSalida = fin === fecha
                 const marcada = editando && marcadas.has(fecha)
+                const minEspecial = estadiaMinimaDe(fecha, estadias)
                 let cls = 'bg-white border-navy-100 text-navy-700'
                 if (marcada) cls = 'bg-gold-400 border-gold-500 text-navy-900'
                 else if (sinPrecio) cls = 'bg-navy-50/50 border-transparent text-navy-300'
@@ -454,6 +465,14 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                     {/* Precio o mínimo cargado a mano por el admin: solo se marca en edición. */}
                     {editando && ajustes[fecha] && (
                       <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-navy-700" />
+                    )}
+                    {minEspecial && (
+                      <span
+                        className="absolute top-0.5 left-0.5 px-1 rounded text-[9px] sm:text-[10px] font-bold leading-tight bg-amber-100 text-amber-800 no-underline"
+                        title={`Mínimo ${minEspecial.minNoches} noches por ${minEspecial.nombre}`}
+                      >
+                        {minEspecial.minNoches}+
+                      </span>
                     )}
                     <p className={`text-sm sm:text-base font-bold leading-none ${info.bloqueada && !enNoches ? 'line-through' : ''}`}>
                       {Number(fecha.slice(8, 10))}
@@ -477,6 +496,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gold-50 border border-gold-300 inline-block" /> Tarifa especial / finde largo (ya aplicada)</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-50 border border-red-200 inline-block" /> Sin disponibilidad</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded ring-2 ring-gold-400 inline-block" /> Hoy</span>
+            {estadias.some(e => e.activo) && (
+              <span className="flex items-center gap-1.5"><span className="px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-800">3+</span> Estadía mínima especial</span>
+            )}
             {editando && (
               <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-navy-700 inline-block" /> Cambiado a mano (precio o mínimo)</span>
             )}
@@ -484,6 +506,8 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
           <p className="text-[11px] text-navy-400 mt-1">
             Precios de lista por noche{pax === 1 ? ' (habitación single completa)' : ' por persona'}. Los descuentos aparecen al cotizar.
           </p>
+
+          {editando && <EstadiasMinimasEditor guardadas={estadias} onGuardar={guardarEstadias} />}
         </>
       )}
     </div>

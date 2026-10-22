@@ -14,6 +14,8 @@
 // OJO: esto NO cambia la página de reservas. La landing sigue cotizando lo que
 // está publicado en Supabase hasta que se publique el tarifario nuevo.
 
+import { fechaValida } from './landing'
+
 export interface TarifaEspecial {
   /** Nombre interno del período (para leerlo acá). */
   nombre: string
@@ -152,6 +154,53 @@ export function tarifaEspecialDe(
 /** Mínimo de noches fijado para esa noche, si alguno lo fija. */
 export function minNochesEspecialDe(fecha: string, especiales: TarifaEspecial[]): number | undefined {
   return especiales.find(e => e.minNoches && e.desde <= fecha && fecha <= e.hasta)?.minNoches
+}
+
+// ── Estadías mínimas por fechas, cargadas por el admin en Recepción → Tarifas ─
+// Año Nuevo, Carnaval…: si la estadía toca alguna noche del rango, se exige el
+// MAYOR entre este mínimo y el de la noche (temporada o ajuste por día). Ver
+// minimoEstadia() en tarifaDiaria.ts. Viven en la nube interna (almacén
+// 'dionsys_estadias_minimas'), igual que los ajustes por día. No llegan a la
+// página de reservas.
+
+export const KEY_ESTADIAS_MINIMAS = 'dionsys_estadias_minimas'
+
+export interface EstadiaMinima {
+  id: string
+  nombre: string
+  desde: string      // primera NOCHE (YYYY-MM-DD, inclusive)
+  hasta: string      // última NOCHE (inclusive)
+  minNoches: number
+  activo: boolean
+}
+
+// Cacheado por el texto guardado, como especialesVigentes(): el cuadre de caja
+// cotiza miles de ventanas.
+let cacheEstadiasRaw: string | null | undefined
+let cacheEstadias: EstadiaMinima[] = []
+export function leerEstadiasMinimas(): EstadiaMinima[] {
+  let raw: string | null = null
+  try { raw = globalThis.localStorage?.getItem(KEY_ESTADIAS_MINIMAS) ?? null } catch { /* sin storage */ }
+  if (raw !== cacheEstadiasRaw) {
+    cacheEstadiasRaw = raw
+    try {
+      const v = JSON.parse(raw ?? '[]')
+      cacheEstadias = Array.isArray(v) ? v : []
+    } catch {
+      cacheEstadias = []
+    }
+  }
+  return cacheEstadias
+}
+
+/** Problemas de una estadía mínima antes de guardarla. */
+export function validarEstadiaMinima(e: EstadiaMinima): string[] {
+  const errores: string[] = []
+  if (!e.nombre?.trim()) errores.push('Falta el nombre (ej: "Año Nuevo").')
+  if (!fechaValida(e.desde) || !fechaValida(e.hasta)) errores.push('Faltan las fechas desde y hasta.')
+  else if (e.hasta < e.desde) errores.push('La fecha "hasta" no puede ser anterior a "desde".')
+  if (!Number.isInteger(e.minNoches) || e.minNoches < 1) errores.push('El mínimo debe ser de 1 noche o más.')
+  return errores
 }
 
 /** Descuento con cualquier medio de pago de esa noche (0 si no hay). */

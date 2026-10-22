@@ -42,6 +42,7 @@ export const SYNCED_KEYS = [
   'dionsys_checkout_docs',
   'dionsys_tarifas',
   'dionsys_tarifas_dia',
+  'dionsys_estadias_minimas',
   'dionsys_prisma_tarjetas',
   'dionsys_lavadero_movs',
   'dionsys_lavadero_liqs',
