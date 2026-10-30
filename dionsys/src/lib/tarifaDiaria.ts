@@ -138,18 +138,22 @@ export function infoDia(
   // Tarifa pactada aparte: el precio ya es el final, así que no pasa por el
   // recargo del finde largo ni por el tope por persona.
   const esp = tarifaEspecialDe(fecha, especiales)
+  const fl = t.findesLargos.find(f => f.desde <= fecha && fecha <= f.hasta) ?? null
   if (esp) {
     const descGeneral = descuentoGeneralDe(esp, dia)
+    // Un ajuste del admin cambia el precio, pero la noche sigue siendo la misma
+    // fecha: conserva la marca que tenía (finde largo o tarifa pactada).
+    const debajo = esp.esAjuste ? tarifaEspecialDe(fecha, especiales.filter(e => !e.esAjuste)) : undefined
     return {
       fecha, enVigencia, bloqueada, temporada: temp.nombre, caro,
-      findeLargo: null, especial: esp.etiqueta ?? null,
+      findeLargo: esp.esAjuste && !debajo ? fl?.n ?? null : null,
+      especial: (debajo ?? esp).etiqueta ?? null,
       precio: precioEspecialDe(esp, dia, pax),
       descGeneral,
       descEfectivo: descGeneral + (esp.descuentoEfectivo ?? 0),
     }
   }
 
-  const fl = t.findesLargos.find(f => f.desde <= fecha && fecha <= f.hasta) ?? null
   const base = (caro && temp.tarifasCaras && temp.tarifasCaras[pax]) ? temp.tarifasCaras[pax] : temp.tarifas[pax]
   const conRecargo = fl ? Math.round(base * (1 + fl.recargo)) : base
   const precio = pax === 1 ? conRecargo : Math.min(conRecargo, t.config.tope_por_persona)

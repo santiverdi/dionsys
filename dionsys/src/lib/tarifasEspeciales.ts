@@ -44,6 +44,8 @@ export interface TarifaEspecial {
   minNoches?: number
   /** Solo trae el mínimo de noches: el precio sigue saliendo de lo demás. */
   soloMinNoches?: boolean
+  /** Viene de un ajuste por día del admin: cambia el precio, no qué fecha es. */
+  esAjuste?: boolean
 }
 
 // Pactadas por el dueño para la temporada 2026/2027. Los feriados van a precio
@@ -107,7 +109,7 @@ export const tienePrecio = (a: AjusteDia | undefined): boolean =>
 
 export function ajustesComoEspeciales(ajustes: AjustesTarifa): TarifaEspecial[] {
   return Object.entries(ajustes).map(([fecha, a]) => ({
-    nombre: 'Ajuste', desde: fecha, hasta: fecha,
+    nombre: 'Ajuste', esAjuste: true, desde: fecha, hasta: fecha,
     single: a.single ?? 0, porPersona: a.porPersona ?? 0,
     ...((a.descEfectivo ?? 0) > 0 ? { descuentoEfectivo: a.descEfectivo } : {}),
     ...(a.minNoches ? { minNoches: a.minNoches } : {}),
