@@ -249,7 +249,22 @@ describe('tarifas especiales pactadas', () => {
 
   it('un precio cargado a mano manda sobre el finde largo publicado', () => {
     const esp = especialesConAjustes({ '2026-11-21': { porPersona: 45_000, single: 90_000, descEfectivo: 0.1 } })
-    expect(infoDia('2026-11-21', 2, t, esp)).toMatchObject({ precio: 45_000, findeLargo: null, descEfectivo: 0.1 })
+    expect(infoDia('2026-11-21', 2, t, esp)).toMatchObject({ precio: 45_000, findeLargo: 'Soberanía Nacional', descEfectivo: 0.1 })
+  })
+
+  it('un precio cargado a mano conserva la etiqueta de la tarifa pactada', () => {
+    const esp = especialesConAjustes({ '2026-12-25': { porPersona: 90_000, single: 150_000 } })
+    expect(infoDia('2026-12-25', 2, t, esp)).toMatchObject({ precio: 90_000, especial: 'Navidad', findeLargo: null })
+  })
+
+  it('un precio cargado a mano en una noche común no le agrega ninguna marca', () => {
+    const esp = especialesConAjustes({ '2026-11-10': { porPersona: 45_000, single: 90_000 } })
+    expect(infoDia('2026-11-10', 2, t, esp)).toMatchObject({ precio: 45_000, especial: null, findeLargo: null })
+  })
+
+  it('un precio cargado a mano dentro de un tramo pactado sin etiqueta se sigue viendo igual', () => {
+    const esp = especialesConAjustes({ '2027-02-06': { porPersona: 75_000, single: 150_000 } })
+    expect(infoDia('2027-02-06', 2, t, esp)).toMatchObject({ precio: 75_000, especial: null, findeLargo: null })
   })
 
   it('mínimo de noches cargado a mano: lo exige si la estadía toca esa noche, sin tocar el precio', () => {
