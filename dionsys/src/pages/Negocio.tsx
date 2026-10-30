@@ -30,7 +30,7 @@ import { getMonthlyExpenses } from '../utils/monthlyMetrics'
 import { exportMonthlyReport } from '../utils/monthlyExport'
 import { getPreviousMonth, monthLabel, monthKey } from '../utils/dateRange'
 import { formatMontoCurrency } from '../utils/validators'
-import { employees } from '../data/mock'
+import { useAuth } from '../context/AuthContext'
 
 // El dashboard es largo: en vez de un scroll infinito, cada tema es una pestaña
 // (las pestañas las dibuja Dashboard, así queda un solo nivel).
@@ -77,6 +77,7 @@ function Box({ icon: Icon, title, valor, hint, alerta, onClick }: {
 export default function Negocio({ year, month, tab, setTab }: {
   year: number; month: number; tab: NegocioTab; setTab: (t: NegocioTab) => void
 }) {
+  const { employees } = useAuth()
   const { cajas } = useCajas()
   const { partes } = usePartes()
   const { orders } = useOrders()
