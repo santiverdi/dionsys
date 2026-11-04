@@ -95,7 +95,7 @@ export default function TarifasEditorDias({ fechas, tarifario, especiales, ajust
   }`
 
   return (
-    <div className="mb-4 p-4 bg-gold-50 rounded-xl border border-gold-300">
+    <div className="mt-3 p-4 bg-gold-50 rounded-xl border border-gold-300">
       <div className="flex items-start justify-between gap-2 mb-3">
         <p className="text-sm text-navy-700">
           Noches marcadas: <b>{resumen}</b>
