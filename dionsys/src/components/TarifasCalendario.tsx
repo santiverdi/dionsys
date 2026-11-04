@@ -224,7 +224,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
       </div>
       <p className="text-sm text-navy-500 mb-4">
         {editando
-          ? 'Tocá las noches que querés cambiar (o arrastrá para marcar varias seguidas) y cargá el precio o el mínimo de noches arriba del calendario.'
+          ? 'Tocá las noches que querés cambiar (o arrastrá para marcar varias seguidas) y cargá el precio o el mínimo de noches abajo del calendario.'
           : 'El precio de cada noche, igual que en la página de reservas. Tocá la llegada y la salida (o arrastrá) para cotizar.'}
       </p>
 
@@ -269,6 +269,88 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
               )}
             </div>
           )}
+          {/* Navegación de mes */}
+          <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => setMes(sumarMes(mes, -1))}
+              disabled={mes <= mesMin}
+              className="p-2 rounded-lg border border-navy-200 text-navy-600 hover:bg-navy-50 disabled:opacity-30"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <p className="font-bold text-navy-800 capitalize">{nombreMes(mes)}</p>
+            <button
+              onClick={() => setMes(sumarMes(mes, 1))}
+              disabled={mes >= mesMax}
+              className="p-2 rounded-lg border border-navy-200 text-navy-600 hover:bg-navy-50 disabled:opacity-30"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Calendario */}
+          <div
+            className="bg-white rounded-xl border border-navy-100 p-2 select-none"
+            style={{ touchAction: 'none' }}
+            onPointerDown={alPresionar}
+            onPointerMove={alMover}
+          >
+            <div className="grid grid-cols-7 text-center text-xs sm:text-sm font-medium text-navy-400 mb-1">
+              {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => <div key={d} className="py-1">{d}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {celdas.map((fecha, i) => {
+                if (!fecha) return <div key={i} />
+                const info = infoDia(fecha, pax, tarifario, especiales)
+                const sinPrecio = info.precio === null
+                const enNoches = llegada && fecha >= llegada && (fin ? fecha < fin : fecha === llegada)
+                const esSalida = fin === fecha
+                const marcada = editando && marcadas.has(fecha)
+                const minEspecial = estadiaMinimaDe(fecha, estadias)
+                let cls = 'bg-white border-navy-100 text-navy-700'
+                if (marcada) cls = 'bg-gold-400 border-gold-500 text-navy-900'
+                else if (sinPrecio) cls = 'bg-navy-50/50 border-transparent text-navy-300'
+                else if (enNoches) cls = 'bg-navy-800 border-navy-800 text-cream'
+                else if (esSalida) cls = 'bg-navy-100 border-navy-300 text-navy-700'
+                else if (info.bloqueada) cls = 'bg-red-50 border-red-200 text-red-400'
+                else if (info.especial || info.findeLargo) cls = 'bg-gold-50 border-gold-300 text-navy-800'
+                else if (info.caro) cls = 'bg-navy-50 border-navy-100 text-navy-700'
+                return (
+                  <div
+                    key={fecha}
+                    data-fecha={fecha}
+                    className={`relative rounded-lg border px-0.5 py-2 sm:py-3.5 text-center transition-colors ${cls} ${sinPrecio && !editando ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
+                  >
+                    {/* Precio o mínimo cargado a mano por el admin: solo se marca en edición. */}
+                    {editando && ajustes[fecha] && (
+                      <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-navy-700" />
+                    )}
+                    {minEspecial && (
+                      <span
+                        className="absolute top-0.5 left-0.5 px-1 rounded text-[9px] sm:text-[10px] font-bold leading-tight bg-amber-100 text-amber-800 no-underline"
+                        title={`Mínimo ${minEspecial.minNoches} noches por ${minEspecial.nombre}`}
+                      >
+                        {minEspecial.minNoches}+
+                      </span>
+                    )}
+                    <p className={`text-sm sm:text-base font-bold leading-none ${info.bloqueada && !enNoches ? 'line-through' : ''}`}>
+                      {Number(fecha.slice(8, 10))}
+                    </p>
+                    {/* En el celu entra la forma corta (50k); en escritorio, el precio completo. */}
+                    <p className="text-[11px] leading-tight mt-1 font-medium sm:hidden">
+                      {sinPrecio ? '—' : precioCorto(info.precio!)}
+                    </p>
+                    <p className="hidden sm:block text-sm leading-tight mt-1.5 font-medium">
+                      {sinPrecio ? '—' : money(info.precio!)}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Debajo del calendario: si apareciera arriba, empujaría los días
+              justo cuando se toca o se arrastra. */}
           {editando && (
             <TarifasEditorDias
               fechas={[...marcadas].sort()}
@@ -282,7 +364,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
 
           {/* Cotización */}
           {!editando && llegada && (
-            <div className="mb-4 p-4 bg-white rounded-xl border border-navy-100">
+            <div className="mt-3 p-4 bg-white rounded-xl border border-navy-100">
               {!cotizacion ? (
                 <p className="text-sm text-navy-500">
                   Llegada el <b>{fmtDia(llegada)}</b> — ahora tocá el día de salida.
@@ -409,86 +491,6 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
               )}
             </div>
           )}
-
-          {/* Navegación de mes */}
-          <div className="flex items-center justify-between mb-2">
-            <button
-              onClick={() => setMes(sumarMes(mes, -1))}
-              disabled={mes <= mesMin}
-              className="p-2 rounded-lg border border-navy-200 text-navy-600 hover:bg-navy-50 disabled:opacity-30"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <p className="font-bold text-navy-800 capitalize">{nombreMes(mes)}</p>
-            <button
-              onClick={() => setMes(sumarMes(mes, 1))}
-              disabled={mes >= mesMax}
-              className="p-2 rounded-lg border border-navy-200 text-navy-600 hover:bg-navy-50 disabled:opacity-30"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          {/* Calendario */}
-          <div
-            className="bg-white rounded-xl border border-navy-100 p-2 select-none"
-            style={{ touchAction: 'none' }}
-            onPointerDown={alPresionar}
-            onPointerMove={alMover}
-          >
-            <div className="grid grid-cols-7 text-center text-xs sm:text-sm font-medium text-navy-400 mb-1">
-              {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => <div key={d} className="py-1">{d}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {celdas.map((fecha, i) => {
-                if (!fecha) return <div key={i} />
-                const info = infoDia(fecha, pax, tarifario, especiales)
-                const sinPrecio = info.precio === null
-                const enNoches = llegada && fecha >= llegada && (fin ? fecha < fin : fecha === llegada)
-                const esSalida = fin === fecha
-                const marcada = editando && marcadas.has(fecha)
-                const minEspecial = estadiaMinimaDe(fecha, estadias)
-                let cls = 'bg-white border-navy-100 text-navy-700'
-                if (marcada) cls = 'bg-gold-400 border-gold-500 text-navy-900'
-                else if (sinPrecio) cls = 'bg-navy-50/50 border-transparent text-navy-300'
-                else if (enNoches) cls = 'bg-navy-800 border-navy-800 text-cream'
-                else if (esSalida) cls = 'bg-navy-100 border-navy-300 text-navy-700'
-                else if (info.bloqueada) cls = 'bg-red-50 border-red-200 text-red-400'
-                else if (info.especial || info.findeLargo) cls = 'bg-gold-50 border-gold-300 text-navy-800'
-                else if (info.caro) cls = 'bg-navy-50 border-navy-100 text-navy-700'
-                return (
-                  <div
-                    key={fecha}
-                    data-fecha={fecha}
-                    className={`relative rounded-lg border px-0.5 py-2 sm:py-3.5 text-center transition-colors ${cls} ${sinPrecio && !editando ? '' : 'cursor-pointer'} ${fecha === hoy ? 'ring-2 ring-gold-400' : ''}`}
-                  >
-                    {/* Precio o mínimo cargado a mano por el admin: solo se marca en edición. */}
-                    {editando && ajustes[fecha] && (
-                      <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-navy-700" />
-                    )}
-                    {minEspecial && (
-                      <span
-                        className="absolute top-0.5 left-0.5 px-1 rounded text-[9px] sm:text-[10px] font-bold leading-tight bg-amber-100 text-amber-800 no-underline"
-                        title={`Mínimo ${minEspecial.minNoches} noches por ${minEspecial.nombre}`}
-                      >
-                        {minEspecial.minNoches}+
-                      </span>
-                    )}
-                    <p className={`text-sm sm:text-base font-bold leading-none ${info.bloqueada && !enNoches ? 'line-through' : ''}`}>
-                      {Number(fecha.slice(8, 10))}
-                    </p>
-                    {/* En el celu entra la forma corta (50k); en escritorio, el precio completo. */}
-                    <p className="text-[11px] leading-tight mt-1 font-medium sm:hidden">
-                      {sinPrecio ? '—' : precioCorto(info.precio!)}
-                    </p>
-                    <p className="hidden sm:block text-sm leading-tight mt-1.5 font-medium">
-                      {sinPrecio ? '—' : money(info.precio!)}
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
 
           {/* Referencias */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-navy-500">
