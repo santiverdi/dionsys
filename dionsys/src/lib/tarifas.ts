@@ -18,7 +18,7 @@ import type { CajaParte, ParteHabitaciones, CajaMovimiento } from '../types'
 import { fechaConfiable, ingresosNetos, type CajaFlag } from './cajaControl'
 import { getHabitacion, tipoDeHabitacion, haySobreocupacion } from '../data/hotel'
 import type { TarifarioPublico } from './landing'
-import { cuadraConTarifarioPublico } from './tarifaDiaria'
+import { cuadraConTarifarioPublico, PROMO_TEXTO, type CuadreWeb } from './tarifaDiaria'
 
 export interface TarifaPeriodo {
   desde: string   // YYYY-MM-DD inclusive
@@ -54,6 +54,21 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
 
 function fmt(n: number): string {
   return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+}
+
+const diaMes = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
+
+/**
+ * Un cobro con la promo de temporada no es un error de tarifa: queda como info
+ * (tipo 'promo', no cuenta como imperfección) para que administración lo vea.
+ */
+function flagPromo(quien: string, total: number, web: CuadreWeb): CajaFlag {
+  const promo = web.promo ? PROMO_TEXTO[web.promo] : 'promo de temporada'
+  return {
+    level: 'info',
+    tipo: 'promo',
+    mensaje: `${quien}: cobro de ${fmt(total)} con la ${promo} (${web.noches} noches desde el ${diaMes(web.llegada)}).`,
+  }
 }
 
 export function tarifaVigente(fecha: string, tarifas: TarifaPeriodo[] = TARIFAS_PACTADAS): TarifaPeriodo | undefined {
@@ -205,9 +220,13 @@ export function getTarifaFlags(
       const dia = (fechaCobro || '').slice(0, 10)
       if (!tarifarioPublico || !v || !dia || dia < v.desde || dia > v.hasta) continue
       const web = cuadraConTarifarioPublico(m.total, plazas, dia, tarifarioPublico)
-      if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
       const quienWeb = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
         + `${m.reserva ? ` · reserva ${m.reserva}` : ''} (${plazas} pax)`
+      if (web?.tipo === 'promo') {
+        flags.push(flagPromo(quienWeb, m.total, web))
+        continue
+      }
+      if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
       flags.push({
         level: 'warn',
         tipo: 'tarifa',
@@ -242,6 +261,12 @@ export function getTarifaFlags(
     // (solo se calcula para los cobros que las pactadas no explican).
     if (tarifarioPublico) {
       const web = cuadraConTarifarioPublico(m.total, plazas, fechaCobro, tarifarioPublico)
+      if (web?.tipo === 'promo') {
+        const quienPromo = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
+          + `${m.reserva ? ` · reserva ${m.reserva}` : ''} (${plazas} pax)`
+        flags.push(flagPromo(quienPromo, m.total, web))
+        continue
+      }
       if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
     }
 

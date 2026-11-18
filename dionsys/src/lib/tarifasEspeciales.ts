@@ -30,6 +30,8 @@ export interface TarifaEspecial {
    * … 6=sábado). Los días que no están usan porPersona.
    */
   porPersonaPorDia?: Partial<Record<number, number>>
+  /** Lo mismo para la single (precio por habitación). Los días que no están usan single. */
+  singlePorDia?: Partial<Record<number, number>>
   /** La single paga la habitación doble entera (2 × el por persona de esa noche). */
   singleComoDoble?: boolean
   /**
@@ -48,33 +50,62 @@ export interface TarifaEspecial {
   esAjuste?: boolean
 }
 
-// Pactadas por el dueño para la temporada 2026/2027. Los feriados van a precio
-// plano y sin descuento. Del 1/1 al 15/2: $60.000 por persona de domingo a
-// jueves, $65.000 el viernes y $70.000 el sábado; la single paga lo mismo que
-// la doble, y en efectivo tiene 10% de descuento todos los días.
+// Temporada 2026/2027: los MISMOS precios que el admin cargó a mano en
+// 'dionsys_tarifas_dia' (Recepción → Tarifas), para que un equipo que todavía no
+// bajó los ajustes de la nube cotice igual. Todas las noches tienen 10% en
+// efectivo y su estadía mínima. Si se cambia un precio allá, hay que cambiarlo
+// acá: tests/lib/tarifasEspeciales.test.ts compara las dos tablas noche a noche.
+// Días de la semana como getDay(): 0=domingo … 5=viernes, 6=sábado.
+const EF = { descuentoEfectivo: 0.10 }
 export const TARIFAS_ESPECIALES: TarifaEspecial[] = [
+  // Diciembre
+  { nombre: 'Diciembre', desde: '2026-12-01', hasta: '2026-12-03', single: 90_000, porPersona: 48_000, minNoches: 1, ...EF },
   {
-    nombre: 'Inmaculada', etiqueta: 'Inmaculada',
-    desde: '2026-12-04', hasta: '2026-12-07',
-    single: 120_000, porPersona: 70_000,
+    nombre: 'Inmaculada', etiqueta: 'Inmaculada', desde: '2026-12-04', hasta: '2026-12-07',
+    single: 103_000, porPersona: 56_000, minNoches: 2, ...EF,
   },
   {
-    nombre: 'Navidad', etiqueta: 'Navidad',
-    desde: '2026-12-24', hasta: '2026-12-26',
-    single: 120_000, porPersona: 70_000,
+    nombre: 'Diciembre', desde: '2026-12-08', hasta: '2026-12-23',
+    single: 90_000, porPersona: 48_000, minNoches: 1, ...EF,
+    porPersonaPorDia: { 5: 53_000, 6: 53_000 }, singlePorDia: { 5: 95_000, 6: 95_000 },
   },
   {
-    nombre: 'Año Nuevo', etiqueta: 'Año Nuevo',
-    desde: '2026-12-31', hasta: '2026-12-31',
-    single: 130_000, porPersona: 80_000,
+    nombre: 'Navidad', etiqueta: 'Navidad', desde: '2026-12-24', hasta: '2026-12-26',
+    single: 103_000, porPersona: 56_000, minNoches: 2, ...EF,
+    porPersonaPorDia: { 4: 54_000 }, singlePorDia: { 4: 86_000 },   // jue 24
+  },
+  { nombre: 'Fin de año', desde: '2026-12-27', hasta: '2026-12-27', single: 103_000, porPersona: 55_000, minNoches: 3, ...EF },
+  { nombre: 'Fin de año', desde: '2026-12-28', hasta: '2026-12-30', single: 111_000, porPersona: 59_000, minNoches: 3, ...EF },
+  {
+    nombre: 'Año Nuevo', etiqueta: 'Año Nuevo', desde: '2026-12-31', hasta: '2026-12-31',
+    single: 129_000, porPersona: 70_000, minNoches: 3, ...EF,
+  },
+  // Enero
+  {
+    nombre: 'Enero', desde: '2027-01-01', hasta: '2027-01-31',
+    single: 135_000, porPersona: 80_000, minNoches: 3, ...EF,
+    porPersonaPorDia: { 5: 84_000, 6: 88_000 }, singlePorDia: { 5: 168_000, 6: 176_000 },
+  },
+  // Febrero. Carnaval va primero: tarifaEspecialDe se queda con la primera que coincide.
+  {
+    nombre: 'Carnaval', desde: '2027-02-05', hasta: '2027-02-08',
+    single: 156_000, porPersona: 78_000, minNoches: 3, ...EF,
+    porPersonaPorDia: { 6: 82_000, 0: 82_000 }, singlePorDia: { 6: 164_000, 0: 164_000 },
   },
   {
-    nombre: 'Alta 2027',
-    desde: '2027-01-01', hasta: '2027-02-15',
-    single: 120_000, porPersona: 60_000,
-    porPersonaPorDia: { 5: 65_000, 6: 70_000 },
-    singleComoDoble: true,
-    descuentoEfectivo: 0.10,
+    nombre: 'Febrero', desde: '2027-02-01', hasta: '2027-02-15',
+    single: 136_000, porPersona: 74_000, minNoches: 3, ...EF,
+    porPersonaPorDia: { 5: 76_000, 6: 78_000 }, singlePorDia: { 5: 152_000, 6: 156_000 },
+  },
+  {
+    nombre: 'Febrero', desde: '2027-02-16', hasta: '2027-02-21',
+    single: 123_000, porPersona: 69_000, minNoches: 2, ...EF,
+    porPersonaPorDia: { 5: 72_000, 6: 73_000 }, singlePorDia: { 5: 128_000, 6: 130_000 },
+  },
+  {
+    nombre: 'Febrero', desde: '2027-02-22', hasta: '2027-02-28',
+    single: 119_000, porPersona: 67_000, minNoches: 2, ...EF,
+    porPersonaPorDia: { 5: 70_000, 6: 71_000 }, singlePorDia: { 5: 124_000, 6: 126_000 },
   },
 ]
 
@@ -82,7 +113,7 @@ export const TARIFAS_ESPECIALES: TarifaEspecial[] = [
 export function precioEspecialDe(esp: TarifaEspecial, diaDeLaSemana: number, pax: number): number {
   const pp = esp.porPersonaPorDia?.[diaDeLaSemana] ?? esp.porPersona
   if (pax !== 1) return pp
-  return esp.singleComoDoble ? 2 * pp : esp.single
+  return esp.singleComoDoble ? 2 * pp : esp.singlePorDia?.[diaDeLaSemana] ?? esp.single
 }
 
 // ── Ajustes por día cargados por el admin desde Recepción → Tarifas ─────────
