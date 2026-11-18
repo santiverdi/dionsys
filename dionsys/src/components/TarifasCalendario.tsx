@@ -401,9 +401,15 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                         {cotizacion.n20 > 0 && cotizacion.n10 === 0 ? ' (20% off)' : cotizacion.n10 > 0 && cotizacion.n20 === 0 ? ' (10% off)' : ''}
                       </p>
                     )}
+                    {/* Promo de temporada: no se suma al efectivo; la seña sale de su total, igual que en el mensaje. */}
+                    {cotizacion.promo && (
+                      <p className="text-sm text-emerald-700 font-medium">
+                        🎁 {money(cotizacion.promo.total)} con la promo (transferencia o efectivo)
+                      </p>
+                    )}
                     {cotizacion.sena > 0 && (
                       <p className="text-sm text-navy-500">
-                        Seña {Math.round(cotizacion.sena * 100)}%: <b>{money(Math.round(cotizacion.total * cotizacion.sena))}</b>
+                        Seña {Math.round(cotizacion.sena * 100)}%: <b>{money(Math.round((cotizacion.promo?.total ?? cotizacion.total) * cotizacion.sena))}</b>
                       </p>
                     )}
                   </div>

@@ -164,6 +164,38 @@ export function infoDia(
   }
 }
 
+// ── Promociones automáticas de temporada 2026/2027 ──────────────────────────
+// Se decide por la fecha de la PRIMERA noche y vale en todas las fechas (también
+// findes largos y feriados). Solo descuenta la noche MÁS BARATA de la estadía
+// (por precio de lista), una sola vez aunque sean 14 noches. No es acumulable con el descuento por
+// efectivo: la promo vale igual con transferencia o efectivo, y el huésped se
+// queda con lo que más le convenga (ver armarMensaje en CotizacionMensaje.tsx).
+
+export type TipoPromo = 'mitad' | 'gratis'
+
+export interface PromoEstadia {
+  tipo: TipoPromo
+  total: number   // lo que se cobra con la promo, con cualquier medio de pago
+}
+
+/** 5 noches o más: la más barata a mitad. En diciembre también para 7 o más. */
+const PROMO_MITAD = { desde: '2026-12-01', hasta: '2027-02-28', minNoches: 5 }
+/** 7 noches o más desde enero: la más barata gratis. */
+const PROMO_GRATIS = { desde: '2027-01-01', hasta: '2027-02-28', minNoches: 7 }
+
+export const PROMO_TEXTO: Record<TipoPromo, string> = {
+  mitad: 'Promo 5 noches: la noche más barata a mitad de precio',
+  gratis: 'Promo 7 noches: la noche más barata gratis',
+}
+
+/** Qué promo corresponde a una estadía que arranca esa noche, si alguna. */
+export function tipoPromoDe(llegada: string, noches: number): TipoPromo | null {
+  const en = (r: { desde: string; hasta: string }) => r.desde <= llegada && llegada <= r.hasta
+  if (noches >= PROMO_GRATIS.minNoches && en(PROMO_GRATIS)) return 'gratis'
+  if (noches >= PROMO_MITAD.minNoches && en(PROMO_MITAD)) return 'mitad'
+  return null
+}
+
 export interface Cotizacion {
   noches: number
   total: number
@@ -179,6 +211,7 @@ export interface Cotizacion {
   descGeneral: number    // el descuento por cualquier medio más alto de la estadía
   bloqueadas: string[]   // noches de la estadía sin disponibilidad
   incompleta: boolean    // alguna noche quedó fuera de la vigencia (sin precio)
+  promo: PromoEstadia | null   // promo de temporada; NO se suma a efectivo ni conDescuento
 }
 
 /** Cotiza las noches [llegada, salida) — mismas cuentas que el calculador público. */
@@ -192,6 +225,7 @@ export function cotizarEstadia(
 ): Cotizacion {
   let total = 0, conDescuento = 0, efectivo = 0, n20 = 0, n10 = 0, sena = 0
   let noches = 0, incompleta = false, descGeneral = 0
+  let masBarata = Infinity   // subtotal de lista de la noche más barata (la que toca la promo)
   const findes = new Set<string>()
   const etiquetas = new Set<string>()
   const bloqueadas: string[] = []
@@ -214,18 +248,26 @@ export function cotizarEstadia(
     else n10++
     descGeneral = Math.max(descGeneral, info.descGeneral)
     total += sub
+    masBarata = Math.min(masBarata, sub)
     conDescuento += sub * (1 - info.descGeneral)
     efectivo += sub * (1 - info.descEfectivo)
   }
 
   const { minNoches, regla } = minimoEstadia(llegada, salida, t, especiales, estadias)
+
+  // La promo sale del precio de lista. Si un descuento con cualquier medio ya
+  // deja la estadía igual o más barata, no hay promo que ofrecer (no se suman).
+  const tipo = incompleta ? null : tipoPromoDe(llegada, noches)
+  const totalPromo = tipo ? Math.round(total - (tipo === 'gratis' ? 1 : 0.5) * masBarata) : 0
+  const promo = tipo && totalPromo < Math.round(conDescuento) ? { tipo, total: totalPromo } : null
+
   return {
     noches, total,
     conDescuento: Math.round(conDescuento),
     efectivo: Math.round(efectivo),
     n20, n10, minNoches, reglaMin: regla, sena,
     findes: [...findes], especiales: [...etiquetas], descGeneral,
-    bloqueadas, incompleta,
+    bloqueadas, incompleta, promo,
   }
 }
 
@@ -239,9 +281,10 @@ function sumarDias(fecha: string, n: number): string {
 }
 
 export interface CuadreWeb {
-  tipo: 'lista' | 'efectivo'
+  tipo: 'lista' | 'efectivo' | 'promo'
   noches: number
   llegada: string
+  promo?: TipoPromo   // solo con tipo 'promo'
 }
 
 /**
@@ -251,7 +294,9 @@ export interface CuadreWeb {
  * y [f, f+n) —pago al llegar—. A diferencia de las tarifas pactadas planas,
  * acá entran los vie/sáb más caros, los findes largos con recargo, el tope por
  * persona y el descuento por efectivo noche a noche.
- * 'lista' gana si cuadra con ambos. undefined = no cuadra con ninguna ventana.
+ * 'lista' gana si cuadra con ambos; después 'promo' (la promo de temporada,
+ * que vale con cualquier medio de pago) y por último 'efectivo'.
+ * undefined = no cuadra con ninguna ventana.
  *
  * Se prueban las dos versiones del cálculo: con las tarifas especiales pactadas
  * y sin ellas. Mientras la landing siga publicando los precios viejos, una
@@ -278,6 +323,7 @@ export function cuadraConTarifarioPublico(
   const listas = especiales.length ? [especiales, []] : [especiales]
 
   let efectivoMatch: CuadreWeb | undefined
+  let promoMatch: CuadreWeb | undefined
   for (const lista of listas) {
     for (const [a, b] of ventanas) {
       const c = cotizarEstadia(a, b, plazas, t, lista)
@@ -286,10 +332,13 @@ export function cuadraConTarifarioPublico(
       if (Math.abs(total - c.total) <= EPS || Math.abs(total - c.conDescuento) <= EPS) {
         return { tipo: 'lista', noches: c.noches, llegada: a }
       }
+      if (!promoMatch && c.promo && Math.abs(total - c.promo.total) <= EPS) {
+        promoMatch = { tipo: 'promo', noches: c.noches, llegada: a, promo: c.promo.tipo }
+      }
       if (!efectivoMatch && Math.abs(total - c.efectivo) <= EPS) {
         efectivoMatch = { tipo: 'efectivo', noches: c.noches, llegada: a }
       }
     }
   }
-  return efectivoMatch
+  return promoMatch ?? efectivoMatch
 }

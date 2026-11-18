@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check, Copy, MessageCircle } from 'lucide-react'
-import { diaSemana, type Cotizacion } from '../lib/tarifaDiaria'
+import { diaSemana, PROMO_TEXTO, type Cotizacion } from '../lib/tarifaDiaria'
 
 // Mensaje listo para mandarle al huésped con la cotización que el conserje
 // acaba de marcar en el calendario de Tarifas. Mismas cifras que la tarjeta de
@@ -19,17 +19,31 @@ export function armarMensaje(llegada: string, salida: string, pax: number, c: Co
     `🛏️ ${c.noches} ${c.noches === 1 ? 'noche' : 'noches'} · ${pax} ${pax === 1 ? 'persona' : 'personas'}`,
     '',
   ]
-  // Transferencia = precio común (con el descuento que vale con cualquier medio, si hay).
-  const conDesc = c.conDescuento < c.total ? ` (${Math.round(c.descGeneral * 100)}% off sobre ${money(c.total)})` : ''
-  l.push(`🏦 Transferencia: *${money(c.conDescuento)}*${conDesc}`)
-  if (c.efectivo < c.conDescuento) l.push(`💵 En efectivo: *${money(c.efectivo)}*`)
+  const p = c.promo
+  if (p) {
+    // La promo vale con transferencia o efectivo y NO se suma al descuento por
+    // efectivo. Solo si el efectivo sale más barato que la promo se muestran las
+    // dos para que el huésped elija; si no, una sola línea para no confundir.
+    l.push(`🎁 ${PROMO_TEXTO[p.tipo]} → *${money(p.total)}* (transferencia o efectivo)`)
+    if (c.efectivo < p.total - 1) {
+      l.push(`💵 En efectivo: *${money(c.efectivo)}*`, 'No son acumulables: se aplica el que más te convenga.')
+    }
+  } else {
+    // Transferencia = precio común (con el descuento que vale con cualquier medio, si hay).
+    const conDesc = c.conDescuento < c.total ? ` (${Math.round(c.descGeneral * 100)}% off sobre ${money(c.total)})` : ''
+    l.push(`🏦 Transferencia: *${money(c.conDescuento)}*${conDesc}`)
+    if (c.efectivo < c.conDescuento) l.push(`💵 En efectivo: *${money(c.efectivo)}*`)
+  }
+  // Las cuotas son con tarjeta: precio de lista, sin promo.
   if (cuotas.length) {
     const op = cuotas.map(n => `${n} cuotas de ${money(Math.round(c.total / n))}`).join(' o ')
     l.push(`💳 Sin interés con Banco Provincia: ${op}`)
   }
   if (c.minNoches > 1) l.push('', `ℹ️ Para esas fechas la estadía mínima es de ${c.minNoches} noches.`)
   if (c.sena > 0) {
-    l.push('', `Para reservar se abona una seña del ${Math.round(c.sena * 100)}% (${money(Math.round(c.total * c.sena))}).`)
+    // Con promo, la seña sale del total que efectivamente se cobra.
+    const base = p ? p.total : c.total
+    l.push('', `Para reservar se abona una seña del ${Math.round(c.sena * 100)}% (${money(Math.round(base * c.sena))}).`)
   }
   l.push('', 'Incluye desayuno buffet. ¡Cualquier consulta, avisanos!')
   return l.join('\n')
