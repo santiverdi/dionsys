@@ -166,30 +166,83 @@ export function infoDia(
 
 // ── Promociones automáticas de temporada 2026/2027 ──────────────────────────
 // Se decide por la fecha de la PRIMERA noche y vale en todas las fechas (también
-// findes largos y feriados). Solo descuenta la noche MÁS BARATA de la estadía
-// (por precio de lista), una sola vez aunque sean 14 noches. No es acumulable con el descuento por
+// findes largos y feriados). Descuenta la ÚLTIMA noche de la estadía (por precio
+// de lista), como dicen los anuncios, una sola vez aunque sean 14 noches. No es acumulable con el descuento por
 // efectivo: la promo vale igual con transferencia o efectivo, y el huésped se
 // queda con lo que más le convenga (ver armarMensaje en CotizacionMensaje.tsx).
+//
+// Reserva anticipada: un % sobre la lista de las noches que caen en su rango,
+// si se cotiza con suficiente anticipación a la llegada. Es configuración en la
+// nube (almacén 'dionsys_promo_anticipada'), no código. Compite con las de
+// estadía: queda la que deja el menor total.
 
-export type TipoPromo = 'mitad' | 'gratis'
+export type TipoPromo = 'mitad' | 'gratis' | 'anticipada'
 
 export interface PromoEstadia {
   tipo: TipoPromo
   total: number   // lo que se cobra con la promo, con cualquier medio de pago
+  titulo?: string    // solo anticipada: línea 🎁 ya armada
+  validez?: string   // solo anticipada: "Válido reservando con seña hasta el DD/MM."
 }
 
-/** 5 noches o más: la más barata a mitad. En diciembre también para 7 o más. */
+export const KEY_PROMO_ANTICIPADA = 'dionsys_promo_anticipada'
+
+export interface PromoAnticipada {
+  activo: boolean
+  nombre: string
+  porcentaje: number        // fracción: 0.15 = 15%
+  desde: string             // primera NOCHE con descuento (inclusive)
+  hasta: string             // última NOCHE con descuento (inclusive)
+  diasAnticipacion: number  // llegada − fecha de cotización tiene que ser >= esto
+  texto: string             // "{porcentaje}" se reemplaza por el número
+  validez: string           // "{fecha}" se reemplaza por llegada − diasAnticipacion (DD/MM)
+}
+
+const esFecha = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+
+/** La config guardada si está activa y bien formada; si no, null (sin promo). */
+export function validarPromoAnticipada(v: unknown): PromoAnticipada | null {
+  if (!v || typeof v !== 'object') return null
+  const p = v as PromoAnticipada
+  if (p.activo !== true) return null
+  if (typeof p.porcentaje !== 'number' || !(p.porcentaje > 0 && p.porcentaje < 1)) return null
+  if (!esFecha(p.desde) || !esFecha(p.hasta) || p.hasta < p.desde) return null
+  if (!Number.isInteger(p.diasAnticipacion) || p.diasAnticipacion < 0) return null
+  if (typeof p.texto !== 'string' || typeof p.validez !== 'string') return null
+  return p
+}
+
+export function leerPromoAnticipada(): PromoAnticipada | null {
+  try {
+    return validarPromoAnticipada(JSON.parse(globalThis.localStorage?.getItem(KEY_PROMO_ANTICIPADA) ?? 'null'))
+  } catch {
+    return null
+  }
+}
+
+/** Hoy en hora de Buenos Aires (YYYY-MM-DD), sin importar el huso del equipo. */
+export function hoyBuenosAires(ahora: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(ahora)
+}
+
+export interface OpcionesCotizacion {
+  anticipada?: PromoAnticipada | null   // sin config = sin reserva anticipada (así cotiza la caja)
+  hoy?: string                          // fecha de la cotización; por defecto hoy en Buenos Aires
+}
+
+/** 5 noches o más: la última a mitad. En diciembre también para 7 o más. */
 const PROMO_MITAD = { desde: '2026-12-01', hasta: '2027-02-28', minNoches: 5 }
-/** 7 noches o más desde enero: la más barata gratis. */
+/** 7 noches o más desde enero: la última gratis. */
 const PROMO_GRATIS = { desde: '2027-01-01', hasta: '2027-02-28', minNoches: 7 }
 
 export const PROMO_TEXTO: Record<TipoPromo, string> = {
-  mitad: 'Promo 5 noches: la noche más barata a mitad de precio',
-  gratis: 'Promo 7 noches: la noche más barata gratis',
+  mitad: 'Promo 5 noches: la última noche a mitad de precio',
+  gratis: 'Promo 7 noches: la última noche gratis',
+  anticipada: 'Reserva anticipada',
 }
 
 /** Qué promo corresponde a una estadía que arranca esa noche, si alguna. */
-export function tipoPromoDe(llegada: string, noches: number): TipoPromo | null {
+export function tipoPromoDe(llegada: string, noches: number): Exclude<TipoPromo, 'anticipada'> | null {
   const en = (r: { desde: string; hasta: string }) => r.desde <= llegada && llegada <= r.hasta
   if (noches >= PROMO_GRATIS.minNoches && en(PROMO_GRATIS)) return 'gratis'
   if (noches >= PROMO_MITAD.minNoches && en(PROMO_MITAD)) return 'mitad'
@@ -222,10 +275,13 @@ export function cotizarEstadia(
   t: TarifarioPublico,
   especiales: TarifaEspecial[] = especialesVigentes(),
   estadias: EstadiaMinima[] = leerEstadiasMinimas(),
+  opciones: OpcionesCotizacion = {},
 ): Cotizacion {
   let total = 0, conDescuento = 0, efectivo = 0, n20 = 0, n10 = 0, sena = 0
   let noches = 0, incompleta = false, descGeneral = 0
-  let masBarata = Infinity   // subtotal de lista de la noche más barata (la que toca la promo)
+  let ultima = 0      // subtotal de lista de la última noche (la que toca la promo de estadía)
+  let descAnt = 0     // descuento de la reserva anticipada (noches dentro de su rango)
+  const ant = opciones.anticipada ?? null
   const findes = new Set<string>()
   const etiquetas = new Set<string>()
   const bloqueadas: string[] = []
@@ -248,7 +304,8 @@ export function cotizarEstadia(
     else n10++
     descGeneral = Math.max(descGeneral, info.descGeneral)
     total += sub
-    masBarata = Math.min(masBarata, sub)
+    ultima = sub
+    if (ant && ant.desde <= fecha && fecha <= ant.hasta) descAnt += sub * ant.porcentaje
     conDescuento += sub * (1 - info.descGeneral)
     efectivo += sub * (1 - info.descEfectivo)
   }
@@ -257,9 +314,22 @@ export function cotizarEstadia(
 
   // La promo sale del precio de lista. Si un descuento con cualquier medio ya
   // deja la estadía igual o más barata, no hay promo que ofrecer (no se suman).
+  // Entre la de estadía y la anticipada queda la de menor total (no se suman).
+  const candidatas: PromoEstadia[] = []
   const tipo = incompleta ? null : tipoPromoDe(llegada, noches)
-  const totalPromo = tipo ? Math.round(total - (tipo === 'gratis' ? 1 : 0.5) * masBarata) : 0
-  const promo = tipo && totalPromo < Math.round(conDescuento) ? { tipo, total: totalPromo } : null
+  if (tipo) candidatas.push({ tipo, total: Math.round(total - (tipo === 'gratis' ? 1 : 0.5) * ultima) })
+  const hoy = opciones.hoy ?? hoyBuenosAires()
+  if (ant && !incompleta && descAnt > 0 && (aDia(llegada) - aDia(hoy)) / 86_400_000 >= ant.diasAnticipacion) {
+    const limite = sumarDias(llegada, -ant.diasAnticipacion)
+    candidatas.push({
+      tipo: 'anticipada',
+      total: Math.round(total - descAnt),
+      titulo: ant.texto.replace('{porcentaje}', String(Math.round(ant.porcentaje * 100))),
+      validez: ant.validez.replace('{fecha}', `${limite.slice(8, 10)}/${limite.slice(5, 7)}`),
+    })
+  }
+  const mejor = candidatas.reduce<PromoEstadia | null>((m, p) => (!m || p.total < m.total ? p : m), null)
+  const promo = mejor && mejor.total < Math.round(conDescuento) ? mejor : null
 
   return {
     noches, total,
