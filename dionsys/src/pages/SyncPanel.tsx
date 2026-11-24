@@ -26,6 +26,7 @@ const LABELS: Record<SyncedKey, string> = {
   dionsys_tarifas: 'Tarifas pactadas',
   dionsys_tarifas_dia: 'Precios por día (Recepción → Tarifas)',
   dionsys_estadias_minimas: 'Estadías mínimas (Recepción → Tarifas)',
+  dionsys_promo_anticipada: 'Promo reserva anticipada (Recepción → Tarifas)',
   dionsys_prisma_tarjetas: 'Conciliación Prisma (tarjetas)',
   dionsys_lavadero_movs: 'Lavadero — remitos',
   dionsys_lavadero_liqs: 'Lavadero — liquidaciones',

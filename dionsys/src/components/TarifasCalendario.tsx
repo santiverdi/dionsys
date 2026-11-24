@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, Eraser, Pencil } from 'lucide-react'
 import { expandirRango, fetchTarifarioPublicado, type TarifarioPublico } from '../lib/landing'
-import { cotizarEstadia, diaSemana, estadiaMinimaDe, infoDia, textoMinimo } from '../lib/tarifaDiaria'
+import {
+  KEY_PROMO_ANTICIPADA, cotizarEstadia, diaSemana, estadiaMinimaDe, hoyBuenosAires, infoDia, leerPromoAnticipada,
+  textoMinimo, validarPromoAnticipada, type PromoAnticipada,
+} from '../lib/tarifaDiaria'
 import {
   KEY_AJUSTES_TARIFA, KEY_ESTADIAS_MINIMAS, especialesConAjustes, leerAjustes, leerEstadiasMinimas,
   type AjustesTarifa, type EstadiaMinima,
@@ -79,6 +82,8 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   const especiales = useMemo(() => especialesConAjustes(ajustes), [ajustes])
   const [estadias, setEstadias] = useState<EstadiaMinima[]>(leerEstadiasMinimas)
   useCloudSync<EstadiaMinima[]>(KEY_ESTADIAS_MINIMAS, useCallback(v => setEstadias(Array.isArray(v) ? v : []), []))
+  const [promoAnt, setPromoAnt] = useState<PromoAnticipada | null>(leerPromoAnticipada)
+  useCloudSync<unknown>(KEY_PROMO_ANTICIPADA, useCallback(v => setPromoAnt(validarPromoAnticipada(v)), []))
 
   // Modo edición (solo admin): noches marcadas para cambiarles el precio.
   const [editando, setEditando] = useState(false)
@@ -124,7 +129,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
 
   // Mientras arrastra, el día bajo el dedo hace de salida tentativa.
   const fin = salida ?? (arrastrando && llegada && hoverDia && hoverDia > llegada ? hoverDia : null)
-  const cotizacion = tarifario && llegada && fin ? cotizarEstadia(llegada, fin, pax, tarifario, especiales, estadias) : null
+  const cotizacion = tarifario && llegada && fin
+    ? cotizarEstadia(llegada, fin, pax, tarifario, especiales, estadias, { anticipada: promoAnt, hoy: hoyBuenosAires() })
+    : null
   const cortaParaMinimo = !!cotizacion && cotizacion.noches < cotizacion.minNoches
 
   function diaDeEvento(e: React.PointerEvent): string | null {
