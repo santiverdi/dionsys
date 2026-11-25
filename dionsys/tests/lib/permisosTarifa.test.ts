@@ -78,8 +78,11 @@ describe('esDuenoTarifas', () => {
 describe('cloudStore: las claves de tarifas no se suben con persist()', () => {
   it('coinciden con clave_tarifa_protegida() del SQL', async () => {
     const fs = await import('node:fs')
-    const sql = fs.readFileSync(new URL('../../supabase/etapa1_tarifas.sql', import.meta.url), 'utf8')
-    const bloque = sql.slice(sql.indexOf('select k in ('), sql.indexOf(')\n$$;'))
+    // La definición vigente es la de la última etapa que la redefine. Sin \r
+    // para que el test dé igual en Windows (git convierte los saltos de línea).
+    const sql = fs.readFileSync(new URL('../../supabase/etapa2_tarifas.sql', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+    const inicio = sql.indexOf('select k in (')
+    const bloque = sql.slice(inicio, sql.indexOf(')\n$$;', inicio))
     const delSql = [...bloque.matchAll(/'(dionsys_[a-z_]+)'/g)].map(m => m[1]).sort()
     expect(delSql).toEqual([...TARIFA_KEYS].sort())
   })

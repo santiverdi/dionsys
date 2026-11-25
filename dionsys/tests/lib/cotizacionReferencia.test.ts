@@ -8,6 +8,7 @@ import { especialesConAjustes, type AjustesTarifa } from '../../src/lib/tarifasE
 import tarifarioProd from '../fixtures/produccion_2026-11-25/tarifario_publico.json'
 import ajustesProd from '../fixtures/produccion_2026-11-25/tarifas_dia.json'
 import promoProd from '../fixtures/produccion_2026-11-25/promo_anticipada.json'
+import { promosVigentes, type Promo } from '../../src/lib/promos'
 
 // RED DE SEGURIDAD de Recepción → Tarifas.
 //
@@ -21,6 +22,15 @@ import promoProd from '../fixtures/produccion_2026-11-25/promo_anticipada.json'
 // "arregla" regenerando la referencia: primero hay que confirmar con el dueño
 // que el cambio de precio es a propósito. Regenerar (solo con su OK):
 //   GENERAR_REFERENCIA=1 npx vitest run tests/lib/cotizacionReferencia.test.ts
+//
+// Cambios a propósito, con OK del dueño:
+//   - Etapa 2: si la estadía tiene noches dentro y fuera del rango de la
+//     anticipada, el texto dice en qué noches aplica ("cruza de enero a
+//     febrero": "…en las noches hasta el 31/01"). Los montos no cambiaron.
+//
+// Etapa 2: cada caso se cotiza DOS veces, con la anticipada vieja (como
+// cotizaba la app) y con la lista de promos migrada ('dionsys_promos'), y las
+// dos tienen que dar exactamente la referencia.
 
 const DIR = path.resolve(__dirname, '../fixtures/produccion_2026-11-25')
 const ARCHIVO = path.join(DIR, 'referencia_cotizaciones.json')
@@ -60,9 +70,12 @@ const CASOS: Caso[] = [
   { nombre: 'Carnaval 5 al 8/2', llegada: '2027-02-05', salida: '2027-02-08', pax: 2 },
 ]
 
-function resultado(c: Caso) {
+// La lista migrada, ida y vuelta por JSON como queda guardada en la nube.
+const MIGRADAS: Promo[] = JSON.parse(JSON.stringify(promosVigentes(null, anticipada)))
+
+function resultado(c: Caso, promos?: Promo[]) {
   const hoy = c.hoy ?? HOY
-  const cot = cotizarEstadia(c.llegada, c.salida, c.pax, t, especiales, [], { anticipada, hoy })
+  const cot = cotizarEstadia(c.llegada, c.salida, c.pax, t, especiales, [], promos ? { promos, hoy } : { anticipada, hoy })
   const precios: Record<string, number | null> = {}
   for (let d = Date.parse(c.llegada + 'T00:00:00Z'); d < Date.parse(c.salida + 'T00:00:00Z'); d += 86_400_000) {
     const f = new Date(d).toISOString().slice(0, 10)
@@ -102,6 +115,14 @@ describe('cotizaciones de referencia (producción 25/11/2026)', () => {
   for (const c of CASOS) {
     it(c.nombre, () => {
       expect(actual[c.nombre]).toEqual(referencia[c.nombre])
+    })
+  }
+})
+
+describe('cotizaciones de referencia con las promos migradas a configuración (etapa 2)', () => {
+  for (const c of CASOS) {
+    it(c.nombre, () => {
+      expect(resultado(c, MIGRADAS)).toEqual(referencia[c.nombre])
     })
   }
 })

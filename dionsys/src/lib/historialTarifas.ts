@@ -28,6 +28,7 @@ export const NOMBRE_CLAVE: Record<string, string> = {
   dionsys_estadias_minimas: 'Estadías mínimas por fechas',
   dionsys_promo_anticipada: 'Reserva anticipada',
   dionsys_tarifas_protecciones: 'Protecciones al guardar',
+  dionsys_promos: 'Promos',
   dionsys_tarifas: 'Tarifas pactadas (control de caja)',
   tarifario_publico: 'Tarifario público (página web)',
 }
@@ -35,7 +36,7 @@ export const NOMBRE_CLAVE: Record<string, string> = {
 /** Las claves que se pueden volver atrás desde la app (el tarifario público se republica desde Web). */
 export const CLAVES_REVERTIBLES = [
   'dionsys_tarifas_dia', 'dionsys_estadias_minimas', 'dionsys_promo_anticipada',
-  'dionsys_tarifas_protecciones', 'dionsys_tarifas',
+  'dionsys_tarifas_protecciones', 'dionsys_tarifas', 'dionsys_promos',
 ] as const
 
 export const esRevertible = (clave: string) => (CLAVES_REVERTIBLES as readonly string[]).includes(clave)

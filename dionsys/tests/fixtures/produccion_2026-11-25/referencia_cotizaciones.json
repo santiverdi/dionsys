@@ -666,7 +666,7 @@
     "promo": {
       "tipo": "anticipada",
       "total": 576400,
-      "titulo": "Reserva anticipada: 15% de descuento ya aplicado en tu tarifa",
+      "titulo": "Reserva anticipada: 15% de descuento en las noches hasta el 31/01",
       "validez": "Válido reservando con seña hasta el 09/01."
     },
     "minNoches": 3,
@@ -682,7 +682,7 @@
         "monto": 108667
       }
     ],
-    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 29/01 · salida martes 02/02\n🛏️ 4 noches · 2 personas\n\n🎁 Reserva anticipada: 15% de descuento ya aplicado en tu tarifa\n~$652.000~ → *$576.400* (transferencia o efectivo)\nVálido reservando con seña hasta el 09/01.\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $163.000 o 6 cuotas de $108.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($172.920).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 29/01 · salida martes 02/02\n🛏️ 4 noches · 2 personas\n\n🎁 Reserva anticipada: 15% de descuento en las noches hasta el 31/01\n~$652.000~ → *$576.400* (transferencia o efectivo)\nVálido reservando con seña hasta el 09/01.\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $163.000 o 6 cuotas de $108.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($172.920).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
   },
   "cruza de noviembre a diciembre": {
     "hoy": "2026-11-25",
