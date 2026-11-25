@@ -3,6 +3,7 @@ import { Outlet, NavLink, Link, useLocation, useNavigate } from 'react-router-do
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
 import { useEsDuenoTarifas } from '../lib/permisosTarifa'
+import { usePropuestasPendientes } from '../lib/propuestas'
 import { NAV_GROUPS, findNavItem, type NavGroup } from '../utils/nav'
 import { Menu, X, LogOut, ChevronRight } from 'lucide-react'
 import type { Role } from '../types'
@@ -22,7 +23,11 @@ const roleLabel: Record<string, string> = {
   encargada: 'Encargada',
 }
 
-function NavGroups({ groups, onNavigate }: { groups: NavGroup[]; onNavigate?: () => void }) {
+function NavGroups({ groups, onNavigate, contadores = {} }: {
+  groups: NavGroup[]
+  onNavigate?: () => void
+  contadores?: Partial<Record<'propuestas', number>>
+}) {
   // Si el rol solo ve un grupo, el título sobra.
   const conTitulos = groups.filter(g => g.title).length > 1
   return (
@@ -45,6 +50,11 @@ function NavGroups({ groups, onNavigate }: { groups: NavGroup[]; onNavigate?: ()
             >
               <item.icon size={18} className="shrink-0" />
               {item.label}
+              {item.contador && (contadores[item.contador] ?? 0) > 0 && (
+                <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-white text-xs font-bold flex items-center justify-center">
+                  {contadores[item.contador]}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>
@@ -60,6 +70,7 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const esDueno = useEsDuenoTarifas(employee)
+  const contadores = { propuestas: usePropuestasPendientes(esDueno) }
   const role = employee?.role as Role | undefined
   const groups = NAV_GROUPS
     .map(g => ({ ...g, items: g.items.filter(i =>
@@ -86,7 +97,7 @@ export default function Layout() {
           <h1 className="text-xl font-bold tracking-wide">DionSys</h1>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 pb-3">
-          <NavGroups groups={groups} />
+          <NavGroups groups={groups} contadores={contadores} />
         </nav>
         <div className="border-t border-navy-700 px-4 py-3 flex items-center justify-between gap-2 shrink-0">
           <div className="min-w-0">
@@ -111,10 +122,13 @@ export default function Layout() {
               {!barraAbajo && (
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
-                  className="p-2 -ml-2 rounded-lg hover:bg-navy-700 transition-colors"
-                  aria-label="Menú"
+                  className="relative p-2 -ml-2 rounded-lg hover:bg-navy-700 transition-colors"
+                  aria-label={contadores.propuestas ? `Menú (${contadores.propuestas} propuestas pendientes)` : 'Menú'}
                 >
                   {menuOpen ? <X size={22} /> : <Menu size={22} />}
+                  {!menuOpen && contadores.propuestas > 0 && (
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-600 ring-2 ring-navy-800" />
+                  )}
                 </button>
               )}
               <h1 className="text-lg font-bold tracking-wide">DionSys</h1>
@@ -136,7 +150,7 @@ export default function Layout() {
 
           {menuOpen && !barraAbajo && (
             <nav className="border-t border-navy-700 px-3 py-2 max-h-[calc(100vh-3.5rem)] overflow-y-auto">
-              <NavGroups groups={groups} onNavigate={() => setMenuOpen(false)} />
+              <NavGroups groups={groups} onNavigate={() => setMenuOpen(false)} contadores={contadores} />
             </nav>
           )}
         </header>

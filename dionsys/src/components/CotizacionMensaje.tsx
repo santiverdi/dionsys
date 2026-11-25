@@ -65,8 +65,13 @@ export function armarMensaje(
     const base = p ? p.total : c.conDescuento
     const total = base + suma(agregados.map(a => a.conPromo))
     const nombres = agregados.map(a => minuscula(a.nombre)).join(' y ')
-    const efectivo = conEfectivo ? ` · *${money(c.efectivo + suma(agregados.map(a => a.efectivo)))}* en efectivo` : ''
-    l.push(`💰 Total con ${nombres}: *${money(total)}* (${p ? 'transferencia o efectivo' : 'transferencia'})${efectivo}`)
+    if (conEfectivo) {
+      // Dos opciones arriba (promo o transferencia, y efectivo): las dos con el agregado.
+      const efectivo = c.efectivo + suma(agregados.map(a => a.efectivo))
+      l.push(`💰 Total con ${nombres}: *${money(total)}* ${p ? 'con la promo' : 'por transferencia'} · *${money(efectivo)}* pagando en efectivo`)
+    } else {
+      l.push(`💰 Total con ${nombres}: *${money(total)}* (${p ? 'transferencia o efectivo' : 'transferencia'})`)
+    }
   }
   const listaAgregados = suma(agregados.map(a => a.lista))
   // Las cuotas son con tarjeta: precio de lista, sin promo.

@@ -11,7 +11,7 @@ import {
 } from '../lib/tarifasEspeciales'
 import { useCloudSync } from '../lib/cloudStore'
 import { KEY_PROMOS, leerPromosGuardadas, promosVigentes, validarPromos, type Promo } from '../lib/promos'
-import { guardarTarifa, useEsDuenoTarifas } from '../lib/permisosTarifa'
+import { guardarTarifa, useEsDuenoTarifas, useEsDuenoTarifasEstado } from '../lib/permisosTarifa'
 import {
   KEY_PROTECCIONES, avisosAlGuardarAjustes, avisosAlGuardarEstadias, leerProtecciones, validarProtecciones,
   type ProteccionesTarifa,
@@ -19,6 +19,8 @@ import {
 import { useAuth } from '../context/AuthContext'
 import TarifasEditorDias from './TarifasEditorDias'
 import CotizacionConAgregados from './CotizacionConAgregados'
+import PropuestasConserje from './PropuestasConserje'
+import { sumarDias } from '../lib/promosPantalla'
 import EstadiasMinimasEditor from './EstadiasMinimasEditor'
 import ProteccionesTarifaEditor from './ProteccionesTarifaEditor'
 import TarifasHistorial from './TarifasHistorial'
@@ -89,6 +91,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
 
   const { employee } = useAuth()
   const esDueno = useEsDuenoTarifas(employee)
+  const noEsDueno = useEsDuenoTarifasEstado(employee) === false
   const [protecciones, setProtecciones] = useState<ProteccionesTarifa>(leerProtecciones)
   useCloudSync<unknown>(KEY_PROTECCIONES, useCallback(v => setProtecciones(validarProtecciones(v)), []))
   const { confirmar, dialogo } = useAvisosAlGuardar()
@@ -560,6 +563,12 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
           {editando && <EstadiasMinimasEditor guardadas={estadias} onGuardar={guardarEstadias} />}
           {editando && <ProteccionesTarifaEditor employee={employee} guardadas={protecciones} />}
           {editando && <TarifasHistorial employee={employee} />}
+          {noEsDueno && (
+            <PropuestasConserje
+              employee={employee} hoy={hoyBuenosAires()}
+              desdeSugerido={llegada} hastaSugerido={llegada && salida ? sumarDias(salida, -1) : llegada}
+            />
+          )}
         </>
       )}
       {dialogo}

@@ -42,7 +42,7 @@ describe('agregados en la cotización', () => {
       '💵 En efectivo: *$432.000*',
       '',
       '🍽️ Media pensión (cena con bebida): 2 personas × 3 noches → *$150.000*',
-      '💰 Total con media pensión: *$630.000* (transferencia) · *$582.000* en efectivo',
+      '💰 Total con media pensión: *$630.000* por transferencia · *$582.000* pagando en efectivo',
       '💳 Sin interés con Banco Provincia: 4 cuotas de $157.500 o 6 cuotas de $105.000',
     ].join('\n'))
     // Seña sobre alojamiento + agregado: 30% de $630.000.
@@ -57,7 +57,30 @@ describe('agregados en la cotización', () => {
   it('dos agregados: una línea cada uno y el total con los dos', () => {
     const { mensaje } = cotizar('2027-01-10', '2027-01-13', 2, [MP, PC])
     expect(mensaje).toContain('🍽️ Pensión completa: 2 personas × 3 noches → *$270.000*')
-    expect(mensaje).toContain('💰 Total con media pensión y pensión completa: *$900.000* (transferencia)')
+    expect(mensaje).toContain('💰 Total con media pensión y pensión completa: *$900.000* por transferencia · *$852.000* pagando en efectivo')
+  })
+
+  it('promo y efectivo más barato que la promo: dos totales, "con la promo" y "pagando en efectivo"', () => {
+    // 2 al 6/1 cotizado el 25/11: anticipada 15% solo el 4 y el 5 ($608.000); en efectivo sale $590.400.
+    const anticipada = {
+      id: 'ant', tipo: 'anticipada', nombre: 'Anticipada', activa: true, desde: '2027-01-04', hasta: '2027-01-31',
+      minNoches: 1, maxNoches: null, seSuma: false, porcentaje: 0.15, diasAnticipacion: 20,
+      texto: 'Reserva anticipada: {porcentaje}% de descuento ya aplicado en tu tarifa',
+      validez: 'Válido reservando con seña hasta el {fecha}.', textoParcial: 'Reserva anticipada: {porcentaje}% de descuento en las noches {rango}',
+    } as const
+    const { c, mensaje } = cotizar('2027-01-02', '2027-01-06', 2, [MP], [...PROMOS_INICIALES, anticipada], '2026-11-25')
+    expect(c.promo?.total).toBe(608_000)
+    expect(c.efectivo).toBe(590_400)
+    expect(mensaje).toContain('🍽️ Media pensión (cena con bebida): 2 personas × 4 noches → *$200.000*')
+    expect(mensaje).toContain('💰 Total con media pensión: *$808.000* con la promo · *$790.400* pagando en efectivo')
+    // Seña sobre el total con la promo.
+    expect(mensaje).toContain('seña del 30% ($242.400)')
+  })
+
+  it('con promo y sin efectivo más barato: un solo total', () => {
+    const { mensaje } = cotizar('2026-12-14', '2026-12-19', 2, [MP], PROMOS_INICIALES, '2026-11-25')
+    expect(mensaje).toContain('💰 Total con media pensión: *$634.000* (transferencia o efectivo)')
+    expect(mensaje).not.toContain('pagando en efectivo')
   })
 
   it('single: 1 persona', () => {

@@ -1,6 +1,6 @@
 import {
   Home, ConciergeBell, Building2, ClipboardCheck, Warehouse, Shirt, Wrench,
-  Wallet, Users, Receipt, Truck, Globe, LayoutDashboard, MessageCircle, KeyRound, Tag, type LucideIcon,
+  Wallet, Users, Receipt, Truck, Globe, LayoutDashboard, MessageCircle, KeyRound, Tag, Inbox, type LucideIcon,
 } from 'lucide-react'
 import type { Role } from '../types'
 
@@ -15,6 +15,8 @@ export interface NavItem {
   ocultarPara?: Role[]
   // Solo lo ve el dueño de las tarifas (src/lib/permisosTarifa.ts), no cualquier admin.
   soloDueno?: boolean
+  // Número al lado del ítem (ver Layout): propuestas pendientes de los conserjes.
+  contador?: 'propuestas'
 }
 
 export interface NavGroup {
@@ -48,6 +50,7 @@ export const NAV_GROUPS: NavGroup[] = [
   { title: 'Ventas', items: [
     { to: '/web', label: 'Página web y tarifas', short: 'Web', icon: Globe, ocultarPara: ['concierge'] },
     { to: '/promos', label: 'Promos', icon: Tag, soloDueno: true },
+    { to: '/propuestas', label: 'Propuestas', icon: Inbox, soloDueno: true, contador: 'propuestas' },
   ] },
   { title: 'Números', items: [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
