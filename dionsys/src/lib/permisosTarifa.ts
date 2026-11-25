@@ -32,16 +32,21 @@ export function esDuenoTarifas(employeeId: string | null | undefined): Promise<b
   return p
 }
 
-/** Hook: true solo cuando el servidor confirmó que el usuario logueado es el dueño. */
-export function useEsDuenoTarifas(employee: Employee | null): boolean {
+/** Hook: true/false según el servidor; null mientras todavía no respondió. */
+export function useEsDuenoTarifasEstado(employee: Employee | null): boolean | null {
   const id = employee?.id ?? null
-  const [res, setRes] = useState<{ id: string | null; ok: boolean }>({ id: null, ok: false })
+  const [res, setRes] = useState<{ id: string | null; ok: boolean } | null>(null)
   useEffect(() => {
     let activo = true
     void esDuenoTarifas(id).then(ok => { if (activo) setRes({ id, ok }) })
     return () => { activo = false }
   }, [id])
-  return res.id === id && res.ok
+  return res && res.id === id ? res.ok : null
+}
+
+/** Hook: true solo cuando el servidor confirmó que el usuario logueado es el dueño. */
+export function useEsDuenoTarifas(employee: Employee | null): boolean {
+  return useEsDuenoTarifasEstado(employee) === true
 }
 
 export interface OpcionesGuardado {

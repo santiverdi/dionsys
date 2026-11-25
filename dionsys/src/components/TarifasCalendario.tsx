@@ -18,7 +18,7 @@ import {
 } from '../lib/proteccionesTarifa'
 import { useAuth } from '../context/AuthContext'
 import TarifasEditorDias from './TarifasEditorDias'
-import CotizacionMensaje from './CotizacionMensaje'
+import CotizacionConAgregados from './CotizacionConAgregados'
 import EstadiasMinimasEditor from './EstadiasMinimasEditor'
 import ProteccionesTarifaEditor from './ProteccionesTarifaEditor'
 import TarifasHistorial from './TarifasHistorial'
@@ -530,7 +530,10 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
                   {/* Sin mensaje si la estadía no se puede vender: falta precio,
                       sin disponibilidad o no llega al mínimo de noches. */}
                   {salida && !cotizacion.incompleta && cotizacion.bloqueadas.length === 0 && cotizacion.noches >= cotizacion.minNoches && (
-                    <CotizacionMensaje llegada={llegada} salida={salida} pax={pax} cotizacion={cotizacion} cuotas={tarifario.config.cuotas ?? []} />
+                    <CotizacionConAgregados
+                      llegada={llegada} salida={salida} pax={pax} cotizacion={cotizacion}
+                      tarifario={tarifario} especiales={especiales} promos={promos} hoy={hoyBuenosAires()}
+                    />
                   )}
                 </div>
               )}
