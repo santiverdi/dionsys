@@ -20,10 +20,10 @@ export function armarMensaje(llegada: string, salida: string, pax: number, c: Co
     '',
   ]
   const p = c.promo
-  if (p?.tipo === 'anticipada') {
-    // Lista tachada (formato de WhatsApp) → total con la anticipada. El efectivo
+  if (p?.tipo === 'anticipada' || p?.tipo === 'ultimo_momento') {
+    // Lista tachada (formato de WhatsApp) → total con la promo de %. El efectivo
     // se muestra aparte solo si sale todavía más barato; nunca se suman.
-    l.push(`🎁 ${p.titulo}`, `~${money(c.total)}~ → *${money(p.total)}* (transferencia o efectivo)`)
+    l.push(`🎁 ${p.titulo ?? PROMO_TEXTO[p.tipo]}`, `~${money(c.total)}~ → *${money(p.total)}* (transferencia o efectivo)`)
     if (p.validez) l.push(p.validez)
     if (c.efectivo < p.total - 1) l.push(`💵 En efectivo: *${money(c.efectivo)}*`)
     l.push('No son acumulables: se aplica el que más te convenga.')
@@ -31,7 +31,7 @@ export function armarMensaje(llegada: string, salida: string, pax: number, c: Co
     // La promo vale con transferencia o efectivo y NO se suma al descuento por
     // efectivo. Solo si el efectivo sale más barato que la promo se muestran las
     // dos para que el huésped elija; si no, una sola línea para no confundir.
-    l.push(`🎁 ${PROMO_TEXTO[p.tipo]} → *${money(p.total)}* (transferencia o efectivo)`)
+    l.push(`🎁 ${p.titulo ?? PROMO_TEXTO[p.tipo]} → *${money(p.total)}* (transferencia o efectivo)`)
     if (c.efectivo < p.total - 1) {
       l.push(`💵 En efectivo: *${money(c.efectivo)}*`, 'No son acumulables: se aplica el que más te convenga.')
     }

@@ -1,5 +1,6 @@
 import type { TarifarioPublico } from './landing'
-import { cotizarEstadia, estadiaMinimaDe, minNochesDia, type PromoAnticipada } from './tarifaDiaria'
+import { cotizarEstadia, estadiaMinimaDe, minNochesDia, promosDeCotizacion, type PromoAnticipada } from './tarifaDiaria'
+import type { Promo } from './promos'
 import {
   especialesConAjustes, tienePrecio, type AjustesTarifa, type EstadiaMinima, type TarifaEspecial,
 } from './tarifasEspeciales'
@@ -97,7 +98,10 @@ export interface PeorDescuento {
  * El mayor descuento sobre la lista que puede llevarse un huésped en alguna
  * estadía de 1 a 14 noches que toque esas fechas, con 1 y 2 personas. Usa el
  * cálculo real (cotizarEstadia): efectivo, descuentos con cualquier medio,
- * promos de estadía y la anticipada como si se reservara con anticipación.
+ * y las promos: las que piden anticipación como si se reservara con mucha, y
+ * las de último momento como si se reservara el mismo día de la llegada.
+ * `promos` = todas las promos vigentes; si no se pasan, las por noches de
+ * siempre más `anticipada`.
  */
 export function peorDescuento(
   fechas: string[],
@@ -105,7 +109,11 @@ export function peorDescuento(
   especiales: TarifaEspecial[],
   estadias: EstadiaMinima[],
   anticipada: PromoAnticipada | null,
+  promos?: readonly Promo[],
 ): PeorDescuento | null {
+  const lista = promosDeCotizacion({ promos, anticipada })
+  // Sin promos de último momento alcanza con cotizar como si se reservara con mucha anticipación.
+  const ultimoMomento = lista.some(p => p.activa && p.tipo === 'ultimo_momento')
   let peor: PeorDescuento | null = null
   const vistas = new Set<string>()
   for (const f of fechas) {
@@ -115,11 +123,13 @@ export function peorDescuento(
         if (vistas.has(llegada + salida)) continue
         vistas.add(llegada + salida)
         for (const pax of [1, 2]) {
-          const c = cotizarEstadia(llegada, salida, pax, t, especiales, estadias, { anticipada, hoy: '2000-01-01' })
-          if (c.incompleta || c.total <= 0) continue
-          const cobrado = Math.min(c.efectivo, c.conDescuento, c.promo?.total ?? Infinity)
-          const descuento = 1 - cobrado / c.total
-          if (!peor || descuento > peor.descuento + 1e-9) peor = { descuento, llegada, salida, pax, total: c.total, cobrado }
+          for (const hoy of ultimoMomento ? ['2000-01-01', llegada] : ['2000-01-01']) {
+            const c = cotizarEstadia(llegada, salida, pax, t, especiales, estadias, { promos: lista, hoy })
+            if (c.incompleta || c.total <= 0) continue
+            const cobrado = Math.min(c.efectivo, c.conDescuento, c.promo?.total ?? Infinity)
+            const descuento = 1 - cobrado / c.total
+            if (!peor || descuento > peor.descuento + 1e-9) peor = { descuento, llegada, salida, pax, total: c.total, cobrado }
+          }
         }
       }
     }
@@ -170,7 +180,9 @@ export function avisosFindeLargo(
 export interface ContextoAvisos {
   tarifario: TarifarioPublico
   estadias: EstadiaMinima[]
-  anticipada: PromoAnticipada | null
+  anticipada?: PromoAnticipada | null
+  /** Todas las promos vigentes (si se pasan, mandan sobre `anticipada`). */
+  promos?: readonly Promo[]
   config: ProteccionesTarifa
 }
 
@@ -181,7 +193,7 @@ export function avisosAlGuardarAjustes(antes: AjustesTarifa, despues: AjustesTar
   const especiales = especialesConAjustes(despues)
   const avisos = avisosDePrecio(despues, fechas, ctx.config)
   const conPrecio = fechas.filter(f => tienePrecio(despues[f]))
-  const peor = conPrecio.length ? peorDescuento(conPrecio, ctx.tarifario, especiales, ctx.estadias, ctx.anticipada) : null
+  const peor = conPrecio.length ? peorDescuento(conPrecio, ctx.tarifario, especiales, ctx.estadias, ctx.anticipada ?? null, ctx.promos) : null
   if (peor && peor.descuento > ctx.config.topeDescuento + 1e-9) {
     avisos.push(
       `El descuento combinado llega a ${pct(peor.descuento)} (tope ${pct(ctx.config.topeDescuento)}): `

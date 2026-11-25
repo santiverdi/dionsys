@@ -10,6 +10,7 @@ import {
   type AjustesTarifa, type EstadiaMinima,
 } from '../lib/tarifasEspeciales'
 import { useCloudSync } from '../lib/cloudStore'
+import { KEY_PROMOS, leerPromosGuardadas, promosVigentes, validarPromos, type Promo } from '../lib/promos'
 import { guardarTarifa, useEsDuenoTarifas } from '../lib/permisosTarifa'
 import {
   KEY_PROTECCIONES, avisosAlGuardarAjustes, avisosAlGuardarEstadias, leerProtecciones, validarProtecciones,
@@ -99,6 +100,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   useCloudSync<EstadiaMinima[]>(KEY_ESTADIAS_MINIMAS, useCallback(v => setEstadias(Array.isArray(v) ? v : []), []))
   const [promoAnt, setPromoAnt] = useState<PromoAnticipada | null>(leerPromoAnticipada)
   useCloudSync<unknown>(KEY_PROMO_ANTICIPADA, useCallback(v => setPromoAnt(validarPromoAnticipada(v)), []))
+  const [promosGuardadas, setPromosGuardadas] = useState<Promo[] | null>(leerPromosGuardadas)
+  useCloudSync<unknown>(KEY_PROMOS, useCallback(v => setPromosGuardadas(validarPromos(v)), []))
+  const promos = useMemo(() => promosVigentes(promosGuardadas, promoAnt), [promosGuardadas, promoAnt])
 
   // Modo edición (solo admin): noches marcadas para cambiarles el precio.
   const [editando, setEditando] = useState(false)
@@ -145,7 +149,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   // Mientras arrastra, el día bajo el dedo hace de salida tentativa.
   const fin = salida ?? (arrastrando && llegada && hoverDia && hoverDia > llegada ? hoverDia : null)
   const cotizacion = tarifario && llegada && fin
-    ? cotizarEstadia(llegada, fin, pax, tarifario, especiales, estadias, { anticipada: promoAnt, hoy: hoyBuenosAires() })
+    ? cotizarEstadia(llegada, fin, pax, tarifario, especiales, estadias, { promos, hoy: hoyBuenosAires() })
     : null
   const cortaParaMinimo = !!cotizacion && cotizacion.noches < cotizacion.minNoches
 
@@ -200,7 +204,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
 
   async function guardarAjustes(nuevos: AjustesTarifa) {
     if (!tarifario) return
-    const avisos = avisosAlGuardarAjustes(ajustes, nuevos, { tarifario, estadias, anticipada: promoAnt, config: protecciones })
+    const avisos = avisosAlGuardarAjustes(ajustes, nuevos, { tarifario, estadias, promos, config: protecciones })
     if (!(await confirmar(avisos))) return
     const r = await guardarTarifa(employee, KEY_AJUSTES_TARIFA, nuevos, { motivo: avisos.length ? 'Guardado con avisos' : undefined })
     setErrorGuardado(r.error)
