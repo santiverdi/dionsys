@@ -9,11 +9,19 @@ import {
   KEY_AJUSTES_TARIFA, KEY_ESTADIAS_MINIMAS, especialesConAjustes, leerAjustes, leerEstadiasMinimas,
   type AjustesTarifa, type EstadiaMinima,
 } from '../lib/tarifasEspeciales'
-import { persist, useCloudSync } from '../lib/cloudStore'
+import { useCloudSync } from '../lib/cloudStore'
+import { guardarTarifa, useEsDuenoTarifas } from '../lib/permisosTarifa'
+import {
+  KEY_PROTECCIONES, avisosAlGuardarAjustes, avisosAlGuardarEstadias, leerProtecciones, validarProtecciones,
+  type ProteccionesTarifa,
+} from '../lib/proteccionesTarifa'
 import { useAuth } from '../context/AuthContext'
 import TarifasEditorDias from './TarifasEditorDias'
 import CotizacionMensaje from './CotizacionMensaje'
 import EstadiasMinimasEditor from './EstadiasMinimasEditor'
+import ProteccionesTarifaEditor from './ProteccionesTarifaEditor'
+import TarifasHistorial from './TarifasHistorial'
+import { useAvisosAlGuardar } from './AvisosAlGuardar'
 
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
@@ -25,8 +33,11 @@ const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 // las fechas con tarifa pactada aparte (src/lib/tarifasEspeciales.ts), que
 // mandan sobre lo publicado.
 //
-// El admin, con "Modificar precios", marca noches (tocando o arrastrando) y les
-// pone precio a mano. Esos ajustes se guardan en la nube y mandan sobre todo.
+// El DUEÑO (y nadie más: ver src/lib/permisosTarifa.ts), con "Modificar
+// precios", marca noches (tocando o arrastrando) y les pone precio a mano. Esos
+// ajustes se guardan en la nube y mandan sobre todo. Antes de guardar pasan por
+// las protecciones (src/lib/proteccionesTarifa.ts) y cada cambio queda en el
+// historial, desde donde se puede volver atrás.
 
 const money = (n: number) => '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
 
@@ -76,7 +87,11 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   const [hoverDia, setHoverDia] = useState<string | null>(null)
 
   const { employee } = useAuth()
-  const esAdmin = employee?.role === 'admin'
+  const esDueno = useEsDuenoTarifas(employee)
+  const [protecciones, setProtecciones] = useState<ProteccionesTarifa>(leerProtecciones)
+  useCloudSync<unknown>(KEY_PROTECCIONES, useCallback(v => setProtecciones(validarProtecciones(v)), []))
+  const { confirmar, dialogo } = useAvisosAlGuardar()
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
   const [ajustes, setAjustes] = useState<AjustesTarifa>(leerAjustes)
   useCloudSync<AjustesTarifa>(KEY_AJUSTES_TARIFA, useCallback(v => setAjustes(v && typeof v === 'object' ? v : {}), []))
   const especiales = useMemo(() => especialesConAjustes(ajustes), [ajustes])
@@ -183,15 +198,25 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
     if (f && tarifario && infoDia(f, pax, tarifario, especiales).precio !== null) setHoverDia(f)
   }
 
-  function guardarAjustes(nuevos: AjustesTarifa) {
+  async function guardarAjustes(nuevos: AjustesTarifa) {
+    if (!tarifario) return
+    const avisos = avisosAlGuardarAjustes(ajustes, nuevos, { tarifario, estadias, anticipada: promoAnt, config: protecciones })
+    if (!(await confirmar(avisos))) return
+    const r = await guardarTarifa(employee, KEY_AJUSTES_TARIFA, nuevos, { motivo: avisos.length ? 'Guardado con avisos' : undefined })
+    setErrorGuardado(r.error)
+    if (r.error) return
     setAjustes(nuevos)
-    persist(KEY_AJUSTES_TARIFA, nuevos)
     setMarcadas(new Set())
   }
 
-  function guardarEstadias(nuevas: EstadiaMinima[]) {
+  async function guardarEstadias(nuevas: EstadiaMinima[]): Promise<boolean> {
+    if (!tarifario) return false
+    if (!(await confirmar(avisosAlGuardarEstadias(nuevas, tarifario, especiales)))) return false
+    const r = await guardarTarifa(employee, KEY_ESTADIAS_MINIMAS, nuevas)
+    setErrorGuardado(r.error)
+    if (r.error) return false
     setEstadias(nuevas)
-    persist(KEY_ESTADIAS_MINIMAS, nuevas)
+    return true
   }
 
   function alternarEdicion() {
@@ -218,7 +243,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
       </button>
       <div className="flex items-center justify-between gap-2 mb-1">
         <h2 className="text-xl font-bold text-navy-800">Tarifas</h2>
-        {esAdmin && tarifario && (
+        {esDueno && tarifario && (
           <button
             onClick={alternarEdicion}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -236,6 +261,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
       </p>
 
       {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 mb-4">{error}</div>}
+      {editando && errorGuardado && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 mb-4">No se guardó: {errorGuardado}</div>
+      )}
       {!tarifario && !error && <p className="text-sm text-navy-400 py-8 text-center">Cargando tarifario…</p>}
 
       {tarifario && (
@@ -364,7 +392,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
               tarifario={tarifario}
               especiales={especiales}
               ajustes={ajustes}
-              onGuardar={guardarAjustes}
+              onGuardar={n => void guardarAjustes(n)}
               onCerrar={() => setMarcadas(new Set())}
             />
           )}
@@ -523,8 +551,11 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
           </p>
 
           {editando && <EstadiasMinimasEditor guardadas={estadias} onGuardar={guardarEstadias} />}
+          {editando && <ProteccionesTarifaEditor employee={employee} guardadas={protecciones} />}
+          {editando && <TarifasHistorial employee={employee} />}
         </>
       )}
+      {dialogo}
     </div>
   )
 }

@@ -44,6 +44,7 @@ export const SYNCED_KEYS = [
   'dionsys_tarifas_dia',
   'dionsys_estadias_minimas',
   'dionsys_promo_anticipada',
+  'dionsys_tarifas_protecciones',
   'dionsys_prisma_tarjetas',
   'dionsys_lavadero_movs',
   'dionsys_lavadero_liqs',
@@ -88,6 +89,23 @@ let adminAccess = false
 /** Habilita/inhabilita el sync de las ADMIN_ONLY_KEYS (solo lo llama SueldosContext). */
 export function setAdminAccess(value: boolean) {
   adminAccess = value
+}
+
+// Almacenes de TARIFAS: solo el dueño los cambia. La base rechaza la escritura
+// directa con la anon key (supabase/etapa1_tarifas.sql); se guardan con la
+// función guardar_tarifa() vía src/lib/permisosTarifa.ts, que verifica el PIN
+// del dueño y deja el cambio en tarifas_historial. Tiene que coincidir con
+// clave_tarifa_protegida() del SQL.
+export const TARIFA_KEYS: readonly SyncedKey[] = [
+  'dionsys_tarifas_dia',
+  'dionsys_estadias_minimas',
+  'dionsys_promo_anticipada',
+  'dionsys_tarifas_protecciones',
+  'dionsys_tarifas',
+]
+
+export function isTarifaKey(k: string): boolean {
+  return (TARIFA_KEYS as readonly string[]).includes(k)
 }
 
 const TABLE = 'app_state'
@@ -142,6 +160,8 @@ export async function pullAll(timeoutMs = 5000): Promise<void> {
         if (cloudKeys.has(key)) continue
         // No auto-subir datos sensibles desde un equipo sin admin logueado.
         if (isAdminOnlyKey(key) && !adminAccess) continue
+        // Las tarifas solo las sube el dueño, con guardarTarifa().
+        if (isTarifaKey(key)) continue
         const raw = localStorage.getItem(key)
         if (raw === null) continue
         try {
@@ -190,10 +210,23 @@ export function persist(key: SyncedKey, value: unknown) {
   // admin no tocamos ni localStorage ni la nube (defensa para equipos compartidos).
   if (isAdminOnlyKey(key) && !adminAccess) return
   localStorage.setItem(key, JSON.stringify(value))
+  // Las tarifas no se suben por acá (la base lo rechazaría): ver guardarTarifa().
+  if (isTarifaKey(key)) return
   // En modo consolidación NO subimos automáticamente: la nube solo se toca a mano
   // desde /sync, para que el uso normal no pise datos sin unificar todavía.
   if (CONSOLIDATION_MODE) return
   pushKey(key, value)
+}
+
+/**
+ * Deja en este equipo un valor que YA quedó guardado en la nube por otra vía
+ * (guardarTarifa) y avisa a los Context, como si hubiera llegado por Realtime.
+ */
+export function aplicarGuardadoEnNube(key: SyncedKey, value: unknown) {
+  const json = JSON.stringify(value)
+  lastSeen.set(key, json)
+  localStorage.setItem(key, json)
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { key, value } }))
 }
 
 /**

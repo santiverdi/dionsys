@@ -5,6 +5,7 @@ import {
   publicarTarifario, tarifarioVacio, validarTarifario,
   type FindeLargo, type PromocionPublica, type TarifarioPublico, type TemporadaPublica,
 } from '../lib/landing'
+import { useAuth } from '../context/AuthContext'
 
 // Borrador del tarifario, LOCAL de este dispositivo a propósito: cuando se
 // sincronizaba por la nube, cada tecla subía a Supabase y los ecos del Realtime
@@ -55,6 +56,7 @@ function TarifasFila({ titulo, tarifas, onChange }: {
 }
 
 export default function LandingTarifarioEditor() {
+  const { employee } = useAuth()
   const [draft, setDraft] = useState<TarifarioPublico | null>(() => {
     const raw = localStorage.getItem(LS_DRAFT)
     return raw ? JSON.parse(raw) : null
@@ -117,7 +119,7 @@ export default function LandingTarifarioEditor() {
     setEstado(null)
     if (problemas.length) return
     setPublicando(true)
-    const { error } = await publicarTarifario(draft)
+    const { error } = await publicarTarifario(draft, employee)
     setPublicando(false)
     if (error) {
       setEstado({ tipo: 'error', msg: `No se publicó: ${error}` })

@@ -19,7 +19,8 @@ const igual = (a: EstadiaMinima, b: EstadiaMinima) =>
 
 export default function EstadiasMinimasEditor({ guardadas, onGuardar }: {
   guardadas: EstadiaMinima[]
-  onGuardar: (lista: EstadiaMinima[]) => void
+  /** true si quedó guardado (puede no guardarse: sin permiso, sin red, o se canceló un aviso). */
+  onGuardar: (lista: EstadiaMinima[]) => Promise<boolean>
 }) {
   const [filas, setFilas] = useState<EstadiaMinima[]>(guardadas)
   const [estado, setEstado] = useState<{ tipo: 'ok' | 'error'; msg: string } | null>(null)
@@ -44,7 +45,7 @@ export default function EstadiasMinimasEditor({ guardadas, onGuardar }: {
   const upd = (i: number, patch: Partial<EstadiaMinima>) =>
     setFilas(filas.map((f, j) => (j === i ? { ...f, ...patch } : f)))
 
-  function guardar(i: number) {
+  async function guardar(i: number) {
     const f = { ...filas[i], nombre: filas[i].nombre.trim() }
     const problemas = validarEstadiaMinima(f)
     if (problemas.length) {
@@ -53,20 +54,20 @@ export default function EstadiasMinimasEditor({ guardadas, onGuardar }: {
     }
     const existe = guardadas.some(g => g.id === f.id)
     const lista = existe ? guardadas.map(g => (g.id === f.id ? f : g)) : [...guardadas, f]
-    onGuardar([...lista].sort((a, b) => a.desde.localeCompare(b.desde)))
-    setEstado({ tipo: 'ok', msg: `Guardada "${f.nombre}".` })
+    const ok = await onGuardar([...lista].sort((a, b) => a.desde.localeCompare(b.desde)))
+    setEstado(ok ? { tipo: 'ok', msg: `Guardada "${f.nombre}".` } : { tipo: 'error', msg: `No se guardó "${f.nombre}".` })
   }
 
-  function borrar(i: number) {
+  async function borrar(i: number) {
     const f = filas[i]
     if (!guardadas.some(g => g.id === f.id)) {
       setFilas(filas.filter((_, j) => j !== i))
       return
     }
     if (!confirm(`¿Borrar la estadía mínima "${f.nombre}"?`)) return
-    setFilas(filas.filter((_, j) => j !== i))
-    onGuardar(guardadas.filter(g => g.id !== f.id))
-    setEstado({ tipo: 'ok', msg: `Borrada "${f.nombre}".` })
+    const ok = await onGuardar(guardadas.filter(g => g.id !== f.id))
+    if (ok) setFilas(filas.filter((_, j) => j !== i))
+    setEstado(ok ? { tipo: 'ok', msg: `Borrada "${f.nombre}".` } : { tipo: 'error', msg: `No se borró "${f.nombre}".` })
   }
 
   return (

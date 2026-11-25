@@ -1,0 +1,10 @@
+{
+  "desde": "2027-01-04",
+  "hasta": "2027-01-31",
+  "texto": "Reserva anticipada: {porcentaje}% de descuento ya aplicado en tu tarifa",
+  "activo": true,
+  "nombre": "Reserva anticipada enero",
+  "validez": "Válido reservando con seña hasta el {fecha}.",
+  "porcentaje": 0.15,
+  "diasAnticipacion": 20
+}
