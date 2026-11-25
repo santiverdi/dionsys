@@ -7,6 +7,7 @@ import {
   type AjustesTarifa, type EstadiaMinima,
 } from './tarifasEspeciales'
 import { KEY_PROMOS, leerPromosGuardadas, promosVigentes, validarPromos, type Promo } from './promos'
+import { KEY_AGREGADOS, leerAgregados, validarAgregados, type Agregado } from './agregados'
 import { KEY_PROTECCIONES, leerProtecciones, validarProtecciones, type ProteccionesTarifa } from './proteccionesTarifa'
 
 // Todo lo que hace falta para cotizar, al día con la nube: el tarifario
@@ -25,6 +26,7 @@ export interface DatosTarifas {
   anticipadaVieja: PromoAnticipada | null
   promos: Promo[]
   protecciones: ProteccionesTarifa
+  agregados: Agregado[]
 }
 
 export function useDatosTarifas(): DatosTarifas {
@@ -51,8 +53,11 @@ export function useDatosTarifas(): DatosTarifas {
   const [protecciones, setProtecciones] = useState<ProteccionesTarifa>(leerProtecciones)
   useCloudSync<unknown>(KEY_PROTECCIONES, useCallback(v => setProtecciones(validarProtecciones(v)), []))
 
+  const [agregados, setAgregados] = useState<Agregado[]>(leerAgregados)
+  useCloudSync<unknown>(KEY_AGREGADOS, useCallback(v => setAgregados(validarAgregados(v)), []))
+
   const especiales = useMemo(() => especialesConAjustes(ajustes), [ajustes])
   const promos = useMemo(() => promosVigentes(promosGuardadas, anticipadaVieja), [promosGuardadas, anticipadaVieja])
 
-  return { tarifario, errorTarifario, ajustes, especiales, estadias, promosGuardadas, anticipadaVieja, promos, protecciones }
+  return { tarifario, errorTarifario, ajustes, especiales, estadias, promosGuardadas, anticipadaVieja, promos, protecciones, agregados }
 }

@@ -224,11 +224,8 @@ function tituloDe(a: Aplicada, e: EstadiaParaPromo): string {
 
 const ORDEN_SE_SUMA: TipoPromoConfig[] = ['anticipada', 'ultimo_momento', 'noches']
 
-/**
- * La promo que corresponde a la estadía (pasos 3 y 4 del orden de aplicación),
- * o null si ninguna deja la estadía más barata que `conDescuento`.
- */
-export function elegirPromo(e: EstadiaParaPromo, promos: readonly Promo[], conDescuento: number): PromoEstadia | null {
+/** Pasos 3 y 4 del orden de aplicación: las promos aplicadas y el total; null si ninguna mejora `conDescuento`. */
+function calcular(e: EstadiaParaPromo, promos: readonly Promo[], conDescuento: number): { aplicadas: Aplicada[]; total: number } | null {
   const lista = e.subs.reduce((a, b) => a + b, 0)
   const sueltas = promos.filter(p => !p.seSuma)
   const orden: TipoPromoConfig[] = ['noches', 'anticipada', 'ultimo_momento']
@@ -257,8 +254,33 @@ export function elegirPromo(e: EstadiaParaPromo, promos: readonly Promo[], conDe
   const total = aplicadas.length === 1
     ? Math.round(lista - aplicadas[0].descuento)
     : Math.round(subs.reduce((x, y) => x + y, 0))
-  if (total >= conDescuento) return null
+  return total < conDescuento ? { aplicadas, total } : null
+}
 
+/** Las promos que se aplican a la estadía, en el orden en que se aplican ([] = ninguna). */
+export function promosAplicadas(e: EstadiaParaPromo, promos: readonly Promo[], conDescuento: number): Promo[] {
+  return calcular(e, promos, conDescuento)?.aplicadas.map(a => a.promo) ?? []
+}
+
+/**
+ * Lo que queda de otros subtotales por noche (p. ej. un agregado de pensión)
+ * después de aplicarles, en orden, las mismas promos que a la estadía. `e.subs`
+ * son esos otros subtotales; las fechas, la llegada y "hoy" son los de la estadía.
+ */
+export function aplicarMismasPromos(aplicadas: readonly Promo[], e: EstadiaParaPromo): number {
+  let subs = e.subs
+  for (const p of aplicadas) subs = aplicar(p, e, subs)?.subs ?? subs
+  return Math.round(subs.reduce((x, y) => x + y, 0))
+}
+
+/**
+ * La promo que corresponde a la estadía (pasos 3 y 4 del orden de aplicación),
+ * o null si ninguna deja la estadía más barata que `conDescuento`.
+ */
+export function elegirPromo(e: EstadiaParaPromo, promos: readonly Promo[], conDescuento: number): PromoEstadia | null {
+  const r = calcular(e, promos, conDescuento)
+  if (!r) return null
+  const { aplicadas, total } = r
   const primera = aplicadas[0]
   const p = primera.promo
   // Misma forma que antes de la etapa 2 para las promos de siempre: el título

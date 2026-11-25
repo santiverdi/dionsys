@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Copy, Info, Pause, Pencil, Play, Plus, Tag, Trash2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { useEsDuenoTarifas, guardarTarifa } from '../lib/permisosTarifa'
+import { useEsDuenoTarifasEstado, guardarTarifa } from '../lib/permisosTarifa'
 import { useDatosTarifas } from '../lib/useDatosTarifas'
 import { cotizarEstadia, hoyBuenosAires } from '../lib/tarifaDiaria'
 import { KEY_AJUSTES_TARIFA, especialesConAjustes, type AjustesTarifa } from '../lib/tarifasEspeciales'
@@ -14,6 +14,8 @@ import {
 import { armarMensaje } from '../components/CotizacionMensaje'
 import PromoEditor from '../components/promos/PromoEditor'
 import EfectivoEditor from '../components/promos/EfectivoEditor'
+import AgregadosEditor from '../components/promos/AgregadosEditor'
+import { KEY_AGREGADOS, type Agregado } from '../lib/agregados'
 import { useVistaPrevia, type FilaVistaPrevia } from '../components/promos/VistaPrevia'
 import { useAvisosAlGuardar } from '../components/AvisosAlGuardar'
 
@@ -34,7 +36,7 @@ function muestraDeFechas(desde: string, hasta: string, hoy: string): string[] {
 
 export default function Promos() {
   const { employee } = useAuth()
-  const esDueno = useEsDuenoTarifas(employee)
+  const esDueno = useEsDuenoTarifasEstado(employee)
   const d = useDatosTarifas()
   const hoy = hoyBuenosAires()
   const [editando, setEditando] = useState<{ promo: Promo; nueva: boolean } | null>(null)
@@ -51,6 +53,7 @@ export default function Promos() {
     [ctx, d.promos],
   )
 
+  if (esDueno === null) return <div className="p-6 text-navy-500">Verificando permiso…</div>
   if (!esDueno) {
     return <div className="p-6 text-navy-600">Esta pantalla es solo para el dueño.</div>
   }
@@ -112,6 +115,12 @@ export default function Promos() {
     const r = await guardarTarifa(employee, KEY_AJUSTES_TARIFA, cambio.ajustes, {
       motivo: `Efectivo ${pct(porcentaje)} del ${dm(desde)} al ${dm(hasta)}`,
     })
+    return r.error
+  }
+
+  async function guardarAgregados(lista: Agregado[], motivo: string): Promise<string | null> {
+    const r = await guardarTarifa(employee, KEY_AGREGADOS, lista, { motivo })
+    setEstado(r.error ? { tipo: 'error', msg: r.error } : { tipo: 'ok', msg: 'Guardado.' })
     return r.error
   }
 
@@ -214,6 +223,11 @@ export default function Promos() {
       </div>
 
       <EfectivoEditor ajustes={d.ajustes} hoy={hoy} onGuardar={guardarEfectivo} />
+
+      <AgregadosEditor
+        agregados={d.agregados} hoy={hoy} finTemporada={d.tarifario?.config.vigencia.hasta ?? hoy}
+        onGuardar={guardarAgregados}
+      />
 
       {dialogoVista}
       {dialogoAvisos}
