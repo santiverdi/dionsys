@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react'
 import { Outlet, NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { canAccess } from '../utils/permissions'
+import { useEsDuenoTarifas } from '../lib/permisosTarifa'
 import { NAV_GROUPS, findNavItem, type NavGroup } from '../utils/nav'
 import { Menu, X, LogOut, ChevronRight } from 'lucide-react'
 import type { Role } from '../types'
@@ -58,9 +59,11 @@ export default function Layout() {
   const { pathname } = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  const esDueno = useEsDuenoTarifas(employee)
   const role = employee?.role as Role | undefined
   const groups = NAV_GROUPS
-    .map(g => ({ ...g, items: g.items.filter(i => role && canAccess(role, i.to) && !i.ocultarPara?.includes(role)) }))
+    .map(g => ({ ...g, items: g.items.filter(i =>
+      role && canAccess(role, i.to) && !i.ocultarPara?.includes(role) && (!i.soloDueno || esDueno)) }))
     .filter(g => g.items.length > 0)
   const visibleItems = groups.flatMap(g => g.items)
   const barraAbajo = visibleItems.length <= MAX_BARRA_ABAJO

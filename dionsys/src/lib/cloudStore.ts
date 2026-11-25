@@ -46,6 +46,7 @@ export const SYNCED_KEYS = [
   'dionsys_promo_anticipada',
   'dionsys_tarifas_protecciones',
   'dionsys_promos',
+  'dionsys_agregados',
   'dionsys_prisma_tarjetas',
   'dionsys_lavadero_movs',
   'dionsys_lavadero_liqs',
@@ -103,6 +104,7 @@ export const TARIFA_KEYS: readonly SyncedKey[] = [
   'dionsys_promo_anticipada',
   'dionsys_tarifas_protecciones',
   'dionsys_promos',
+  'dionsys_agregados',
   'dionsys_tarifas',
 ]
 
