@@ -93,12 +93,21 @@ export async function crearPropuesta(employee: Employee | null, p: NuevaPropuest
     })
     if (error) return { id: null, error: mensajeDeError(error) }
     const id = Number(data)
-    void avisarPorMail(id)
+    if (avisoPorMailActivo()) void avisarPorMail(id)
     return { id, error: null }
   } catch {
     return { id: null, error: 'No se pudo llegar a la nube. Revisá la conexión y probá de nuevo.' }
   }
 }
+
+/**
+ * El aviso por mail (fase 5, api/aviso-propuesta.js) está APAGADO: el dueño no
+ * cargó las variables de Resend en Vercel. Con el aviso apagado la app no hace
+ * ningún pedido a /api/aviso-propuesta (ni deja errores en la consola). Para
+ * prenderlo: cargar RESEND_API_KEY, AVISO_PROPUESTAS_A y APP_URL en Vercel y
+ * además VITE_AVISO_PROPUESTAS_MAIL=si, y volver a deployar.
+ */
+export const avisoPorMailActivo = () => import.meta.env.VITE_AVISO_PROPUESTAS_MAIL === 'si'
 
 /** Pide el mail al dueño (api/aviso-propuesta.js). Si falla, la propuesta igual quedó guardada. */
 export async function avisarPorMail(id: number): Promise<void> {
@@ -189,6 +198,68 @@ export function usePropuestasPendientes(activo: boolean): number {
     }
   }, [activo, refrescar])
   return activo ? n : 0
+}
+
+// ── Aviso en Inicio (solo el dueño) ─────────────────────────────────────────
+
+export interface ResumenPendientes {
+  cantidad: number
+  ultima: Propuesta | null   // la pendiente más reciente
+}
+
+export const SIN_PENDIENTES: ResumenPendientes = { cantidad: 0, ultima: null }
+
+/**
+ * Cuántas pendientes hay y cuál es la más reciente. El número sale de
+ * contar_propuestas_pendientes() (sin PIN); el detalle se pide a la bandeja
+ * (con el PIN del dueño) SOLO cuando el número cambió: así refrescar cada pocos
+ * minutos no suma intentos de PIN si algún día el PIN no coincide.
+ */
+export async function resumenPendientes(employee: Employee | null, previo: ResumenPendientes): Promise<ResumenPendientes> {
+  const cantidad = await contarPendientes()
+  if (cantidad === 0) return SIN_PENDIENTES
+  if (cantidad === previo.cantidad && previo.ultima) return previo
+  const r = await listarPropuestas(employee)
+  const ultima = r.propuestas
+    .filter(p => p.estado === 'pendiente')
+    .sort((a, b) => b.creado_en.localeCompare(a.creado_en))[0] ?? null
+  return { cantidad, ultima }
+}
+
+/** "Tenés 1 propuesta de tarifa pendiente" / "Tenés 3 propuestas de tarifa pendientes" */
+export const textoPendientes = (n: number) =>
+  `Tenés ${n} ${n === 1 ? 'propuesta' : 'propuestas'} de tarifa ${n === 1 ? 'pendiente' : 'pendientes'}`
+
+/** "La más reciente: Leandro, noches del 10/12 al 12/12." */
+export function textoUltima(p: Propuesta): string {
+  const noches = p.desde === p.hasta ? `noche del ${dm(p.desde)}` : `noches del ${dm(p.desde)} al ${dm(p.hasta)}`
+  return `La más reciente: ${p.autor_nombre}, ${noches}.`
+}
+
+/** Para Inicio: al montar, cada `cadaMs` y tras crear o resolver una propuesta. Inactivo = sin pedidos. */
+export function useResumenPendientes(employee: Employee | null, activo: boolean, cadaMs = 120_000): ResumenPendientes {
+  const [resumen, setResumen] = useState<ResumenPendientes>(SIN_PENDIENTES)
+  useEffect(() => {
+    if (!activo) return
+    let vivo = true
+    let actual = SIN_PENDIENTES
+    const refrescar = () => {
+      void resumenPendientes(employee, actual).then(r => {
+        if (!vivo) return
+        actual = r
+        setResumen(r)
+      })
+    }
+    refrescar()
+    const t = setInterval(refrescar, cadaMs)
+    window.addEventListener(EVENTO, refrescar)
+    return () => {
+      vivo = false
+      clearInterval(t)
+      window.removeEventListener(EVENTO, refrescar)
+    }
+  }, [employee, activo, cadaMs])
+  return activo ? resumen : SIN_PENDIENTES
 }
 
 // ── Aplicar una propuesta de precio ─────────────────────────────────────────

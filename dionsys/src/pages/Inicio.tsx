@@ -12,6 +12,7 @@ import { useMaintenance } from '../context/MaintenanceContext'
 import { useTarifarioPublico } from '../lib/useTarifarioPublico'
 import { usePendientesLibro } from '../lib/usePendientesLibro'
 import AvisoLibroPendiente from '../components/AvisoLibroPendiente'
+import AvisoPropuestasPendientes from '../components/AvisoPropuestasPendientes'
 import { getImperfeccionesGlobal } from '../lib/panorama'
 import { getCuentaCorriente, getIngresosMes } from '../lib/negocio'
 import { fetchLeads, landingToken } from '../lib/landing'
@@ -157,6 +158,7 @@ export default function Inicio() {
 
   return (
     <div>
+      <AvisoPropuestasPendientes />
       <h2 className="text-xl font-bold text-navy-800">{saludo(new Date().getHours())}, {employee?.name}</h2>
       <p className="text-sm text-navy-500 mb-6">
         {hayAlgo ? 'Esto es lo que necesita tu atención. Tocá una tarjeta para ir a esa sección.' : 'Está todo al día. Tocá una tarjeta para ir a esa sección.'}
