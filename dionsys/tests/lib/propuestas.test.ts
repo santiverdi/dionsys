@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Propuestas de los conserjes (etapa 2, fase 4). Mock-first: la base se
 // simula; acá se prueba qué le manda la app y qué hace con la respuesta. Las
@@ -10,7 +10,8 @@ vi.stubGlobal('fetch', fetchMock)
 
 const {
   crearPropuesta, misPropuestas, listarPropuestas, resolverPropuesta, contarPendientes, errorDePropuesta,
-  aplicarPrecioPropuesta, singleSugerida, resumenPropuesta, aPropuesta,
+  aplicarPrecioPropuesta, singleSugerida, resumenPropuesta, aPropuesta, avisoPorMailActivo,
+  resumenPendientes, textoPendientes, textoUltima, SIN_PENDIENTES,
 } = await import('../../src/lib/propuestas')
 
 const leandro = { id: 'c1', name: 'Leandro', pin: '2222', role: 'concierge' as const, active: true }
@@ -19,9 +20,10 @@ const HOY = '2026-11-25'
 const nueva = { desde: '2026-12-10', hasta: '2026-12-12', precio: 60_000, promo: '', motivo: 'El Guerrero está a 60k' }
 
 beforeEach(() => { rpc.mockReset(); fetchMock.mockReset(); fetchMock.mockResolvedValue({ ok: true }) })
+afterEach(() => { vi.unstubAllEnvs() })
 
 describe('crear una propuesta (conserje)', () => {
-  it('manda quién, fechas, precio, promo y motivo; después pide el mail con el id', async () => {
+  it('manda quién, fechas, precio, promo y motivo; con el mail apagado NO hace ningún pedido más', async () => {
     rpc.mockResolvedValue({ data: 41, error: null })
     const r = await crearPropuesta(leandro, { ...nueva, promo: '  ', motivo: '  El Guerrero está a 60k ' })
     expect(rpc).toHaveBeenCalledWith('crear_propuesta_tarifa', {
@@ -29,10 +31,19 @@ describe('crear una propuesta (conserje)', () => {
       p_precio: 60_000, p_promo: null, p_motivo: 'El Guerrero está a 60k',
     })
     expect(r).toEqual({ id: 41, error: null })
+    expect(avisoPorMailActivo()).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('con el mail prendido (VITE_AVISO_PROPUESTAS_MAIL=si) pide el aviso con el id', async () => {
+    vi.stubEnv('VITE_AVISO_PROPUESTAS_MAIL', 'si')
+    rpc.mockResolvedValue({ data: 41, error: null })
+    await crearPropuesta(leandro, nueva)
     expect(fetchMock).toHaveBeenCalledWith('/api/aviso-propuesta', expect.objectContaining({ method: 'POST', body: JSON.stringify({ id: 41 }) }))
   })
 
-  it('si el mail falla, la propuesta igual quedó creada', async () => {
+  it('con el mail prendido, si el mail falla, la propuesta igual quedó creada', async () => {
+    vi.stubEnv('VITE_AVISO_PROPUESTAS_MAIL', 'si')
     rpc.mockResolvedValue({ data: 42, error: null })
     fetchMock.mockRejectedValue(new Error('sin red'))
     expect(await crearPropuesta(leandro, nueva)).toEqual({ id: 42, error: null })
@@ -140,5 +151,52 @@ describe('aplicar una propuesta de precio', () => {
   it('single sugerida: relación de las protecciones, redondeada a $1.000', () => {
     expect(singleSugerida(60_000, 1.85)).toBe(111_000)
     expect(singleSugerida(48_500, 1.85)).toBe(90_000)
+  })
+})
+
+describe('aviso de pendientes en Inicio', () => {
+  const fila = (id: number, autor: string, creado: string, estado = 'pendiente') => ({
+    id, autor_id: 'c', autor_nombre: autor, desde: '2026-12-10', hasta: '2026-12-12', precio_propuesto: 60000,
+    promo_propuesta: null, motivo: 'x', estado, respuesta: null, creado_en: creado, actualizado_en: creado,
+    historial_id: null, resuelto_por: null, resuelto_en: null,
+  })
+  const bandeja = (filas: unknown[]) => ({ data: { ok: true, propuestas: filas }, error: null })
+
+  it('sin pendientes: no pide el detalle (ni el PIN)', async () => {
+    rpc.mockResolvedValueOnce({ data: 0, error: null })
+    expect(await resumenPendientes(santi, SIN_PENDIENTES)).toEqual(SIN_PENDIENTES)
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('contar_propuestas_pendientes')
+  })
+
+  it('con pendientes: la más reciente sale de la bandeja (las resueltas no cuentan)', async () => {
+    rpc.mockResolvedValueOnce({ data: 2, error: null }).mockResolvedValueOnce(bandeja([
+      fila(1, 'Leandro', '2026-11-25T10:00:00Z'), fila(3, 'Gaston', '2026-11-25T12:00:00Z'),
+      fila(2, 'Valentin', '2026-11-25T13:00:00Z', 'rechazada'),
+    ]))
+    const r = await resumenPendientes(santi, SIN_PENDIENTES)
+    expect(r.cantidad).toBe(2)
+    expect(r.ultima).toMatchObject({ id: 3, autor_nombre: 'Gaston' })
+    expect(rpc).toHaveBeenLastCalledWith('listar_propuestas_tarifa', { p_emp: '3', p_pin: '1234' })
+  })
+
+  it('si el número no cambió, reusa el detalle: cada refresco no suma intentos de PIN', async () => {
+    const previo = { cantidad: 2, ultima: aPropuesta(fila(3, 'Gaston', '2026-11-25T12:00:00Z')) }
+    rpc.mockResolvedValueOnce({ data: 2, error: null })
+    expect(await resumenPendientes(santi, previo)).toBe(previo)
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('si el número cambió, vuelve a pedir el detalle', async () => {
+    const previo = { cantidad: 1, ultima: aPropuesta(fila(1, 'Leandro', '2026-11-25T10:00:00Z')) }
+    rpc.mockResolvedValueOnce({ data: 2, error: null }).mockResolvedValueOnce(bandeja([fila(4, 'Santiago', '2026-11-26T09:00:00Z')]))
+    expect((await resumenPendientes(santi, previo)).ultima?.autor_nombre).toBe('Santiago')
+  })
+
+  it('textos: singular, plural y la más reciente', () => {
+    expect(textoPendientes(1)).toBe('Tenés 1 propuesta de tarifa pendiente')
+    expect(textoPendientes(3)).toBe('Tenés 3 propuestas de tarifa pendientes')
+    expect(textoUltima(aPropuesta(fila(1, 'Leandro', 'x')))).toBe('La más reciente: Leandro, noches del 10/12 al 12/12.')
+    expect(textoUltima({ ...aPropuesta(fila(1, 'Leandro', 'x')), hasta: '2026-12-10' })).toBe('La más reciente: Leandro, noche del 10/12.')
   })
 })
