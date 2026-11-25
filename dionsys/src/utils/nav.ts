@@ -1,6 +1,6 @@
 import {
   Home, ConciergeBell, Building2, ClipboardCheck, Warehouse, Shirt, Wrench,
-  Wallet, Users, Receipt, Truck, Globe, LayoutDashboard, MessageCircle, KeyRound, type LucideIcon,
+  Wallet, Users, Receipt, Truck, Globe, LayoutDashboard, MessageCircle, KeyRound, Tag, type LucideIcon,
 } from 'lucide-react'
 import type { Role } from '../types'
 
@@ -13,6 +13,8 @@ export interface NavItem {
   // Roles que NO ven este ítem aunque tengan acceso a la ruta (para que una
   // misma pantalla aparezca con otro nombre/lugar según quién entra).
   ocultarPara?: Role[]
+  // Solo lo ve el dueño de las tarifas (src/lib/permisosTarifa.ts), no cualquier admin.
+  soloDueno?: boolean
 }
 
 export interface NavGroup {
@@ -45,6 +47,7 @@ export const NAV_GROUPS: NavGroup[] = [
   ] },
   { title: 'Ventas', items: [
     { to: '/web', label: 'Página web y tarifas', short: 'Web', icon: Globe, ocultarPara: ['concierge'] },
+    { to: '/promos', label: 'Promos', icon: Tag, soloDueno: true },
   ] },
   { title: 'Números', items: [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },

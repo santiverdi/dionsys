@@ -4,12 +4,14 @@
 -- Va DESPUÉS de etapa1_tarifas.sql. Se puede correr más de una vez.
 --
 -- Qué hace:
---   1. Suma 'dionsys_promos' a las claves protegidas: solo el dueño las guarda
---      (guardar_tarifa) y cada cambio queda en tarifas_historial.
+--   1. Suma 'dionsys_promos' y 'dionsys_agregados' a las claves protegidas:
+--      solo el dueño las guarda (guardar_tarifa) y cada cambio queda en
+--      tarifas_historial. El efectivo por rango escribe en 'dionsys_tarifas_dia',
+--      que ya estaba protegida. No toca la tabla temporadas.
 --
--- ORDEN DE PUESTA EN MARCHA: correr este archivo antes de usar la pantalla
--- Promos. Sin él, guardar una promo da "Clave no permitida"; cotizar sigue
--- andando igual con las promos de siempre.
+-- ORDEN DE PUESTA EN MARCHA: correr este archivo antes de guardar desde la
+-- pantalla Promos. Sin él, guardar una promo o un agregado da "Clave no
+-- permitida"; cotizar sigue andando igual con las promos de siempre.
 -- ============================================================================
 
 -- ── 1. Claves protegidas ────────────────────────────────────────────────────
@@ -23,6 +25,7 @@ returns boolean language sql immutable as $$
     'dionsys_promo_anticipada',     -- reserva anticipada (vieja: vale hasta guardar Promos)
     'dionsys_tarifas_protecciones', -- piso, tope de descuento, relación single
     'dionsys_tarifas',              -- tarifas pactadas del control de caja
-    'dionsys_promos'                -- promos de la cotización (pantalla Promos)
+    'dionsys_promos',               -- promos de la cotización (pantalla Promos)
+    'dionsys_agregados'             -- media pensión, pensión completa… (pantalla Promos)
   )
 $$;
