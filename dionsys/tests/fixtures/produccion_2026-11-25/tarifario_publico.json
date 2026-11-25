@@ -1,0 +1,225 @@
+{
+  "config": {
+    "cuotas": [
+      4,
+      6
+    ],
+    "vigencia": {
+      "desde": "2026-08-01",
+      "hasta": "2027-02-28"
+    },
+    "tope_por_persona": 80000
+  },
+  "bloqueadas": [
+    "2026-08-15",
+    "2026-08-16",
+    "2026-08-17"
+  ],
+  "temporadas": [
+    {
+      "sena": 0,
+      "desde": "2026-08-01",
+      "hasta": "2026-09-30",
+      "nombre": "Baja",
+      "tarifas": {
+        "1": 60000,
+        "2": 35000,
+        "3": 35000,
+        "4": 35000,
+        "5": 35000
+      },
+      "diasCaros": [
+        5,
+        6
+      ],
+      "minNoches": 1,
+      "efectivoCaro": 0.1,
+      "tarifasCaras": null,
+      "efectivoBarato": 0.2
+    },
+    {
+      "sena": 0,
+      "desde": "2026-10-01",
+      "hasta": "2026-10-31",
+      "nombre": "Octubre",
+      "tarifas": {
+        "1": 65000,
+        "2": 37500,
+        "3": 37500,
+        "4": 37500,
+        "5": 37500
+      },
+      "diasCaros": [
+        5,
+        6
+      ],
+      "minNoches": 1,
+      "efectivoCaro": 0.1,
+      "tarifasCaras": null,
+      "efectivoBarato": 0.2
+    },
+    {
+      "sena": 0,
+      "desde": "2026-11-01",
+      "hasta": "2026-11-30",
+      "nombre": "Noviembre",
+      "tarifas": {
+        "1": 70000,
+        "2": 40000,
+        "3": 40000,
+        "4": 40000,
+        "5": 40000
+      },
+      "diasCaros": [
+        5,
+        6
+      ],
+      "minNoches": 1,
+      "efectivoCaro": 0.1,
+      "tarifasCaras": null,
+      "efectivoBarato": 0.1
+    },
+    {
+      "sena": 0.3,
+      "desde": "2026-12-01",
+      "hasta": "2026-12-31",
+      "nombre": "Diciembre",
+      "tarifas": {
+        "1": 80000,
+        "2": 40000,
+        "3": 40000,
+        "4": 40000,
+        "5": 40000
+      },
+      "diasCaros": [
+        5,
+        6
+      ],
+      "minNoches": 3,
+      "efectivoCaro": 0.1,
+      "tarifasCaras": {
+        "1": 100000,
+        "2": 55000,
+        "3": 55000,
+        "4": 60000,
+        "5": 55000
+      },
+      "efectivoBarato": 0.1
+    },
+    {
+      "sena": 0.3,
+      "desde": "2027-01-01",
+      "hasta": "2027-02-15",
+      "nombre": "Alta",
+      "tarifas": {
+        "1": 120000,
+        "2": 70000,
+        "3": 70000,
+        "4": 70000,
+        "5": 70000
+      },
+      "diasCaros": [
+        5,
+        6
+      ],
+      "minNoches": 3,
+      "efectivoCaro": 0.1,
+      "tarifasCaras": null,
+      "efectivoBarato": 0.1
+    },
+    {
+      "sena": 0.3,
+      "desde": "2027-02-16",
+      "hasta": "2027-02-28",
+      "nombre": "Fin de temporada",
+      "tarifas": {
+        "1": 70000,
+        "2": 40000,
+        "3": 40000,
+        "4": 40000,
+        "5": 40000
+      },
+      "diasCaros": [
+        5,
+        6
+      ],
+      "minNoches": 1,
+      "efectivoCaro": 0.1,
+      "tarifasCaras": null,
+      "efectivoBarato": 0.1
+    }
+  ],
+  "promociones": [
+    {
+      "nota": "20% en efectivo",
+      "noches": 2,
+      "titulo": "Escapada de mitad de semana",
+      "diaInicio": 0,
+      "fechaDesde": null,
+      "fechaHasta": null,
+      "descuentoExtra": 0
+    },
+    {
+      "nota": null,
+      "noches": 2,
+      "titulo": "Fin de semana",
+      "diaInicio": 5,
+      "fechaDesde": null,
+      "fechaHasta": null,
+      "descuentoExtra": 0
+    },
+    {
+      "nota": null,
+      "noches": 3,
+      "titulo": "Tres noches",
+      "diaInicio": 4,
+      "fechaDesde": null,
+      "fechaHasta": null,
+      "descuentoExtra": 0
+    }
+  ],
+  "findesLargos": [
+    {
+      "n": "Diversidad Cultural",
+      "desde": "2026-10-09",
+      "hasta": "2026-10-11",
+      "recargo": 0.2
+    },
+    {
+      "n": "Soberanía Nacional",
+      "desde": "2026-11-20",
+      "hasta": "2026-11-22",
+      "recargo": 0.2
+    },
+    {
+      "n": "Inmaculada",
+      "desde": "2026-12-04",
+      "hasta": "2026-12-05",
+      "recargo": 0.26
+    },
+    {
+      "n": "Innmaculada DOM LUN",
+      "desde": "2026-12-06",
+      "hasta": "2026-12-07",
+      "recargo": 0.7
+    },
+    {
+      "n": "Navidad",
+      "desde": "2026-12-24",
+      "hasta": "2026-12-26",
+      "recargo": 0.35
+    },
+    {
+      "n": "Año Nuevo",
+      "desde": "2026-12-31",
+      "hasta": "2027-01-02",
+      "recargo": 0.5
+    },
+    {
+      "n": "Carnaval",
+      "desde": "2027-02-05",
+      "hasta": "2027-02-08",
+      "recargo": 0.5
+    }
+  ]
+}

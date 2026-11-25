@@ -1,0 +1,741 @@
+{
+  "semana de diciembre (lun 14 a jue 17)": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-14": 42000,
+      "2026-12-15": 42000,
+      "2026-12-16": 42000
+    },
+    "noches": 3,
+    "total": 252000,
+    "transferencia": 252000,
+    "efectivo": 226800,
+    "promo": null,
+    "minNoches": 1,
+    "sena": 0.3,
+    "senaMonto": 75600,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 63000
+      },
+      {
+        "n": 6,
+        "monto": 42000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso lunes 14/12 · salida jueves 17/12\n🛏️ 3 noches · 2 personas\n\n🏦 Transferencia: *$252.000*\n💵 En efectivo: *$226.800*\n💳 Sin interés con Banco Provincia: 4 cuotas de $63.000 o 6 cuotas de $42.000\n\nPara reservar se abona una seña del 30% ($75.600).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "finde de diciembre (vie 11 y sáb 12)": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-11": 48000,
+      "2026-12-12": 48000
+    },
+    "noches": 2,
+    "total": 192000,
+    "transferencia": 192000,
+    "efectivo": 172800,
+    "promo": null,
+    "minNoches": 1,
+    "sena": 0.3,
+    "senaMonto": 57600,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 48000
+      },
+      {
+        "n": 6,
+        "monto": 32000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 11/12 · salida domingo 13/12\n🛏️ 2 noches · 2 personas\n\n🏦 Transferencia: *$192.000*\n💵 En efectivo: *$172.800*\n💳 Sin interés con Banco Provincia: 4 cuotas de $48.000 o 6 cuotas de $32.000\n\nPara reservar se abona una seña del 30% ($57.600).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "finde largo Inmaculada 4 al 8/12": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-04": 56000,
+      "2026-12-05": 56000,
+      "2026-12-06": 56000,
+      "2026-12-07": 56000
+    },
+    "noches": 4,
+    "total": 448000,
+    "transferencia": 448000,
+    "efectivo": 403200,
+    "promo": null,
+    "minNoches": 2,
+    "sena": 0.3,
+    "senaMonto": 134400,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 112000
+      },
+      {
+        "n": 6,
+        "monto": 74667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 04/12 · salida martes 08/12\n🛏️ 4 noches · 2 personas\n\n🏦 Transferencia: *$448.000*\n💵 En efectivo: *$403.200*\n💳 Sin interés con Banco Provincia: 4 cuotas de $112.000 o 6 cuotas de $74.667\n\nℹ️ Para esas fechas la estadía mínima es de 2 noches.\n\nPara reservar se abona una seña del 30% ($134.400).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "finde largo Inmaculada, solo 2 noches (4 y 5/12)": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-04": 56000,
+      "2026-12-05": 56000
+    },
+    "noches": 2,
+    "total": 224000,
+    "transferencia": 224000,
+    "efectivo": 201600,
+    "promo": null,
+    "minNoches": 2,
+    "sena": 0.3,
+    "senaMonto": 67200,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 56000
+      },
+      {
+        "n": 6,
+        "monto": 37333
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 04/12 · salida domingo 06/12\n🛏️ 2 noches · 2 personas\n\n🏦 Transferencia: *$224.000*\n💵 En efectivo: *$201.600*\n💳 Sin interés con Banco Provincia: 4 cuotas de $56.000 o 6 cuotas de $37.333\n\nℹ️ Para esas fechas la estadía mínima es de 2 noches.\n\nPara reservar se abona una seña del 30% ($67.200).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "Navidad 24 al 26/12": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-24": 54000,
+      "2026-12-25": 56000
+    },
+    "noches": 2,
+    "total": 220000,
+    "transferencia": 220000,
+    "efectivo": 198000,
+    "promo": null,
+    "minNoches": 2,
+    "sena": 0.3,
+    "senaMonto": 66000,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 55000
+      },
+      {
+        "n": 6,
+        "monto": 36667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso jueves 24/12 · salida sábado 26/12\n🛏️ 2 noches · 2 personas\n\n🏦 Transferencia: *$220.000*\n💵 En efectivo: *$198.000*\n💳 Sin interés con Banco Provincia: 4 cuotas de $55.000 o 6 cuotas de $36.667\n\nℹ️ Para esas fechas la estadía mínima es de 2 noches.\n\nPara reservar se abona una seña del 30% ($66.000).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "Año Nuevo 30/12 al 2/1": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-30": 59000,
+      "2026-12-31": 75000,
+      "2027-01-01": 84000
+    },
+    "noches": 3,
+    "total": 436000,
+    "transferencia": 436000,
+    "efectivo": 392400,
+    "promo": null,
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 130800,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 109000
+      },
+      {
+        "n": 6,
+        "monto": 72667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso miércoles 30/12 · salida sábado 02/01\n🛏️ 3 noches · 2 personas\n\n🏦 Transferencia: *$436.000*\n💵 En efectivo: *$392.400*\n💳 Sin interés con Banco Provincia: 4 cuotas de $109.000 o 6 cuotas de $72.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($130.800).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "Año Nuevo 31/12 al 3/1 en pareja": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-31": 75000,
+      "2027-01-01": 84000,
+      "2027-01-02": 88000
+    },
+    "noches": 3,
+    "total": 494000,
+    "transferencia": 494000,
+    "efectivo": 444600,
+    "promo": null,
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 148200,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 123500
+      },
+      {
+        "n": 6,
+        "monto": 82333
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso jueves 31/12 · salida domingo 03/01\n🛏️ 3 noches · 2 personas\n\n🏦 Transferencia: *$494.000*\n💵 En efectivo: *$444.600*\n💳 Sin interés con Banco Provincia: 4 cuotas de $123.500 o 6 cuotas de $82.333\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($148.200).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "enero con anticipada: cotizado con 20 días justos": {
+    "hoy": "2026-12-21",
+    "precios": {
+      "2027-01-10": 80000,
+      "2027-01-11": 80000,
+      "2027-01-12": 80000
+    },
+    "noches": 3,
+    "total": 480000,
+    "transferencia": 480000,
+    "efectivo": 432000,
+    "promo": {
+      "tipo": "anticipada",
+      "total": 408000,
+      "titulo": "Reserva anticipada: 15% de descuento ya aplicado en tu tarifa",
+      "validez": "Válido reservando con seña hasta el 21/12."
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 122400,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 120000
+      },
+      {
+        "n": 6,
+        "monto": 80000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 10/01 · salida miércoles 13/01\n🛏️ 3 noches · 2 personas\n\n🎁 Reserva anticipada: 15% de descuento ya aplicado en tu tarifa\n~$480.000~ → *$408.000* (transferencia o efectivo)\nVálido reservando con seña hasta el 21/12.\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $120.000 o 6 cuotas de $80.000\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($122.400).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "enero con 19 días: sin anticipada": {
+    "hoy": "2026-12-22",
+    "precios": {
+      "2027-01-10": 80000,
+      "2027-01-11": 80000,
+      "2027-01-12": 80000
+    },
+    "noches": 3,
+    "total": 480000,
+    "transferencia": 480000,
+    "efectivo": 432000,
+    "promo": null,
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 144000,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 120000
+      },
+      {
+        "n": 6,
+        "monto": 80000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 10/01 · salida miércoles 13/01\n🛏️ 3 noches · 2 personas\n\n🏦 Transferencia: *$480.000*\n💵 En efectivo: *$432.000*\n💳 Sin interés con Banco Provincia: 4 cuotas de $120.000 o 6 cuotas de $80.000\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($144.000).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "enero cotizado hoy (anticipada)": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-01-17": 80000,
+      "2027-01-18": 80000,
+      "2027-01-19": 80000
+    },
+    "noches": 3,
+    "total": 480000,
+    "transferencia": 480000,
+    "efectivo": 432000,
+    "promo": {
+      "tipo": "anticipada",
+      "total": 408000,
+      "titulo": "Reserva anticipada: 15% de descuento ya aplicado en tu tarifa",
+      "validez": "Válido reservando con seña hasta el 28/12."
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 122400,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 120000
+      },
+      {
+        "n": 6,
+        "monto": 80000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 17/01 · salida miércoles 20/01\n🛏️ 3 noches · 2 personas\n\n🎁 Reserva anticipada: 15% de descuento ya aplicado en tu tarifa\n~$480.000~ → *$408.000* (transferencia o efectivo)\nVálido reservando con seña hasta el 28/12.\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $120.000 o 6 cuotas de $80.000\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($122.400).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "5 noches en diciembre: última a mitad": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-14": 42000,
+      "2026-12-15": 42000,
+      "2026-12-16": 42000,
+      "2026-12-17": 42000,
+      "2026-12-18": 48000
+    },
+    "noches": 5,
+    "total": 432000,
+    "transferencia": 432000,
+    "efectivo": 388800,
+    "promo": {
+      "tipo": "mitad",
+      "total": 384000
+    },
+    "minNoches": 1,
+    "sena": 0.3,
+    "senaMonto": 115200,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 108000
+      },
+      {
+        "n": 6,
+        "monto": 72000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso lunes 14/12 · salida sábado 19/12\n🛏️ 5 noches · 2 personas\n\n🎁 Promo 5 noches: la última noche a mitad de precio → *$384.000* (transferencia o efectivo)\n💳 Sin interés con Banco Provincia: 4 cuotas de $108.000 o 6 cuotas de $72.000\n\nPara reservar se abona una seña del 30% ($115.200).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "5 noches en febrero: última a mitad": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-02-16": 69000,
+      "2027-02-17": 69000,
+      "2027-02-18": 69000,
+      "2027-02-19": 72000,
+      "2027-02-20": 73000
+    },
+    "noches": 5,
+    "total": 704000,
+    "transferencia": 704000,
+    "efectivo": 633600,
+    "promo": {
+      "tipo": "mitad",
+      "total": 631000
+    },
+    "minNoches": 2,
+    "sena": 0.3,
+    "senaMonto": 189300,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 176000
+      },
+      {
+        "n": 6,
+        "monto": 117333
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso martes 16/02 · salida domingo 21/02\n🛏️ 5 noches · 2 personas\n\n🎁 Promo 5 noches: la última noche a mitad de precio → *$631.000* (transferencia o efectivo)\n💳 Sin interés con Banco Provincia: 4 cuotas de $176.000 o 6 cuotas de $117.333\n\nℹ️ Para esas fechas la estadía mínima es de 2 noches.\n\nPara reservar se abona una seña del 30% ($189.300).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "6 noches en febrero: última a mitad": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-02-15": 74000,
+      "2027-02-16": 69000,
+      "2027-02-17": 69000,
+      "2027-02-18": 69000,
+      "2027-02-19": 72000,
+      "2027-02-20": 73000
+    },
+    "noches": 6,
+    "total": 852000,
+    "transferencia": 852000,
+    "efectivo": 766800,
+    "promo": {
+      "tipo": "mitad",
+      "total": 779000
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 233700,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 213000
+      },
+      {
+        "n": 6,
+        "monto": 142000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso lunes 15/02 · salida domingo 21/02\n🛏️ 6 noches · 2 personas\n\n🎁 Promo 5 noches: la última noche a mitad de precio → *$779.000* (transferencia o efectivo)\n💵 En efectivo: *$766.800*\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $213.000 o 6 cuotas de $142.000\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($233.700).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "7 noches en febrero: última gratis": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-02-20": 73000,
+      "2027-02-21": 69000,
+      "2027-02-22": 67000,
+      "2027-02-23": 67000,
+      "2027-02-24": 67000,
+      "2027-02-25": 67000,
+      "2027-02-26": 70000
+    },
+    "noches": 7,
+    "total": 960000,
+    "transferencia": 960000,
+    "efectivo": 864000,
+    "promo": {
+      "tipo": "gratis",
+      "total": 820000
+    },
+    "minNoches": 2,
+    "sena": 0.3,
+    "senaMonto": 246000,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 240000
+      },
+      {
+        "n": 6,
+        "monto": 160000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso sábado 20/02 · salida sábado 27/02\n🛏️ 7 noches · 2 personas\n\n🎁 Promo 7 noches: la última noche gratis → *$820.000* (transferencia o efectivo)\n💳 Sin interés con Banco Provincia: 4 cuotas de $240.000 o 6 cuotas de $160.000\n\nℹ️ Para esas fechas la estadía mínima es de 2 noches.\n\nPara reservar se abona una seña del 30% ($246.000).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "7 noches en enero sin anticipada: última gratis": {
+    "hoy": "2026-12-30",
+    "precios": {
+      "2027-01-10": 80000,
+      "2027-01-11": 80000,
+      "2027-01-12": 80000,
+      "2027-01-13": 80000,
+      "2027-01-14": 80000,
+      "2027-01-15": 84000,
+      "2027-01-16": 88000
+    },
+    "noches": 7,
+    "total": 1144000,
+    "transferencia": 1144000,
+    "efectivo": 1029600,
+    "promo": {
+      "tipo": "gratis",
+      "total": 968000
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 290400,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 286000
+      },
+      {
+        "n": 6,
+        "monto": 190667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 10/01 · salida domingo 17/01\n🛏️ 7 noches · 2 personas\n\n🎁 Promo 7 noches: la última noche gratis → *$968.000* (transferencia o efectivo)\n💳 Sin interés con Banco Provincia: 4 cuotas de $286.000 o 6 cuotas de $190.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($290.400).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "7 noches en enero cotizado hoy: la última gratis le gana al 15%": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-01-10": 80000,
+      "2027-01-11": 80000,
+      "2027-01-12": 80000,
+      "2027-01-13": 80000,
+      "2027-01-14": 80000,
+      "2027-01-15": 84000,
+      "2027-01-16": 88000
+    },
+    "noches": 7,
+    "total": 1144000,
+    "transferencia": 1144000,
+    "efectivo": 1029600,
+    "promo": {
+      "tipo": "gratis",
+      "total": 968000
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 290400,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 286000
+      },
+      {
+        "n": 6,
+        "monto": 190667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 10/01 · salida domingo 17/01\n🛏️ 7 noches · 2 personas\n\n🎁 Promo 7 noches: la última noche gratis → *$968.000* (transferencia o efectivo)\n💳 Sin interés con Banco Provincia: 4 cuotas de $286.000 o 6 cuotas de $190.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($290.400).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "single semana de diciembre": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-14": 78000,
+      "2026-12-15": 78000,
+      "2026-12-16": 78000
+    },
+    "noches": 3,
+    "total": 234000,
+    "transferencia": 234000,
+    "efectivo": 210600,
+    "promo": null,
+    "minNoches": 1,
+    "sena": 0.3,
+    "senaMonto": 70200,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 58500
+      },
+      {
+        "n": 6,
+        "monto": 39000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso lunes 14/12 · salida jueves 17/12\n🛏️ 3 noches · 1 persona\n\n🏦 Transferencia: *$234.000*\n💵 En efectivo: *$210.600*\n💳 Sin interés con Banco Provincia: 4 cuotas de $58.500 o 6 cuotas de $39.000\n\nPara reservar se abona una seña del 30% ($70.200).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "single en enero": {
+    "hoy": "2026-12-30",
+    "precios": {
+      "2027-01-10": 135000,
+      "2027-01-11": 135000,
+      "2027-01-12": 135000
+    },
+    "noches": 3,
+    "total": 405000,
+    "transferencia": 405000,
+    "efectivo": 364500,
+    "promo": null,
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 121500,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 101250
+      },
+      {
+        "n": 6,
+        "monto": 67500
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 10/01 · salida miércoles 13/01\n🛏️ 3 noches · 1 persona\n\n🏦 Transferencia: *$405.000*\n💵 En efectivo: *$364.500*\n💳 Sin interés con Banco Provincia: 4 cuotas de $101.250 o 6 cuotas de $67.500\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($121.500).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "single 7 noches en febrero": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-02-20": 130000,
+      "2027-02-21": 123000,
+      "2027-02-22": 119000,
+      "2027-02-23": 119000,
+      "2027-02-24": 119000,
+      "2027-02-25": 119000,
+      "2027-02-26": 124000
+    },
+    "noches": 7,
+    "total": 853000,
+    "transferencia": 853000,
+    "efectivo": 767700,
+    "promo": {
+      "tipo": "gratis",
+      "total": 729000
+    },
+    "minNoches": 2,
+    "sena": 0.3,
+    "senaMonto": 218700,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 213250
+      },
+      {
+        "n": 6,
+        "monto": 142167
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso sábado 20/02 · salida sábado 27/02\n🛏️ 7 noches · 1 persona\n\n🎁 Promo 7 noches: la última noche gratis → *$729.000* (transferencia o efectivo)\n💳 Sin interés con Banco Provincia: 4 cuotas de $213.250 o 6 cuotas de $142.167\n\nℹ️ Para esas fechas la estadía mínima es de 2 noches.\n\nPara reservar se abona una seña del 30% ($218.700).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "triple en enero": {
+    "hoy": "2026-12-30",
+    "precios": {
+      "2027-01-24": 80000,
+      "2027-01-25": 80000,
+      "2027-01-26": 80000
+    },
+    "noches": 3,
+    "total": 720000,
+    "transferencia": 720000,
+    "efectivo": 648000,
+    "promo": {
+      "tipo": "anticipada",
+      "total": 612000,
+      "titulo": "Reserva anticipada: 15% de descuento ya aplicado en tu tarifa",
+      "validez": "Válido reservando con seña hasta el 04/01."
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 183600,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 180000
+      },
+      {
+        "n": 6,
+        "monto": 120000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 24/01 · salida miércoles 27/01\n🛏️ 3 noches · 3 personas\n\n🎁 Reserva anticipada: 15% de descuento ya aplicado en tu tarifa\n~$720.000~ → *$612.000* (transferencia o efectivo)\nVálido reservando con seña hasta el 04/01.\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $180.000 o 6 cuotas de $120.000\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($183.600).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "cuádruple finde de diciembre": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-12-11": 48000,
+      "2026-12-12": 48000,
+      "2026-12-13": 42000
+    },
+    "noches": 3,
+    "total": 552000,
+    "transferencia": 552000,
+    "efectivo": 496800,
+    "promo": null,
+    "minNoches": 1,
+    "sena": 0.3,
+    "senaMonto": 165600,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 138000
+      },
+      {
+        "n": 6,
+        "monto": 92000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 11/12 · salida lunes 14/12\n🛏️ 3 noches · 4 personas\n\n🏦 Transferencia: *$552.000*\n💵 En efectivo: *$496.800*\n💳 Sin interés con Banco Provincia: 4 cuotas de $138.000 o 6 cuotas de $92.000\n\nPara reservar se abona una seña del 30% ($165.600).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "quíntuple en Carnaval": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-02-05": 78000,
+      "2027-02-06": 82000,
+      "2027-02-07": 82000,
+      "2027-02-08": 78000
+    },
+    "noches": 4,
+    "total": 1600000,
+    "transferencia": 1600000,
+    "efectivo": 1440000,
+    "promo": null,
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 480000,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 400000
+      },
+      {
+        "n": 6,
+        "monto": 266667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 05/02 · salida martes 09/02\n🛏️ 4 noches · 5 personas\n\n🏦 Transferencia: *$1.600.000*\n💵 En efectivo: *$1.440.000*\n💳 Sin interés con Banco Provincia: 4 cuotas de $400.000 o 6 cuotas de $266.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($480.000).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "cruza de enero a febrero": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-01-29": 84000,
+      "2027-01-30": 88000,
+      "2027-01-31": 80000,
+      "2027-02-01": 74000
+    },
+    "noches": 4,
+    "total": 652000,
+    "transferencia": 652000,
+    "efectivo": 586800,
+    "promo": {
+      "tipo": "anticipada",
+      "total": 576400,
+      "titulo": "Reserva anticipada: 15% de descuento ya aplicado en tu tarifa",
+      "validez": "Válido reservando con seña hasta el 09/01."
+    },
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 172920,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 163000
+      },
+      {
+        "n": 6,
+        "monto": 108667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 29/01 · salida martes 02/02\n🛏️ 4 noches · 2 personas\n\n🎁 Reserva anticipada: 15% de descuento ya aplicado en tu tarifa\n~$652.000~ → *$576.400* (transferencia o efectivo)\nVálido reservando con seña hasta el 09/01.\nNo son acumulables: se aplica el que más te convenga.\n💳 Sin interés con Banco Provincia: 4 cuotas de $163.000 o 6 cuotas de $108.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($172.920).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "cruza de noviembre a diciembre": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2026-11-29": 40000,
+      "2026-11-30": 35000,
+      "2026-12-01": 42000
+    },
+    "noches": 3,
+    "total": 234000,
+    "transferencia": 234000,
+    "efectivo": 210600,
+    "promo": null,
+    "minNoches": 1,
+    "sena": 0.3,
+    "senaMonto": 70200,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 58500
+      },
+      {
+        "n": 6,
+        "monto": 39000
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso domingo 29/11 · salida miércoles 02/12\n🛏️ 3 noches · 2 personas\n\n🏦 Transferencia: *$234.000*\n💵 En efectivo: *$210.600*\n💳 Sin interés con Banco Provincia: 4 cuotas de $58.500 o 6 cuotas de $39.000\n\nPara reservar se abona una seña del 30% ($70.200).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  },
+  "Carnaval 5 al 8/2": {
+    "hoy": "2026-11-25",
+    "precios": {
+      "2027-02-05": 78000,
+      "2027-02-06": 82000,
+      "2027-02-07": 82000
+    },
+    "noches": 3,
+    "total": 484000,
+    "transferencia": 484000,
+    "efectivo": 435600,
+    "promo": null,
+    "minNoches": 3,
+    "sena": 0.3,
+    "senaMonto": 145200,
+    "cuotas": [
+      {
+        "n": 4,
+        "monto": 121000
+      },
+      {
+        "n": 6,
+        "monto": 80667
+      }
+    ],
+    "mensaje": "¡Hola! Te paso la cotización del *Hotel Dion* 😊\n\n📅 Ingreso viernes 05/02 · salida lunes 08/02\n🛏️ 3 noches · 2 personas\n\n🏦 Transferencia: *$484.000*\n💵 En efectivo: *$435.600*\n💳 Sin interés con Banco Provincia: 4 cuotas de $121.000 o 6 cuotas de $80.667\n\nℹ️ Para esas fechas la estadía mínima es de 3 noches.\n\nPara reservar se abona una seña del 30% ($145.200).\n\nIncluye desayuno buffet. ¡Cualquier consulta, avisanos!"
+  }
+}

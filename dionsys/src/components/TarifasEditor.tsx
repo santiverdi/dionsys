@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { BadgeDollarSign, ChevronDown, ChevronUp, Globe, Plus, Save, Trash2, X } from 'lucide-react'
 import { useTarifas } from '../context/TarifasContext'
+import { useAuth } from '../context/AuthContext'
 import type { TarifaPeriodo } from '../lib/tarifas'
 import { useTarifarioPublico } from '../lib/useTarifarioPublico'
 import { formatMontoCurrency } from '../utils/validators'
 
-// Editor de las tarifas pactadas (solo admin). El control de caja cruza cada
+// Editor de las tarifas pactadas (solo el dueño). El control de caja cruza cada
 // cobro contra estos valores: mantenerlos al día cuando cambian los precios.
 export default function TarifasEditor() {
   const { tarifas, saveTarifas } = useTarifas()
+  const { employee } = useAuth()
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
   const tarifarioWeb = useTarifarioPublico()
   const [open, setOpen] = useState(false)
   // null = viendo lo guardado; con valor = editando (se guarda con el botón).
@@ -113,7 +116,10 @@ export default function TarifasEditor() {
             {editing && (
               <>
                 <button
-                  onClick={() => { if (draft && valido) { saveTarifas(draft); setDraft(null) } }}
+                  onClick={() => {
+                    if (!draft || !valido) return
+                    void saveTarifas(draft, employee).then(err => { if (err) setErrorGuardado(err); else { setErrorGuardado(null); setDraft(null) } })
+                  }}
                   disabled={!valido}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${
                     valido ? 'bg-navy-800 text-cream hover:bg-navy-700' : 'bg-navy-100 text-navy-400 cursor-not-allowed'
@@ -127,6 +133,7 @@ export default function TarifasEditor() {
               </>
             )}
           </div>
+          {errorGuardado && <p className="text-[11px] text-red-600 mt-1.5">No se guardó: {errorGuardado}</p>}
           {!valido && editing && (
             <p className="text-[11px] text-red-600 mt-1.5">Cada período necesita fechas (desde ≤ hasta) y los cuatro precios mayores a cero.</p>
           )}

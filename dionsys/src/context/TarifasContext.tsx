@@ -1,12 +1,15 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import { persist, useCloudSync } from '../lib/cloudStore'
+import { useCloudSync } from '../lib/cloudStore'
+import { guardarTarifa } from '../lib/permisosTarifa'
 import { TARIFAS_PACTADAS, type TarifaPeriodo } from '../lib/tarifas'
+import type { Employee } from '../types'
 
 const LS_TARIFAS = 'dionsys_tarifas'
 
 interface TarifasContextType {
   tarifas: TarifaPeriodo[]
-  saveTarifas: (tarifas: TarifaPeriodo[]) => void
+  /** Solo el dueño (lo verifica la base). Devuelve el error a mostrar, o null si se guardó. */
+  saveTarifas: (tarifas: TarifaPeriodo[], employee: Employee | null) => Promise<string | null>
 }
 
 const TarifasContext = createContext<TarifasContextType | null>(null)
@@ -22,9 +25,10 @@ export function TarifasProvider({ children }: { children: ReactNode }) {
 
   useCloudSync<TarifaPeriodo[]>(LS_TARIFAS, setTarifas)
 
-  const saveTarifas = useCallback((t: TarifaPeriodo[]) => {
-    setTarifas(t)
-    persist(LS_TARIFAS, t)
+  const saveTarifas = useCallback(async (t: TarifaPeriodo[], employee: Employee | null) => {
+    const r = await guardarTarifa(employee, LS_TARIFAS, t, { motivo: 'Tarifas pactadas (control de caja)' })
+    if (!r.error) setTarifas(t)
+    return r.error
   }, [])
 
   return (

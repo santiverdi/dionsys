@@ -8,6 +8,7 @@ import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useTarifas } from '../context/TarifasContext'
 import { useTarifarioPublico } from '../lib/useTarifarioPublico'
+import { useEsDuenoTarifas } from '../lib/permisosTarifa'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { getTarifaFlags } from '../lib/tarifas'
 import TarifasEditor from '../components/TarifasEditor'
@@ -64,6 +65,7 @@ function FlagPill({ flag }: { flag: CajaFlag }) {
 
 export default function ControlCaja() {
   const { employee } = useAuth()
+  const esDueno = useEsDuenoTarifas(employee)
   const { cajas, deleteCaja, getCajaAnterior } = useCajas()
   const { partes } = usePartes()
   const { tarifas } = useTarifas()
@@ -216,8 +218,8 @@ export default function ControlCaja() {
         <CajaImporter />
       </div>
 
-      {/* Tarifas pactadas (editable por el admin; el control cruza los cobros contra esto) */}
-      {employee?.role === 'admin' && <TarifasEditor />}
+      {/* Tarifas pactadas (solo el dueño las edita; el control cruza los cobros contra esto) */}
+      {esDueno && <TarifasEditor />}
 
       {/* Conciliación mensual de tarjetas: sistema vs resumen Prisma (solo admin) */}
       {employee?.role === 'admin' && <PrismaConciliacion />}

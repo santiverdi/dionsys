@@ -307,7 +307,11 @@ export async function fetchTarifarioPublicadoCached(maxAgeMs = 10 * 60_000): Pro
  * en la próxima visita (o hasta 30 min después por el caché del visitante).
  * Validar con validarTarifario() ANTES de llamar acá.
  */
-export async function publicarTarifario(t: TarifarioPublico): Promise<{ error: string | null }> {
+export async function publicarTarifario(
+  t: TarifarioPublico,
+  dueno: { id: string; pin: string } | null,
+): Promise<{ error: string | null }> {
+  if (!dueno) return { error: 'Tenés que iniciar sesión.' }
   const token = landingToken()
   if (!token) {
     return { error: 'Falta el código de acceso: cargalo en la pestaña Consultas → "Código de acceso" (es el LANDING_TOKEN configurado en Vercel).' }
@@ -315,11 +319,19 @@ export async function publicarTarifario(t: TarifarioPublico): Promise<{ error: s
   try {
     const r = await fetch('/api/tarifario', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-landing-token': token },
+      // El endpoint verifica en la base que sea el dueño (permisos_tarifa).
+      headers: {
+        'Content-Type': 'application/json', 'x-landing-token': token,
+        'x-dionsys-empleado': dueno.id, 'x-dionsys-pin': dueno.pin,
+      },
       body: JSON.stringify(normalizarTarifario(t)),
     })
     if (r.ok) return { error: null }
     if (r.status === 401) return { error: 'El código de acceso no coincide con el LANDING_TOKEN configurado en Vercel.' }
+    if (r.status === 403) {
+      const j = await r.json().catch(() => null) as { error?: string } | null
+      return { error: j?.error ?? 'Solo el dueño puede publicar el tarifario.' }
+    }
     if (r.status === 404 || r.status === 501) {
       return { error: 'El endpoint /api/tarifario no está disponible: hace falta deployar en Vercel y configurar SUPABASE_SERVICE_ROLE_KEY y LANDING_TOKEN.' }
     }

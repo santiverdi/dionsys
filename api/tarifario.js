@@ -73,6 +73,39 @@ module.exports = async (req, res) => {
     return r
   }
 
+  // Solo el DUEÑO publica: el tarifario público cambia lo que cotiza Recepción.
+  // Se verifica en la base (permisos_tarifa, con bloqueo por intentos); si la
+  // función no está instalada, no se publica (supabase/etapa1_tarifas.sql).
+  const empleado = String(req.headers['x-dionsys-empleado'] || '').trim()
+  const pin = String(req.headers['x-dionsys-pin'] || '').trim()
+  let duenoNombre = null
+  try {
+    const rv = await sb('rpc/verificar_dueno_tarifas', {
+      method: 'POST', body: JSON.stringify({ p_emp: empleado, p_pin: pin }),
+    })
+    const j = await rv.json().catch(() => null)
+    if (!rv.ok || !j) {
+      // 404 = la función no existe todavía; si no, el PIN dio null o la base
+      // cortó por demasiados intentos (el mensaje viene en j.message).
+      const msg = (j && j.message) || 'Solo el dueño puede publicar el tarifario.'
+      res.status(rv.status === 404 ? 501 : 403).json({
+        error: rv.status === 404 ? 'Falta instalar el permiso de dueño en Supabase (supabase/etapa1_tarifas.sql).' : msg,
+      })
+      return
+    }
+    duenoNombre = j
+  } catch {
+    res.status(502).json({ error: 'No se pudo verificar el permiso de dueño.' })
+    return
+  }
+
+  // Foto de lo publicado ANTES, para el historial.
+  let anterior = null
+  try {
+    const ra = await sb('tarifario_publico?select=data&limit=1')
+    if (ra.ok) anterior = ((await ra.json())[0] || {}).data || null
+  } catch { /* sin foto anterior: se registra igual */ }
+
   try {
     // 1. Vaciar. El orden importa: tarifas referencia a temporadas.
     await paso('borrar tarifas', sb('tarifas?id=not.is.null', { method: 'DELETE' }))
@@ -145,6 +178,23 @@ module.exports = async (req, res) => {
         { clave: 'vigencia', valor: t.config.vigencia, actualizado_at: ahora },
       ]),
     }))
+
+    // 5. Historial (si falla, lo publicado ya quedó: solo se avisa en el log).
+    try {
+      const rd = await sb('tarifario_publico?select=data&limit=1')
+      const nuevo = rd.ok ? ((await rd.json())[0] || {}).data || t : t
+      const rh = await sb('tarifas_historial', {
+        method: 'POST',
+        body: JSON.stringify({
+          autor_id: empleado, autor_nombre: String(duenoNombre || empleado),
+          clave: 'tarifario_publico', valor_anterior: anterior, valor_nuevo: nuevo,
+          motivo: 'Publicado desde Web → Tarifario público',
+        }),
+      })
+      if (!rh.ok) console.error('[tarifario] historial', rh.status, await rh.text())
+    } catch (e) {
+      console.error('[tarifario] historial', e)
+    }
 
     res.status(200).json({ ok: true })
   } catch (err) {

@@ -6,6 +6,7 @@ import LandingMetricas from '../components/LandingMetricas'
 import LandingTarifarioEditor from '../components/LandingTarifarioEditor'
 import Tabs, { type TabDef } from '../components/Tabs'
 import { useTabParam } from '../lib/useTabParam'
+import { useEsDuenoTarifas } from '../lib/permisosTarifa'
 import AnalisisTarifa from './AnalisisTarifa'
 
 const IDS = ['consultas', 'tarifario', 'metricas', 'analisis'] as const
@@ -26,8 +27,11 @@ const TABS: TabDef<Tab>[] = [
 export default function Landing() {
   const { employee } = useAuth()
   const esAdmin = employee?.role === 'admin'
+  // El tarifario público cambia lo que se cotiza: solo lo ve y publica el dueño.
+  const esDueno = useEsDuenoTarifas(employee)
+  const tabs = esDueno ? TABS : TABS.filter(t => t.id !== 'tarifario')
   const [tabElegida, setTab] = useTabParam(IDS, 'consultas')
-  const tab = esAdmin ? tabElegida : 'consultas'
+  const tab = !esAdmin ? 'consultas' : tabElegida === 'tarifario' && !esDueno ? 'consultas' : tabElegida
 
   return (
     <div>
@@ -46,7 +50,7 @@ export default function Landing() {
           : 'Las consultas que llegan desde la página de reservas, para contestarle a quien no llegó a escribir por WhatsApp.'}
       </p>
 
-      {esAdmin && <Tabs tabs={TABS} value={tab} onChange={setTab} className="mb-6" />}
+      {esAdmin && <Tabs tabs={tabs} value={tab} onChange={setTab} className="mb-6" />}
 
       {tab === 'consultas' ? <LandingLeads admin={esAdmin} />
         : tab === 'tarifario' ? <LandingTarifarioEditor />
