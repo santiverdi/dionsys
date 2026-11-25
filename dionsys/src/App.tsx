@@ -25,6 +25,7 @@ import Dashboard from './pages/Dashboard'
 import Pedidos from './pages/Pedidos'
 import PedidosRecepcion from './pages/PedidosRecepcion'
 import Promos from './pages/Promos'
+import Propuestas from './pages/Propuestas'
 import Stock from './pages/Stock'
 import Mantenimiento from './pages/Mantenimiento'
 import Impuestos from './pages/Impuestos'
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="pedidos" element={<RoleRoute path="/pedidos"><Pedidos /></RoleRoute>} />
         <Route path="recepcion" element={<RoleRoute path="/recepcion"><PedidosRecepcion /></RoleRoute>} />
         <Route path="promos" element={<RoleRoute path="/promos"><Promos /></RoleRoute>} />
+        <Route path="propuestas" element={<RoleRoute path="/propuestas"><Propuestas /></RoleRoute>} />
         <Route path="deposito" element={<RoleRoute path="/deposito"><Stock /></RoleRoute>} />
         <Route path="mantenimiento" element={<RoleRoute path="/mantenimiento"><Mantenimiento /></RoleRoute>} />
         <Route path="cajas" element={<RoleRoute path="/cajas"><Cajas /></RoleRoute>} />
