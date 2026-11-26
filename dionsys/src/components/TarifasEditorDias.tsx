@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RotateCcw, Save, X } from 'lucide-react'
 import type { TarifarioPublico } from '../lib/landing'
 import { infoDia, minNochesDia } from '../lib/tarifaDiaria'
@@ -45,10 +45,23 @@ export default function TarifasEditorDias({ fechas, tarifario, especiales, ajust
   const [singleComoDoble, setSingleComoDoble] = useState(false)
   const [efectivo, setEfectivo] = useState('')
   const [minimo, setMinimo] = useState('')
+  // true en cuanto el dueño escribe algo: desde ahí marcar más noches (aunque
+  // sean anteriores a la primera) no le pisa lo que cargó. Se limpia al
+  // desmarcar todo, que es lo que pasa al guardar o cerrar.
+  const tocado = useRef(false)
+  const escribir = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    tocado.current = true
+    set(e.target.value)
+  }
 
-  // Al cambiar la primera noche marcada, el formulario toma sus valores actuales.
+  // Al cambiar la primera noche marcada, el formulario toma sus valores actuales
+  // (solo si todavía no se escribió nada).
   useEffect(() => {
-    if (!primera) return
+    if (!primera) {
+      tocado.current = false
+      return
+    }
+    if (tocado.current) return
     const doble = infoDia(primera, 2, tarifario, especiales)
     const uno = infoDia(primera, 1, tarifario, especiales)
     const pp = doble.precio ?? 0
@@ -115,25 +128,25 @@ export default function TarifasEditorDias({ fechas, tarifario, especiales, ajust
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="block">
               <span className="text-xs font-medium text-navy-500">Por persona (2 a 5)</span>
-              <input inputMode="numeric" value={porPersona} onChange={e => setPorPersona(e.target.value)} className={input} />
+              <input inputMode="numeric" value={porPersona} onChange={escribir(setPorPersona)} className={input} />
             </label>
             <label className="block">
               <span className="text-xs font-medium text-navy-500">Single (habitación)</span>
               <input
                 inputMode="numeric"
                 value={singleComoDoble ? String(2 * pp) : single}
-                onChange={e => setSingle(e.target.value)}
+                onChange={escribir(setSingle)}
                 disabled={singleComoDoble}
                 className={`${input} disabled:bg-navy-50 disabled:text-navy-400`}
               />
               <span className="flex items-center gap-1.5 mt-1 text-xs text-navy-600">
-                <input type="checkbox" checked={singleComoDoble} onChange={e => setSingleComoDoble(e.target.checked)} />
+                <input type="checkbox" checked={singleComoDoble} onChange={e => { tocado.current = true; setSingleComoDoble(e.target.checked) }} />
                 Igual que la doble
               </span>
             </label>
             <label className="block">
               <span className="text-xs font-medium text-navy-500">Descuento en efectivo (%)</span>
-              <input inputMode="numeric" value={efectivo} onChange={e => setEfectivo(e.target.value)} className={input} />
+              <input inputMode="numeric" value={efectivo} onChange={escribir(setEfectivo)} className={input} />
             </label>
           </div>
           {valido && (
@@ -146,7 +159,7 @@ export default function TarifasEditorDias({ fechas, tarifario, especiales, ajust
         <>
           <label className="block max-w-[12rem]">
             <span className="text-xs font-medium text-navy-500">Mínimo de noches</span>
-            <input inputMode="numeric" value={minimo} onChange={e => setMinimo(e.target.value)} className={input} />
+            <input inputMode="numeric" value={minimo} onChange={escribir(setMinimo)} className={input} />
           </label>
           <p className="text-xs text-navy-500 mt-2">
             Si una estadía toca alguna de estas noches, el conserje ve el aviso de que tiene que ser de {min || '…'} {min === 1 ? 'noche' : 'noches'} o más.
