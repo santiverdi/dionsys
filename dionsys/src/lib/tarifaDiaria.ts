@@ -366,6 +366,9 @@ export function cuadraConTarifarioPublico(
   fechaCobro: string,
   t: TarifarioPublico,
   especiales: TarifaEspecial[] = especialesVigentes(),
+  // Días de llegada de la reserva según el parte (check-in): se prueban también
+  // las estadías que arrancan ahí, aunque se haya cobrado otro día.
+  llegadas: string[] = [],
 ): CuadreWeb | undefined {
   if (!Number.isInteger(plazas) || plazas < 1 || plazas > 5) return undefined
   const f = (fechaCobro || '').slice(0, 10)
@@ -375,6 +378,10 @@ export function cuadraConTarifarioPublico(
   for (let n = 1; n <= MAX_NOCHES; n++) {
     ventanas.push([sumarDias(f, -n), f])   // el cobro es la salida
     ventanas.push([f, sumarDias(f, n)])    // el cobro es la llegada
+  }
+  for (const l of new Set(llegadas.map(x => (x || '').slice(0, 10)))) {
+    if (!l || l === f || isNaN(aDia(l))) continue
+    for (let n = 1; n <= MAX_NOCHES; n++) ventanas.push([l, sumarDias(l, n)])
   }
 
   // Sin especiales que toquen la ventana, el segundo cálculo daría lo mismo.

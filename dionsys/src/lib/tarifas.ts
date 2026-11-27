@@ -19,6 +19,8 @@ import { fechaConfiable, ingresosNetos, type CajaFlag } from './cajaControl'
 import { getHabitacion, tipoDeHabitacion, haySobreocupacion } from '../data/hotel'
 import type { TarifarioPublico } from './landing'
 import { cuadraConTarifarioPublico, PROMO_TEXTO, type CuadreWeb } from './tarifaDiaria'
+import { especialesConAjustes, type TarifaEspecial } from './tarifasEspeciales'
+import { versionesAlCobrar, type VersionAjustes } from './historialTarifas'
 
 export interface TarifaPeriodo {
   desde: string   // YYYY-MM-DD inclusive
@@ -57,6 +59,9 @@ function fmt(n: number): string {
 }
 
 const diaMes = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
+
+// Cola del aviso cuando se revisó el historial y nada cuadró.
+const NI_ANTES = ' Tampoco es ninguna tarifa que DionSys haya tenido marcada antes del cobro: no es una tarifa de DionSys.'
 
 /**
  * Un cobro con la promo de temporada no es un error de tarifa: queda como info
@@ -183,6 +188,94 @@ function flagsDeOcupacion(habs: HabDeCobro[], yaAvisadas: Set<string>): CajaFlag
   return flags
 }
 
+// ── Cuadre contra lo que DionSys tenía marcado al cobrar ────────────────────
+
+const especialesPorVersion = new WeakMap<VersionAjustes, TarifaEspecial[]>()
+function especialesDe(v: VersionAjustes): TarifaEspecial[] {
+  let e = especialesPorVersion.get(v)
+  if (!e) { e = especialesConAjustes(v.ajustes); especialesPorVersion.set(v, e) }
+  return e
+}
+
+const sumarDiasIso = (f: string, n: number) =>
+  new Date(Date.parse(f + 'T00:00:00Z') + n * 86_400_000).toISOString().slice(0, 10)
+
+// Los precios de una versión que pueden tocar este cobro (las noches de alguna
+// ventana probada). Dos versiones iguales en ese tramo dan el mismo cuadre: se
+// prueba una sola.
+function tramoDe(v: VersionAjustes, desde: string, hasta: string): string {
+  return JSON.stringify(Object.keys(v.ajustes).filter(k => desde <= k && k <= hasta).sort().map(k => [k, v.ajustes[k]]))
+}
+
+interface CuadreHistorico {
+  web: CuadreWeb | undefined   // si nada se acepta, el cuadre con la vigente (para el mensaje)
+  aceptado: boolean
+  anterior?: VersionAjustes    // se aceptó con una versión ANTERIOR a la vigente al cobrar
+}
+
+/**
+ * ¿El cobro es una tarifa que DionSys tenía marcada? Sin historial se cuadra
+ * con los precios de hoy (como siempre). Con historial: primero la versión
+ * vigente al momento del cobro; si no, alguna anterior (una reserva cotizada
+ * antes del cambio). Una versión POSTERIOR al cobro nunca vale.
+ */
+function cuadreConDionsys(
+  total: number, plazas: number, fechaCobro: string, tarifario: TarifarioPublico,
+  pagoEfectivo: boolean, llegadas: string[], versiones?: VersionAjustes[] | null,
+): CuadreHistorico {
+  const acepta = (w: CuadreWeb | undefined) => !!w && (w.tipo !== 'efectivo' || pagoEfectivo)
+  const candidatas = versiones?.length ? versionesAlCobrar(fechaCobro, versiones) : []
+  if (!candidatas.length) {
+    const web = cuadraConTarifarioPublico(total, plazas, fechaCobro, tarifario, undefined, llegadas)
+    return { web, aceptado: acepta(web) }
+  }
+  const dias = [fechaCobro, ...llegadas].map(d => (d || '').slice(0, 10)).filter(Boolean).sort()
+  const desde = sumarDiasIso(dias[0], -MAX_NOCHES)
+  const hasta = sumarDiasIso(dias[dias.length - 1], MAX_NOCHES)
+  const vistos = new Set<string>()
+  let vigente: CuadreWeb | undefined
+  for (let i = 0; i < candidatas.length; i++) {
+    const v = candidatas[i]
+    const tramo = tramoDe(v, desde, hasta)
+    if (vistos.has(tramo)) continue
+    vistos.add(tramo)
+    const web = cuadraConTarifarioPublico(total, plazas, fechaCobro, tarifario, especialesDe(v), llegadas)
+    if (i === 0) vigente = web
+    if (acepta(web)) return { web, aceptado: true, ...(i > 0 ? { anterior: v } : {}) }
+  }
+  return { web: vigente, aceptado: false }
+}
+
+const fechaHoraCorta = (iso: string | null) => (iso
+  ? new Date(iso).toLocaleString('es-AR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+    timeZone: 'America/Argentina/Buenos_Aires',
+  })
+  : 'hoy')
+
+/** Cuadró con una tarifa que DionSys tuvo marcada antes: vale solo si se cotizó antes del cambio. */
+function flagTarifaAnterior(quien: string, total: number, web: CuadreWeb, v: VersionAjustes): CajaFlag {
+  const con = web.tipo === 'promo' && web.promo
+    ? ` (${PROMO_TEXTO[web.promo]})`
+    : web.tipo === 'efectivo' ? ' (precio de efectivo)' : ''
+  return {
+    level: 'info',
+    tipo: 'tarifa',
+    mensaje: `${quien}: cobro de ${fmt(total)} con una tarifa que DionSys tenía marcada ANTES${con}, vigente hasta el ${fechaHoraCorta(v.hasta)} (${web.noches} noches desde el ${diaMes(web.llegada)}). Vale solo si la reserva se cotizó antes de ese cambio.`,
+  }
+}
+
+// Check-in de la reserva del cobro según los partes (solo por Nº de reserva:
+// por habitación podría ser otro huésped).
+function llegadasDeCobro(m: CajaMovimiento, partes: ParteHabitaciones[]): string[] {
+  if (!m.reserva) return []
+  const out = new Set<string>()
+  for (const p of partes) {
+    for (const o of p.ocupadas) if (o.reserva === m.reserva && o.checkIn) out.add(o.checkIn.slice(0, 10))
+  }
+  return [...out]
+}
+
 export function getTarifaFlags(
   caja: CajaParte,
   partes: ParteHabitaciones[],
@@ -192,6 +285,10 @@ export function getTarifaFlags(
   // página (vie/sáb, findes largos, tope, descuento por día) también está bien:
   // el conserje cobró exactamente lo que la web le mostró al huésped.
   tarifarioPublico?: TarifarioPublico | null,
+  // Historial de los precios por día (ver cargarVersionesAjustes): cada cobro
+  // se controla contra lo que DionSys tenía marcado al cobrar, no contra lo de
+  // hoy. Sin historial, contra lo de hoy (como antes).
+  versiones?: VersionAjustes[] | null,
 ): CajaFlag[] {
   const flags: CajaFlag[] = []
   const yaAvisadas = new Set<string>()
@@ -210,6 +307,7 @@ export function getTarifaFlags(
     // El precio de efectivo solo vale si el cobro fue TODO en efectivo.
     const pagoEfectivo = m.efectivo > 0 && Math.abs(m.efectivo - m.total) <= EPS
     const fechaCobro = m.fechaHora || caja.aperturaAt
+    const llegadas = llegadasDeCobro(m, partes)
 
     const periodo = tarifaVigente(fechaCobro, tarifas)
     if (!periodo) {
@@ -219,20 +317,20 @@ export function getTarifaFlags(
       const v = tarifarioPublico?.config?.vigencia
       const dia = (fechaCobro || '').slice(0, 10)
       if (!tarifarioPublico || !v || !dia || dia < v.desde || dia > v.hasta) continue
-      const web = cuadraConTarifarioPublico(m.total, plazas, dia, tarifarioPublico)
+      const { web, aceptado, anterior } = cuadreConDionsys(m.total, plazas, fechaCobro, tarifarioPublico, pagoEfectivo, llegadas, versiones)
       const quienWeb = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
         + `${m.reserva ? ` · reserva ${m.reserva}` : ''} (${plazas} pax)`
-      if (web?.tipo === 'promo') {
-        flags.push(flagPromo(quienWeb, m.total, web))
+      if (aceptado && web) {
+        if (anterior) flags.push(flagTarifaAnterior(quienWeb, m.total, web, anterior))
+        else if (web.tipo === 'promo') flags.push(flagPromo(quienWeb, m.total, web))
         continue
       }
-      if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
       flags.push({
         level: 'warn',
         tipo: 'tarifa',
         mensaje: web
           ? `${quienWeb}: cobro de ${fmt(m.total)} al precio de efectivo de la página de reservas, pero no se pagó en efectivo.`
-          : `${quienWeb}: cobro de ${fmt(m.total)} no cuadra con el tarifario de la página de reservas para ninguna estadía que empiece o termine ese día (no hay tarifa pactada cargada para la fecha).`,
+          : `${quienWeb}: cobro de ${fmt(m.total)} no cuadra con el tarifario de la página de reservas para ninguna estadía que empiece o termine ese día (no hay tarifa pactada cargada para la fecha).${versiones?.length ? NI_ANTES : ''}`,
       })
       continue
     }
@@ -260,14 +358,14 @@ export function getTarifaFlags(
     // Última chance antes de marcar: ¿cuadra con el tarifario de la landing?
     // (solo se calcula para los cobros que las pactadas no explican).
     if (tarifarioPublico) {
-      const web = cuadraConTarifarioPublico(m.total, plazas, fechaCobro, tarifarioPublico)
-      if (web?.tipo === 'promo') {
-        const quienPromo = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
+      const { web, aceptado, anterior } = cuadreConDionsys(m.total, plazas, fechaCobro, tarifarioPublico, pagoEfectivo, llegadas, versiones)
+      if (aceptado && web) {
+        const quienWeb = `Hab. ${m.habitacion || habs.map(h => h.habitacion).join('/') || '?'}`
           + `${m.reserva ? ` · reserva ${m.reserva}` : ''} (${plazas} pax)`
-        flags.push(flagPromo(quienPromo, m.total, web))
+        if (anterior) flags.push(flagTarifaAnterior(quienWeb, m.total, web, anterior))
+        else if (web.tipo === 'promo') flags.push(flagPromo(quienWeb, m.total, web))
         continue
       }
-      if (web && (web.tipo === 'lista' || pagoEfectivo)) continue
     }
 
     // Con una sola habitación se nombra su tipo real (del maestro): ayuda a
@@ -296,7 +394,7 @@ export function getTarifaFlags(
       flags.push({
         level: 'warn',
         tipo: 'tarifa',
-        mensaje: `${quien}: cobro de ${fmt(m.total)} no cuadra con la tarifa pactada (${pactada}) para ninguna cantidad de noches.`,
+        mensaje: `${quien}: cobro de ${fmt(m.total)} no cuadra con la tarifa pactada (${pactada}) para ninguna cantidad de noches.${versiones?.length && tarifarioPublico ? NI_ANTES : ''}`,
       })
     }
   }

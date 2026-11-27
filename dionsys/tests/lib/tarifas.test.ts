@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { getTarifaFlags, tarifaVigente, mesesSinTarifa, TARIFAS_PACTADAS } from '../../src/lib/tarifas'
 import type { TarifarioPublico } from '../../src/lib/landing'
+import { versionesDeAjustes } from '../../src/lib/historialTarifas'
 import type { CajaParte, CajaMovimiento, ParteHabitaciones } from '../../src/types'
 
 function mov(p: Partial<CajaMovimiento>): CajaMovimiento {
@@ -248,5 +249,57 @@ describe('getTarifaFlags · ocupación real vs capacidad', () => {
     const flags = soloTarifa(caja, [mkParte(2, '500', '105')])
     expect(flags).toHaveLength(1)
     expect(flags[0].mensaje).toContain('(doble, 2 pax)')
+  })
+})
+
+describe('getTarifaFlags · la tarifa que DionSys tenía marcada al cobrar', () => {
+  // Precios por día del calendario (2 a 5 pax, por persona) del 8 al 10/12.
+  const precio = (pp: number) => Object.fromEntries(
+    ['2026-12-08', '2026-12-09', '2026-12-10'].map(f => [f, { porPersona: pp, single: pp * 2 }]),
+  )
+  // Estaba a 50.000; el 5/12 el dueño la baja a 45.000; el 9/12 la sube a 55.000.
+  const versiones = versionesDeAjustes(precio(50_000), [
+    { creado_en: '2026-12-05T12:00:00.000Z', valor_nuevo: precio(45_000) },
+    { creado_en: '2026-12-09T12:00:00.000Z', valor_nuevo: precio(55_000) },
+  ])
+  // Cobro al llegar el 8/12: 3 noches (8, 9 y 10) para 2 personas.
+  const cobro = (total: number) => mkCaja({
+    aperturaAt: '2026-12-08T07:00:00.000Z',
+    ingresos: [mov({ fechaHora: '2026-12-08T10:00:00.000Z', reserva: '500', habitacion: '101', tarjetas: total, total })],
+  })
+
+  it('la tarifa vigente al cobrar no marca nada, aunque hoy el precio sea otro', () => {
+    expect(soloTarifa(cobro(270_000), [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB, versiones)).toEqual([])
+  })
+
+  it('una tarifa marcada ANTES del cambio es la excepción de una reserva cotizada antes: info, no imperfección', () => {
+    const flags = soloTarifa(cobro(300_000), [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB, versiones)
+    expect(flags).toHaveLength(1)
+    expect(flags[0].level).toBe('info')
+    expect(flags[0].mensaje).toContain('marcada ANTES')
+    expect(flags[0].mensaje).toContain('vigente hasta el 5/12')
+  })
+
+  it('el precio que se marcó DESPUÉS del cobro no vale: no era una tarifa de DionSys todavía', () => {
+    const flags = soloTarifa(cobro(330_000), [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB, versiones)
+    expect(flags).toHaveLength(1)
+    expect(flags[0].level).toBe('warn')
+    expect(flags[0].mensaje).toContain('no es una tarifa de DionSys')
+  })
+
+  it('un precio que nunca estuvo marcado se marca', () => {
+    const flags = soloTarifa(cobro(271_000), [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB, versiones)
+    expect(flags.map(f => f.level)).toEqual(['warn'])
+  })
+
+  it('las fechas de la reserva salen del check-in del parte aunque se cobre otro día', () => {
+    const parte = mkParte(2)
+    parte.ocupadas[0].checkIn = '2026-12-08T03:00:00.000Z'
+    const caja = mkCaja({
+      aperturaAt: '2026-12-09T07:00:00.000Z',
+      ingresos: [mov({ fechaHora: '2026-12-09T10:00:00.000Z', reserva: '500', habitacion: '101', tarjetas: 270_000, total: 270_000 })],
+    })
+    expect(soloTarifa(caja, [parte], TARIFAS_PACTADAS, TARIFARIO_WEB, versiones)).toEqual([])
+    expect(soloTarifa(caja, [mkParte(2)], TARIFAS_PACTADAS, TARIFARIO_WEB, versiones)).toHaveLength(1)
   })
 })

@@ -8,6 +8,7 @@ import { useCajas } from '../context/CajaContext'
 import { usePartes } from '../context/ParteContext'
 import { useTarifas } from '../context/TarifasContext'
 import { useTarifarioPublico } from '../lib/useTarifarioPublico'
+import { useVersionesTarifa } from '../lib/useVersionesTarifa'
 import { useEsDuenoTarifas } from '../lib/permisosTarifa'
 import { getCajaFlags, getCajaResumen, type CajaFlag } from '../lib/cajaControl'
 import { getTarifaFlags } from '../lib/tarifas'
@@ -70,6 +71,7 @@ export default function ControlCaja() {
   const { partes } = usePartes()
   const { tarifas } = useTarifas()
   const tarifarioWeb = useTarifarioPublico()
+  const versionesTarifa = useVersionesTarifa()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const selected = useMemo(() => cajas.find(c => c.id === selectedId) ?? null, [cajas, selectedId])
@@ -77,7 +79,7 @@ export default function ControlCaja() {
   // ============ DETALLE ============
   if (selected) {
     const resumen = getCajaResumen(selected)
-    const flags = [...getCajaFlags(selected, getCajaAnterior(selected)), ...getTarifaFlags(selected, partes, tarifas, tarifarioWeb)]
+    const flags = [...getCajaFlags(selected, getCajaAnterior(selected)), ...getTarifaFlags(selected, partes, tarifas, tarifarioWeb, versionesTarifa)]
     const TIcon = selected.turno ? TURNO_ICON[selected.turno] : Clock
     return (
       <div>

@@ -10,6 +10,7 @@ import { useOrders } from '../context/OrdersContext'
 import { useStock } from '../context/StockContext'
 import { useMaintenance } from '../context/MaintenanceContext'
 import { useTarifarioPublico } from '../lib/useTarifarioPublico'
+import { useVersionesTarifa } from '../lib/useVersionesTarifa'
 import { usePendientesLibro } from '../lib/usePendientesLibro'
 import AvisoLibroPendiente from '../components/AvisoLibroPendiente'
 import AvisoPropuestasPendientes from '../components/AvisoPropuestasPendientes'
@@ -79,6 +80,7 @@ export default function Inicio() {
   const { partes } = usePartes()
   const { tarifas } = useTarifas()
   const tarifarioWeb = useTarifarioPublico()
+  const versionesTarifa = useVersionesTarifa()
   const { getVencimientosMes } = useImpuestos()
   const { orders } = useOrders()
   const { pedidos } = useStock()
@@ -92,8 +94,8 @@ export default function Inicio() {
   const imperf = useMemo(() => {
     const desde = new Date()
     desde.setDate(desde.getDate() - DIAS_PROXIMOS)
-    return getImperfeccionesGlobal(cajas, partes, tarifas, tarifarioWeb, desde)
-  }, [cajas, partes, tarifas, tarifarioWeb])
+    return getImperfeccionesGlobal(cajas, partes, tarifas, tarifarioWeb, desde, versionesTarifa)
+  }, [cajas, partes, tarifas, tarifarioWeb, versionesTarifa])
 
   // Impuestos: vencidos sin pagar este mes y los que vencen en los próximos días
   // (mirando también el mes que viene si estamos a fin de mes).

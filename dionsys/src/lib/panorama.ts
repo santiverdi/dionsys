@@ -10,6 +10,7 @@ import {
 import { getParteResumen, getCheckouts, getEstadiasOcultas, parteAnteriorDe } from './parteControl'
 import { getTarifaFlags, type TarifaPeriodo } from './tarifas'
 import type { TarifarioPublico } from './landing'
+import type { VersionAjustes } from './historialTarifas'
 import { usuarioLimpio } from './parseCaja'
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
@@ -198,7 +199,7 @@ function totalDe(i: ImperfeccionesCount): number {
 
 // Imperfecciones de una caja (reusa getCajaFlags para el descuadre de continuidad
 // y getTarifaFlags para los cobros fuera de la tarifa pactada).
-function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null): ImperfeccionesCount {
+function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null, versiones?: VersionAjustes[] | null): ImperfeccionesCount {
   const anterior = anteriorPorNro(caja, cajas)
   const flags = getCajaFlags(caja, anterior)
   const i = cero()
@@ -211,7 +212,7 @@ function imperfeccionesDeCaja(caja: CajaParte, cajas: CajaParte[], partes: Parte
   // Solo los warn cuentan como imperfección (los info son descuentos a confirmar
   // y plazas que quedaron sin vender). getTarifaFlags devuelve dos familias:
   // 'tarifa' (precio) y 'ocupacion' (gente vs capacidad real de la habitación).
-  const tarifaFlags = getTarifaFlags(caja, partes, tarifas, tarifarioPublico).filter(f => f.level === 'warn')
+  const tarifaFlags = getTarifaFlags(caja, partes, tarifas, tarifarioPublico, versiones).filter(f => f.level === 'warn')
   i.tarifasFuera = tarifaFlags.filter(f => f.tipo === 'tarifa').length
   i.sobreocupacion = tarifaFlags.filter(f => f.tipo === 'ocupacion').length
   i.cajasSinCerrar = caja.cierreAt ? 0 : 1
@@ -243,12 +244,12 @@ function acumular(a: ImperfeccionesCount, b: ImperfeccionesCount): void {
 
 // `desde`: cuenta solo las cajas/partes abiertos desde esa fecha (las listas
 // completas igual se usan de contexto, para comparar con la caja anterior).
-export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null, desde?: Date): ImperfeccionesCount {
+export function getImperfeccionesGlobal(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null, desde?: Date, versiones?: VersionAjustes[] | null): ImperfeccionesCount {
   const acc = cero()
   const desdeMs = desde?.getTime() ?? -Infinity
   for (const c of cajas) {
     if (new Date(c.aperturaAt).getTime() < desdeMs) continue
-    acumular(acc, imperfeccionesDeCaja(c, cajas, partes, tarifas, tarifarioPublico))
+    acumular(acc, imperfeccionesDeCaja(c, cajas, partes, tarifas, tarifarioPublico, versiones))
   }
   for (const p of partes) {
     if (new Date(p.fechaCaja).getTime() < desdeMs) continue
@@ -269,7 +270,7 @@ export interface ConserjeStats {
   imperfecciones: ImperfeccionesCount
 }
 
-export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null): ConserjeStats[] {
+export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[], tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null, versiones?: VersionAjustes[] | null): ConserjeStats[] {
   const map = new Map<string, ConserjeStats>()
   const get = (nombre: string): ConserjeStats => {
     let s = map.get(nombre)
@@ -288,7 +289,7 @@ export function getConserjeStats(cajas: CajaParte[], partes: ParteHabitaciones[]
     s.cajas += 1
     s.totalCobrado += r.totalCobrado
     s.cantIngresos += r.cantIngresos
-    acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas, partes, tarifas, tarifarioPublico))
+    acumular(s.imperfecciones, imperfeccionesDeCaja(c, cajas, partes, tarifas, tarifarioPublico, versiones))
     const f = fb.get(s.conserje) ?? { tarjeta: 0, conFB: 0 }
     const netos = ingresosNetos(c)
     f.tarjeta += netos.filter(m => m.tarjetas > 0).length
@@ -517,11 +518,11 @@ export interface Panorama {
   turnos: TurnoHabitaciones[]
 }
 
-export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date(), tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null): Panorama {
+export function getPanorama(cajas: CajaParte[], partes: ParteHabitaciones[], ahora: Date = new Date(), tarifas?: TarifaPeriodo[], tarifarioPublico?: TarifarioPublico | null, versiones?: VersionAjustes[] | null): Panorama {
   return {
     dinero: getDineroResumen(cajas),
-    imperfecciones: getImperfeccionesGlobal(cajas, partes, tarifas, tarifarioPublico),
-    conserjes: getConserjeStats(cajas, partes, tarifas, tarifarioPublico),
+    imperfecciones: getImperfeccionesGlobal(cajas, partes, tarifas, tarifarioPublico, undefined, versiones),
+    conserjes: getConserjeStats(cajas, partes, tarifas, tarifarioPublico, versiones),
     ocupacion: getOcupacionResumen(partes),
     cobertura: getCobertura(cajas, partes, ahora),
     gastos: getGastosCaja(cajas),
