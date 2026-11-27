@@ -24,6 +24,7 @@ import { sumarDias } from '../lib/promosPantalla'
 import EstadiasMinimasEditor from './EstadiasMinimasEditor'
 import ProteccionesTarifaEditor from './ProteccionesTarifaEditor'
 import TarifasHistorial from './TarifasHistorial'
+import HistorialNoche from './HistorialNoche'
 import { useAvisosAlGuardar } from './AvisosAlGuardar'
 
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -88,6 +89,9 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   const [salida, setSalida] = useState<string | null>(null)
   const [arrastrando, setArrastrando] = useState(false)
   const [hoverDia, setHoverDia] = useState<string | null>(null)
+  // El último día tocado: debajo del calendario aparece el registro de sus cambios de precio.
+  const [diaTocado, setDiaTocado] = useState<string | null>(null)
+  const [guardados, setGuardados] = useState(0)
 
   const { employee } = useAuth()
   const esDueno = useEsDuenoTarifas(employee)
@@ -177,6 +181,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
   function alPresionar(e: React.PointerEvent) {
     const f = diaDeEvento(e)
     if (!f || !tarifario) return
+    setDiaTocado(f)
     if (editando) {
       arrastreEdicion.current = { desde: f, base: new Set(marcadas), quitar: marcadas.has(f) }
       marcarTramo(f)
@@ -214,6 +219,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
     if (r.error) return
     setAjustes(nuevos)
     setMarcadas(new Set())
+    setGuardados(n => n + 1)
   }
 
   async function guardarEstadias(nuevas: EstadiaMinima[]): Promise<boolean> {
@@ -241,6 +247,7 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
     setLlegada(null)
     setSalida(null)
     setHoverDia(null)
+    setDiaTocado(null)
   }
 
   return (
@@ -542,6 +549,8 @@ export default function TarifasCalendario({ onBack }: { onBack: () => void }) {
               )}
             </div>
           )}
+
+          {diaTocado && <HistorialNoche fecha={diaTocado} vuelta={guardados} />}
 
           {/* Referencias */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[11px] text-navy-500">

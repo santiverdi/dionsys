@@ -9,6 +9,7 @@ import { useTarifas } from '../context/TarifasContext'
 import { getPanorama, type ConserjeStats, type ImperfeccionesCount } from '../lib/panorama'
 import { mesesSinTarifa } from '../lib/tarifas'
 import { useTarifarioPublico } from '../lib/useTarifarioPublico'
+import { useVersionesTarifa } from '../lib/useVersionesTarifa'
 import { formatMontoCurrency } from '../utils/validators'
 import { TURNO_LABELS } from '../context/OccupancyContext'
 
@@ -133,7 +134,8 @@ export default function Panorama() {
   const { partes } = usePartes()
   const { tarifas } = useTarifas()
   const tarifarioWeb = useTarifarioPublico()
-  const p = useMemo(() => getPanorama(cajas, partes, new Date(), tarifas, tarifarioWeb), [cajas, partes, tarifas, tarifarioWeb])
+  const versionesTarifa = useVersionesTarifa()
+  const p = useMemo(() => getPanorama(cajas, partes, new Date(), tarifas, tarifarioWeb, versionesTarifa), [cajas, partes, tarifas, tarifarioWeb, versionesTarifa])
   const sinTarifa = useMemo(() => mesesSinTarifa(cajas, tarifas), [cajas, tarifas])
 
   if (cajas.length === 0 && partes.length === 0) {

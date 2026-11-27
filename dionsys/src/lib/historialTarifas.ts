@@ -106,9 +106,14 @@ export function versionDe(e: EntradaHistorial): unknown {
 const dm = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`
 const k = (n: number | undefined) => (n ? `${Math.round(n / 100) / 10}k`.replace('.', ',') : '—')
 
-/** "pp 42k → 45k · single 78k → 80k · mín 1 → 2" */
+/** "dd/mm: pp 42k → 45k · single 78k → 80k · mín 1 → 2" */
 export function textoDiferencia(d: DiferenciaDia): string {
-  const a = d.antes ?? {}, b = d.despues ?? {}
+  return `${dm(d.fecha)}: ${textoCambioNoche(d.antes, d.despues)}`
+}
+
+/** "pp 42k → 45k · single 78k → 80k · mín 1 → 2" (sin la fecha). */
+export function textoCambioNoche(antes: AjusteDia | null, despues: AjusteDia | null): string {
+  const a = antes ?? {}, b = despues ?? {}
   const partes: string[] = []
   if (a.porPersona !== b.porPersona) partes.push(`pp ${k(a.porPersona)} → ${k(b.porPersona)}`)
   if (a.single !== b.single) partes.push(`single ${k(a.single)} → ${k(b.single)}`)
@@ -117,7 +122,46 @@ export function textoDiferencia(d: DiferenciaDia): string {
     partes.push(`efectivo ${p(a.descEfectivo)} → ${p(b.descEfectivo)}`)
   }
   if (a.minNoches !== b.minNoches) partes.push(`mín ${a.minNoches ?? '—'} → ${b.minNoches ?? '—'}`)
-  return `${dm(d.fecha)}: ${partes.join(' · ') || 'sin cambios'}`
+  return partes.join(' · ') || 'sin cambios'
+}
+
+// ── Registro de una noche: todos los cambios que tuvo esa fecha ─────────────
+
+export interface CambioNoche {
+  id: number
+  creado_en: string
+  autor_nombre: string
+  motivo: string | null
+  revierte_id: number | null
+  antes: AjusteDia | null    // null = sin ajuste (precio de la página)
+  despues: AjusteDia | null
+}
+
+/** Los cambios de precio/mínimo de esa noche, del más nuevo al más viejo. */
+export function cambiosDeLaNoche(fecha: string, entradas: EntradaHistorial[]): CambioNoche[] {
+  const de = (v: unknown) => ((esObjeto(v) ? (v as AjustesTarifa)[fecha] : undefined) ?? null)
+  return entradas
+    .filter(e => e.clave === 'dionsys_tarifas_dia')
+    .map(e => ({
+      id: e.id, creado_en: e.creado_en, autor_nombre: e.autor_nombre, motivo: e.motivo, revierte_id: e.revierte_id,
+      antes: de(e.valor_anterior), despues: de(e.valor_nuevo),
+    }))
+    .filter(c => !igual(c.antes, c.despues))
+    .sort((a, b) => b.id - a.id)
+}
+
+/** Los cambios guardados que tocaron esa noche (el trigger anota las fechas de cada cambio). */
+export async function cargarCambiosDeLaNoche(fecha: string): Promise<{ cambios: CambioNoche[]; error: string | null }> {
+  if (!supabase) return { cambios: [], error: 'La nube no está configurada.' }
+  const { data, error } = await supabase
+    .from('tarifas_historial')
+    .select('*')
+    .eq('clave', 'dionsys_tarifas_dia')
+    .contains('fechas', [fecha])
+    .order('id', { ascending: false })
+    .limit(200)
+  if (error) return { cambios: [], error: `No se pudo leer el registro: ${error.message}` }
+  return { cambios: cambiosDeLaNoche(fecha, (data ?? []) as EntradaHistorial[]), error: null }
 }
 
 /** "1/12 al 3/12, 8/12" — las noches agrupadas en tramos seguidos. */
@@ -149,4 +193,81 @@ export async function cargarHistorial(limite = 50): Promise<{ entradas: EntradaH
     }
   }
   return { entradas: (data ?? []) as EntradaHistorial[], error: null }
+}
+
+// ── Qué precios por día tenía marcados DionSys en cada momento ──────────────
+// El dueño baja o sube los precios del calendario a medida que pasan los días.
+// Un cobro se controla contra lo que DionSys tenía marcado CUANDO se cobró (no
+// contra lo de hoy). Si cuadra con una versión anterior, es una reserva que se
+// cotizó antes del cambio: se acepta, pero avisando. Lo que no cuadra con
+// ninguna versión que ya existiera al cobrar no es una tarifa de DionSys.
+
+export interface VersionAjustes {
+  desde: string          // ISO del cambio que la dejó así; '' = desde antes del historial
+  hasta: string | null   // ISO del cambio siguiente; null = es la de hoy
+  ajustes: AjustesTarifa
+}
+
+/** Las versiones en orden: la base (antes del primer cambio cargado) y una por cambio. */
+export function versionesDeAjustes(
+  base: unknown,
+  entradas: Array<Pick<EntradaHistorial, 'creado_en' | 'valor_nuevo'>>,
+): VersionAjustes[] {
+  const comoAjustes = (v: unknown) => (esObjeto(v) ? v : {}) as AjustesTarifa
+  const orden = [...entradas].sort((a, b) => Date.parse(a.creado_en) - Date.parse(b.creado_en))
+  const lista: VersionAjustes[] = [
+    { desde: '', hasta: null, ajustes: comoAjustes(base) },
+    ...orden.map(e => ({ desde: e.creado_en, hasta: null, ajustes: comoAjustes(e.valor_nuevo) })),
+  ]
+  for (let i = 0; i < lista.length - 1; i++) lista[i].hasta = lista[i + 1].desde
+  return lista
+}
+
+// Tolerancia entre la hora del cobro (reloj del PMS) y la del cambio (la base):
+// un cambio hecho minutos después del cobro igual cuenta como ya marcado.
+export const MARGEN_CAMBIO_MS = 30 * 60_000
+
+/** Las versiones que ya existían al momento del cobro: la vigente primero, después las anteriores. */
+export function versionesAlCobrar(instante: string, versiones: VersionAjustes[]): VersionAjustes[] {
+  const t = Date.parse(instante)
+  if (isNaN(t)) return []
+  return versiones.filter(v => !v.desde || Date.parse(v.desde) <= t + MARGEN_CAMBIO_MS).reverse()
+}
+
+// Hasta cuántos días atrás se traen los cambios (cada foto pesa ~10 KB).
+const DIAS_HISTORIAL = 60
+let cacheVersiones: Promise<VersionAjustes[] | null> | null = null
+
+/**
+ * Las versiones de los precios por día de los últimos DIAS_HISTORIAL días,
+ * una sola vez por sesión. null = sin nube o sin historial: el control usa los
+ * precios de hoy, como siempre.
+ */
+export function cargarVersionesAjustes(): Promise<VersionAjustes[] | null> {
+  cacheVersiones ??= (async () => {
+    if (!supabase) return null
+    const corte = new Date(Date.now() - DIAS_HISTORIAL * 86_400_000).toISOString()
+    const recientes = await supabase.from('tarifas_historial')
+      .select('id, creado_en, valor_nuevo')
+      .eq('clave', 'dionsys_tarifas_dia').gte('creado_en', corte)
+      .order('id', { ascending: true })
+    if (recientes.error || !recientes.data?.length) return null
+    // La base: cómo estaba antes del primer cambio de la ventana.
+    const previa = await supabase.from('tarifas_historial')
+      .select('valor_nuevo')
+      .eq('clave', 'dionsys_tarifas_dia').lt('creado_en', corte)
+      .order('id', { ascending: false }).limit(1)
+    if (previa.error) return null
+    let base: unknown = previa.data?.[0]?.valor_nuevo
+    if (base === undefined) {
+      const primera = await supabase.from('tarifas_historial')
+        .select('valor_anterior').eq('id', recientes.data[0].id).limit(1)
+      if (primera.error) return null
+      base = primera.data?.[0]?.valor_anterior ?? {}
+    }
+    return versionesDeAjustes(base, recientes.data as Array<Pick<EntradaHistorial, 'creado_en' | 'valor_nuevo'>>)
+  })().catch(() => null)
+  // Si falló, se reintenta la próxima vez que se pida.
+  void cacheVersiones.then(v => { if (!v) cacheVersiones = null })
+  return cacheVersiones
 }
